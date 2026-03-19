@@ -29,6 +29,11 @@
                     "battery_device_id": "Huawei-enhet",
                     "working_mode_entity": "Working Mode (Entitet)",
                     "device_status_entity": "Device Status (Entitet)"
+                },
+                "data_description": {
+                    "battery_device_id": "Välj ditt Huawei-batteri eller växelriktare i listan så integrationen vet var kommandona ska skickas.",
+                    "working_mode_entity": "Peka ut entiteten för driftläge (t.ex. 'select.inverter_working_mode'). Används för att växla mellan Auto och Hold.",
+                    "device_status_entity": "Peka ut sensorn för status (t.ex. 'sensor.inverter_device_status') så känner PeakGuard automatiskt av fel och underhållslägen."
                 }
             },
             "common": {

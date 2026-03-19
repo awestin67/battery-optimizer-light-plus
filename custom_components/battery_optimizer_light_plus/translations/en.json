@@ -2,8 +2,43 @@
     "config": {
         "step": {
             "user": {
-                "title": "Battery Optimizer Light Setup",
-                "description": "Connect Home Assistant to the cloud optimizer service.\n\nEnter your API key and select your sensors below.",
+                "title": "Select Battery Type",
+                "description": "Choose the type of battery you want to connect to Battery Optimizer Light Plus.",
+                "data": {
+                    "battery_type": "Battery Type"
+                }
+            },
+            "sonnen": {
+                "title": "Configure Sonnen",
+                "description": "Enter the connection details for your Sonnen battery.",
+                "data": {
+                    "host": "IP Address",
+                    "api_token": "API Token (Auth-Token)",
+                    "port": "Port"
+                },
+                "data_description": {
+                    "host": "Enter the IP address of your Sonnen battery (e.g. 192.168.1.50).",
+                    "api_token": "Copy your Auth-Token from the battery's local web page under 'Software Integration' -> 'JSON API'.",
+                    "port": "Default port for Sonnen is 80."
+                }
+            },
+            "huawei": {
+                "title": "Configure Huawei",
+                "description": "Select the devices and entities for your Huawei system.",
+                "data": {
+                    "battery_device_id": "Huawei Device",
+                    "working_mode_entity": "Working Mode (Entity)",
+                    "device_status_entity": "Device Status (Entity)"
+                },
+                "data_description": {
+                    "battery_device_id": "Select your Huawei battery or inverter from the list so the integration knows where to send commands.",
+                    "working_mode_entity": "Select the working mode entity (e.g., 'select.inverter_working_mode'). Used to switch between Auto and Hold.",
+                    "device_status_entity": "Select the status sensor (e.g., 'sensor.inverter_device_status') to allow PeakGuard to automatically detect errors and maintenance modes."
+                }
+            },
+            "common": {
+                "title": "Common Settings",
+                "description": "Enter your API key and select your sensors for Battery Optimizer Light Plus.",
                 "data": {
                     "api_url": "API URL",
                     "api_key": "API Key (from Dashboard)",
@@ -15,6 +50,15 @@
                     "battery_status_keywords": "Maintenance Keywords (e.g. Battery-Care, Service)",
                     "virtual_load_sensor": "Virtual Load Sensor (Optional - Overrides calc)",
                     "consumption_forecast_sensor": "Consumption Forecast Tomorrow (kWh) (Optional)"
+                },
+                "data_description": {
+                    "api_url": "Leave the default value unless you are connecting to a custom test server.",
+                    "api_key": "Found when you log in to battery-prod.awestinconsulting.se",
+                    "soc_sensor": "The sensor displaying the battery's current charge percentage (0-100%).",
+                    "grid_sensor": "The meter for the house's grid exchange. Usually from your inverter (W).",
+                    "grid_sensor_invert": "Check this if your Grid Sensor shows a POSITIVE value when you export/sell electricity.",
+                    "battery_power_sensor": "The sensor for the battery's power (Negative = charging, Positive = discharging).",
+                    "virtual_load_sensor": "Leave empty to let the integration calculate the load automatically (Grid + Battery)."
                 }
             }
         },
@@ -27,11 +71,20 @@
             "already_configured": "Device is already configured."
         }
     },
+    "selector": {
+        "battery_type": {
+            "options": {
+                "generic": "Generic / Light (No local control)",
+                "sonnen": "Sonnen",
+                "huawei": "Huawei"
+            }
+        }
+    },
     "options": {
         "step": {
             "init": {
                 "title": "Settings",
-                "description": "Update sensors and configuration.",
+                "description": "Update sensors and configuration for Battery Optimizer Light Plus.",
                 "data": {
                     "api_url": "API URL",
                     "api_key": "API Key",
@@ -40,9 +93,15 @@
                     "grid_sensor_invert": "Invert Grid Sensor",
                     "battery_power_sensor": "Battery Power Sensor (W)",
                     "battery_status_sensor": "Battery Status Sensor",
-                    "battery_status_keywords": "Maintenance Keywords",
+                    "battery_status_keywords": "Maintenance Keywords (comma-separated)",
                     "virtual_load_sensor": "Virtual Load Sensor",
-                    "consumption_forecast_sensor": "Consumption Forecast (kWh)"
+                    "consumption_forecast_sensor": "Consumption Forecast (kWh)",
+                    "host": "IP Address (Sonnen)",
+                    "api_token": "API Token (Sonnen)",
+                    "port": "Port (Sonnen)",
+                    "battery_device_id": "Huawei Device",
+                    "working_mode_entity": "Working Mode (Huawei)",
+                    "device_status_entity": "Device Status (Huawei)"
                 }
             }
         }
