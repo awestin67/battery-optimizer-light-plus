@@ -1,6 +1,6 @@
 # 🔋 Battery Optimizer Light
 
-<img src="https://raw.githubusercontent.com/awestin67/battery-optimizer-light-base/main/custom_components/battery_optimizer_light/logo.png" alt="Logo" width="200"/>
+<img src="https://raw.githubusercontent.com/awestin67/battery-optimizer-light-base/main/custom_components/battery_optimizer_light_base/logo.png" alt="Logo" width="200"/>
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![Validate and Test](https://github.com/awestin67/battery-optimizer-light-base/actions/workflows/run_tests.yml/badge.svg)](https://github.com/awestin67/battery-optimizer-light-base/actions/workflows/run_tests.yml)
@@ -68,10 +68,10 @@ Om du föredrar att bygga egna automationsflöden i Home Assistant eller Node-RE
 
 Följande tjänster finns då tillgängliga för dig att anropa (ersätter gamla `rest_commands`):
 
-*   `battery_optimizer_light.force_charge`: Tvingar batteriet att ladda med en specifik effekt (W).
-*   `battery_optimizer_light.force_discharge`: Tvingar batteriet att ladda ur med en specifik effekt (W).
-*   `battery_optimizer_light.hold`: Sätter batteriet i vänteläge/paus.
-*   `battery_optimizer_light.auto`: Återställer batteriet till automatiskt driftläge.
+*   `battery_optimizer_light_base.force_charge`: Tvingar batteriet att ladda med en specifik effekt (W).
+*   `battery_optimizer_light_base.force_discharge`: Tvingar batteriet att ladda ur med en specifik effekt (W).
+*   `battery_optimizer_light_base.hold`: Sätter batteriet i vänteläge/paus.
+*   `battery_optimizer_light_base.auto`: Återställer batteriet till automatiskt driftläge.
 
 ---
 

@@ -16,9 +16,9 @@
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock
-from custom_components.battery_optimizer_light.battery_factory import create_battery_api
-from custom_components.battery_optimizer_light.batteries.huawei.huawei import HuaweiBattery
-from custom_components.battery_optimizer_light.const import (
+from custom_components.battery_optimizer_light_base.battery_factory import create_battery_api
+from custom_components.battery_optimizer_light_base.batteries.huawei.huawei import HuaweiBattery
+from custom_components.battery_optimizer_light_base.const import (
     CONF_BATTERY_TYPE,
     BATTERY_TYPE_HUAWEI,
     CONF_BATTERY_DEVICE_ID,

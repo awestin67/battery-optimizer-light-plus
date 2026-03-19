@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 # const.py
-DOMAIN = "battery_optimizer_light"
+DOMAIN = "battery_optimizer_light_base"
 
 # Batterityper
 CONF_BATTERY_TYPE = "battery_type"

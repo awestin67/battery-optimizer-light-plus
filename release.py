@@ -63,7 +63,7 @@ except ImportError:
 # --- INSTÄLLNINGAR ---
 # Korrekt sökväg baserat på ditt domännamn
 BASE_DIR = Path(__file__).resolve().parent
-MANIFEST_PATH = BASE_DIR / "custom_components" / "battery_optimizer_light" / "manifest.json"
+MANIFEST_PATH = BASE_DIR / "custom_components" / "battery_optimizer_light_base" / "manifest.json"
 
 IGNORED_DIRS = {
     ".venv", "venv", "env", "__pycache__", ".git", ".pytest_cache",
@@ -91,7 +91,7 @@ def get_current_version(file_path: Path):
             return data.get("version", "0.0.0")
     except FileNotFoundError:
         print(f"❌ Hittade inte filen: {file_path}")
-        print("👉 Kontrollera att mappen 'custom_components/battery_optimizer_light' finns.")
+        print("👉 Kontrollera att mappen 'custom_components/battery_optimizer_light_base' finns.")
         sys.exit(1)
     except json.JSONDecodeError:
         print(f"❌ Filen {file_path} innehåller ogiltig JSON.")
@@ -333,7 +333,7 @@ def run_hacs_validation_local():
 def check_images():
     """Kollar att bilder finns för HA UI och skapar icon.png om den saknas."""
     print("\n--- 🖼️  KOLLAR BILDER ---")
-    comp_dir = BASE_DIR / "custom_components" / "battery_optimizer_light"
+    comp_dir = BASE_DIR / "custom_components" / "battery_optimizer_light_base"
     logo_path = comp_dir / "logo.png"
     icon_path = comp_dir / "icon.png"
 

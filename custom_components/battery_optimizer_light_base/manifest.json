@@ -1,5 +1,5 @@
 {
-  "domain": "battery_optimizer_light",
+  "domain": "battery_optimizer_light_base",
   "name": "Battery Optimizer Light",
   "codeowners": [
     "@awestin67"
@@ -11,5 +11,5 @@
   "requirements": [
     "aiohttp"
   ],
-  "version": "0.0.1"
+  "version": "0.0.2"
 }

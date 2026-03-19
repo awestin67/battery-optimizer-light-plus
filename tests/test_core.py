@@ -77,9 +77,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest  # noqa: E402
 from unittest.mock import AsyncMock, patch  # noqa: E402
-from custom_components.battery_optimizer_light.coordinator import BatteryOptimizerLightCoordinator  # noqa: E402
-from custom_components.battery_optimizer_light import PeakGuard  # noqa: E402
-from custom_components.battery_optimizer_light.sensor import BatteryLightStatusSensor, BatteryLightVirtualLoadSensor  # noqa: E402
+from custom_components.battery_optimizer_light_base.coordinator import BatteryOptimizerLightCoordinator  # noqa: E402
+from custom_components.battery_optimizer_light_base import PeakGuard  # noqa: E402
+from custom_components.battery_optimizer_light_base.sensor import BatteryLightStatusSensor  # noqa: E402
+from custom_components.battery_optimizer_light_base.sensor import BatteryLightVirtualLoadSensor  # noqa: E402
 
 # --- MOCK DATA ---
 MOCK_CONFIG = {
@@ -402,7 +403,8 @@ async def test_coordinator_sends_solar_override_flag(mock_hass_instance):
 
     # Mocka aiohttp session och response
     # Vi patchar där den används: custom_components.battery_optimizer_light.coordinator.async_get_clientsession
-    with patch("custom_components.battery_optimizer_light.coordinator.async_get_clientsession") as mock_get_session:
+    patch_target = "custom_components.battery_optimizer_light_base.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
         mock_session = MagicMock()
         mock_get_session.return_value = mock_session
 
