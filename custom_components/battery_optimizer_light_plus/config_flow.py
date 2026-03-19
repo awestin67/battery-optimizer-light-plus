@@ -149,15 +149,11 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
         """Get the options flow for this handler."""
-        return BatteryOptimizerLightOptionsFlow(config_entry)
+        return BatteryOptimizerLightOptionsFlow()
 
 
 class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
     """Handle an options flow for Battery Optimizer Light."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry):
-        """Initialize options flow."""
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
         """Manage the options."""
