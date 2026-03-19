@@ -4,8 +4,10 @@
             "user": {
                 "title": "Select Battery Type",
                 "description": "Choose the type of battery you want to connect to Battery Optimizer Light Plus.",
-                "data": {
-                    "battery_type": "Battery Type"
+                "menu_options": {
+                    "sonnen": "Sonnen",
+                    "huawei": "Huawei Luna2000",
+                    "generic": "Generic / Light (No local control)"
                 }
             },
             "sonnen": {
@@ -69,15 +71,6 @@
         },
         "abort": {
             "already_configured": "Device is already configured."
-        }
-    },
-    "selector": {
-        "battery_type": {
-            "options": {
-                "generic": "Generic / Light (No local control)",
-                "sonnen": "Sonnen",
-                "huawei": "Huawei"
-            }
         }
     },
     "options": {

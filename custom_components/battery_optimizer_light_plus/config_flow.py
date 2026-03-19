@@ -61,28 +61,14 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step where the user selects the battery type."""
-        if user_input is not None:
-            self.data[CONF_BATTERY_TYPE] = user_input[CONF_BATTERY_TYPE]
-            if user_input[CONF_BATTERY_TYPE] == BATTERY_TYPE_SONNEN:
-                return await self.async_step_sonnen()
-            if user_input[CONF_BATTERY_TYPE] == BATTERY_TYPE_HUAWEI:
-                return await self.async_step_huawei()
-            return await self.async_step_common()
-
-        return self.async_show_form(
+        return self.async_show_menu(
             step_id="user",
-            data_schema=vol.Schema({
-                vol.Required(CONF_BATTERY_TYPE): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=[BATTERY_TYPE_GENERIC, BATTERY_TYPE_SONNEN, BATTERY_TYPE_HUAWEI],
-                        translation_key=CONF_BATTERY_TYPE
-                    )
-                )
-            })
+            menu_options=["sonnen", "huawei", "generic"]
         )
 
     async def async_step_sonnen(self, user_input=None):
         """Handle the Sonnen battery configuration step."""
+        self.data[CONF_BATTERY_TYPE] = BATTERY_TYPE_SONNEN
         if user_input is not None:
             self.data.update(user_input)
             return await self.async_step_common()
@@ -98,6 +84,7 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_huawei(self, user_input=None):
         """Handle the Huawei battery configuration step."""
+        self.data[CONF_BATTERY_TYPE] = BATTERY_TYPE_HUAWEI
         if user_input is not None:
             self.data.update(user_input)
             return await self.async_step_common()
@@ -116,6 +103,11 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
             })
         )
+
+    async def async_step_generic(self, user_input=None):
+        """Handle the Generic battery configuration step."""
+        self.data[CONF_BATTERY_TYPE] = BATTERY_TYPE_GENERIC
+        return await self.async_step_common()
 
     async def async_step_common(self, user_input=None):
         """Handle the common configuration step for all battery types."""
