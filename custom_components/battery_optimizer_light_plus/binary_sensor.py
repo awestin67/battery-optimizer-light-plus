@@ -16,15 +16,21 @@
 
 from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorDeviceClass # type: ignore
 from homeassistant.helpers.entity import DeviceInfo # type: ignore
+from homeassistant.helpers.update_coordinator import CoordinatorEntity # type: ignore
 from homeassistant.helpers.event import async_track_state_change_event # type: ignore
 from homeassistant.core import callback # type: ignore
-from .const import DOMAIN, CONF_BATTERY_TYPE, BATTERY_TYPE_HUAWEI
+from homeassistant.const import EntityCategory # type: ignore
+from .const import DOMAIN, CONF_BATTERY_TYPE, BATTERY_TYPE_HUAWEI, BATTERY_TYPE_SONNEN
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
     if entry.data.get(CONF_BATTERY_TYPE) == BATTERY_TYPE_HUAWEI:
         async_add_entities([HuaweiConnectionSensor(coordinator)])
+
+    if entry.data.get(CONF_BATTERY_TYPE) == BATTERY_TYPE_SONNEN:
+        sonnen_coord = coordinator.battery_api.coordinator
+        async_add_entities([SonnenConnectionSensor(coordinator, sonnen_coord)])
 
 class HuaweiConnectionSensor(BinarySensorEntity):
     """Visar om integrationen har kontakt med Huawei-utrustningen."""
@@ -61,3 +67,24 @@ class HuaweiConnectionSensor(BinarySensorEntity):
     @callback
     def _update_state(self, event):
         self.async_write_ha_state()
+
+class SonnenConnectionSensor(CoordinatorEntity, BinarySensorEntity):
+    """Visar om integrationen har kontakt med det lokala Sonnen API:et."""
+    def __init__(self, main_coordinator, sonnen_coord):
+        super().__init__(sonnen_coord)
+        self.main_coordinator = main_coordinator
+        self._attr_name = "Sonnen API Anslutning"
+        self._attr_unique_id = f"{main_coordinator.api_key}_sonnen_connection"
+        self._attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.main_coordinator.api_key)},
+            name="Battery Optimizer Light Plus",
+        )
+
+    @property
+    def is_on(self):
+        return self.coordinator.last_update_success

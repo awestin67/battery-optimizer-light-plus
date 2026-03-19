@@ -21,7 +21,13 @@ from homeassistant.components.sensor import ( # type: ignore
 )
 from homeassistant.helpers.entity import DeviceInfo # type: ignore
 from homeassistant.helpers.update_coordinator import CoordinatorEntity # type: ignore
-from homeassistant.const import STATE_UNKNOWN, STATE_UNAVAILABLE, EntityCategory # type: ignore
+from homeassistant.const import ( # type: ignore
+    STATE_UNKNOWN,
+    STATE_UNAVAILABLE,
+    EntityCategory,
+    PERCENTAGE,
+    UnitOfPower
+)
 from homeassistant.helpers.event import async_track_state_change_event # type: ignore
 from homeassistant.core import callback # type: ignore
 from .const import (
@@ -32,6 +38,7 @@ from .const import (
     CONF_GRID_SENSOR_INVERT,
     CONF_BATTERY_TYPE,
     BATTERY_TYPE_HUAWEI,
+    BATTERY_TYPE_SONNEN,
 )
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -66,6 +73,32 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 )
             )
 
+    if entry.data.get(CONF_BATTERY_TYPE) == BATTERY_TYPE_SONNEN:
+        sonnen_coord = coordinator.battery_api.coordinator
+        entities.extend([
+            SonnenInternalSensor(
+                coordinator, sonnen_coord, "USOC", "Sonnen Batterinivå",
+                PERCENTAGE, SensorDeviceClass.BATTERY
+            ),
+            SonnenInternalSensor(
+                coordinator, sonnen_coord, "Pac_total_W", "Sonnen Effekt Totalt",
+                UnitOfPower.WATT, SensorDeviceClass.POWER
+            ),
+            SonnenInternalSensor(
+                coordinator, sonnen_coord, "Consumption_W", "Sonnen Husförbrukning",
+                UnitOfPower.WATT, SensorDeviceClass.POWER
+            ),
+            SonnenInternalSensor(
+                coordinator, sonnen_coord, "Production_W", "Sonnen Solproduktion",
+                UnitOfPower.WATT, SensorDeviceClass.POWER
+            ),
+            SonnenInternalSensor(
+                coordinator, sonnen_coord, "SystemStatus", "Sonnen System Status",
+                None, None, EntityCategory.DIAGNOSTIC
+            ),
+            SonnenVirtualLoadSensor(coordinator, sonnen_coord),
+        ])
+
     async_add_entities(entities)
 
 class BatteryOptimizerSensorBase(CoordinatorEntity, SensorEntity):
@@ -74,7 +107,7 @@ class BatteryOptimizerSensorBase(CoordinatorEntity, SensorEntity):
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
             identifiers={(DOMAIN, self.coordinator.api_key)},
-            name="Battery Optimizer Light",
+            name="Battery Optimizer Light Plus",
             manufacturer="Awestin Consulting",
             model="Cloud Optimizer",
             configuration_url="https://battery-prod.awestinconsulting.se",
@@ -241,7 +274,7 @@ class BatteryLightVirtualLoadSensor(SensorEntity):
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
             identifiers={(DOMAIN, self.coordinator.api_key)},
-            name="Battery Optimizer Light",
+            name="Battery Optimizer Light Plus",
             manufacturer="Awestin Consulting",
             model="Cloud Optimizer",
             configuration_url="https://battery-prod.awestinconsulting.se",
@@ -343,6 +376,67 @@ class HuaweiWrapperSensor(BatteryOptimizerSensorBase):
             state_obj = self.coordinator.hass.states.get(self._source_entity)
             if state_obj and state_obj.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
                 return state_obj.state
+        return None
+
+class SonnenInternalSensor(CoordinatorEntity, SensorEntity):
+    """Sensor som läser direkt från Sonnen-batteriets lokala API-polling."""
+    def __init__(self, main_coordinator, sonnen_coord, key, name, unit, device_class, entity_category=None):
+        super().__init__(sonnen_coord)
+        self.main_coordinator = main_coordinator
+        self._key = key
+        self._attr_name = name
+        self._attr_unique_id = f"{main_coordinator.api_key}_sonnen_{key}"
+        self._attr_native_unit_of_measurement = unit
+        if device_class:
+            self._attr_device_class = device_class
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+        if entity_category:
+            self._attr_entity_category = entity_category
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.main_coordinator.api_key)},
+            name="Battery Optimizer Light Plus",
+        )
+
+    @property
+    def state(self):
+        if self.coordinator.data and self._key in self.coordinator.data:
+            val = self.coordinator.data[self._key]
+            try:
+                # Försök konvertera till siffror om det är mätvärden
+                return float(val) if '.' in str(val) or self._attr_device_class else val
+            except ValueError:
+                return val
+        return None
+
+class SonnenVirtualLoadSensor(CoordinatorEntity, SensorEntity):
+    """Beräknad virtuell last baserad på sol och husförbrukning från Sonnen."""
+    def __init__(self, main_coordinator, sonnen_coord):
+        super().__init__(sonnen_coord)
+        self.main_coordinator = main_coordinator
+        self._attr_name = "Sonnen Virtual Load"
+        self._attr_unique_id = f"{main_coordinator.api_key}_sonnen_virtual_load_internal"
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.main_coordinator.api_key)},
+            name="Battery Optimizer Light Plus",
+        )
+
+    @property
+    def state(self):
+        data = self.coordinator.data
+        if data and "Consumption_W" in data and "Production_W" in data:
+            try:
+                return float(data["Consumption_W"]) - float(data["Production_W"])
+            except ValueError:
+                pass
         return None
 
 class BatteryLightDischargeTargetSensor(BatteryOptimizerSensorBase):
