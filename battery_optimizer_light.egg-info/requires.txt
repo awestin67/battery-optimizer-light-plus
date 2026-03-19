@@ -1,0 +1,6 @@
+aiohttp
+voluptuous
+async_timeout
+
+[test]
+pytest

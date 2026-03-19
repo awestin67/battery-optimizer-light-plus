@@ -1,0 +1,639 @@
+# Battery Optimizer Light
+# Copyright (C) 2026 @awestin67
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+import logging
+from datetime import timedelta
+import homeassistant.util.dt as dt_util
+from homeassistant.core import HomeAssistant, ServiceCall, CoreState # type: ignore
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN # type: ignore
+from homeassistant.helpers.event import async_track_state_change_event # type: ignore
+from homeassistant.helpers.aiohttp_client import async_get_clientsession # type: ignore
+from homeassistant.loader import async_get_integration # type: ignore
+from .coordinator import BatteryOptimizerLightCoordinator
+from .const import (
+    DOMAIN,
+    CONF_SOC_SENSOR,
+    CONF_BATTERY_POWER_SENSOR,
+    CONF_API_URL,
+    CONF_API_KEY,
+    CONF_GRID_SENSOR,
+    CONF_GRID_SENSOR_INVERT,
+    CONF_BATTERY_STATUS_SENSOR,
+    CONF_BATTERY_STATUS_KEYWORDS,
+    CONF_VIRTUAL_LOAD_SENSOR,
+    DEFAULT_BATTERY_STATUS_KEYWORDS,
+    DEFAULT_API_URL,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+# --- KONFIGURATION ---
+LIMIT_ENTITY = "sensor.optimizer_light_peak_limit"
+
+# --- SOLAR OVERRIDE KONSTANTER ---
+SOLAR_TRIGGER_W = -400.0  # Gräns för att starta override (Export)
+SOLAR_RESET_W = -100.0    # Gräns för att stoppa override (Minskad export)
+BATTERY_DISCHARGE_THRESHOLD_W = 200.0 # Gräns för att anse att batteriet laddar ur
+
+async def async_setup_entry(hass: HomeAssistant, entry):
+    """Set up from a config entry."""
+    config = entry.data
+
+    # --- MIGRERING: Byt ut gammal dev-url mot production ---
+    # Detta fixar problemet för befintliga användare som har kvar den gamla URL:en
+    current_url = config.get(CONF_API_URL, "")
+    if "battery-light-development" in current_url or "battery-prod.awestinconsulting.se" in current_url:
+        _LOGGER.warning("⚠️ Migrerar API URL tillbaka till Railway Production URL...")
+        new_data = dict(config)
+        new_data[CONF_API_URL] = DEFAULT_API_URL
+        hass.config_entries.async_update_entry(entry, data=new_data)
+        config = new_data  # Uppdatera variabeln så coordinatorn får rätt URL direkt
+
+    integration = await async_get_integration(hass, DOMAIN)
+    version = str(integration.version)
+
+    coordinator = BatteryOptimizerLightCoordinator(hass, config, version)
+
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][entry.entry_id] = coordinator
+
+    # Initiera PeakGuard och injicera den valda batteri-logiken
+    peak_guard = PeakGuard(hass, config, coordinator, coordinator.battery_api)
+    coordinator.peak_guard = peak_guard
+
+    # Kör första uppdateringen NU, när PeakGuard är kopplad.
+    await coordinator.async_config_entry_first_refresh()
+
+    # Hämta virtuell last-sensor från config (kan vara None)
+    virtual_load_entity = config.get(CONF_VIRTUAL_LOAD_SENSOR)
+
+    # --- BAKGRUNDSBEVAKNING ---
+    async def on_load_change(event):
+        """Körs tyst i bakgrunden varje gång lasten ändras."""
+        if hass.state == CoreState.running:
+            await peak_guard.update(virtual_load_entity, LIMIT_ENTITY)
+
+    # Samla alla sensorer vi ska lyssna på
+    entities_to_track = []
+
+    # 1. Last-sensorer
+    if virtual_load_entity:
+        entities_to_track.append(virtual_load_entity)
+        _LOGGER.info(f"PeakGuard monitoring virtual load: {virtual_load_entity}")
+    else:
+        grid_entity = config.get(CONF_GRID_SENSOR)
+        bat_entity = config.get(CONF_BATTERY_POWER_SENSOR)
+        if grid_entity:
+            entities_to_track.append(grid_entity)
+        if bat_entity:
+            entities_to_track.append(bat_entity)
+        _LOGGER.info(f"PeakGuard calculating load from: {grid_entity} + {bat_entity}")
+
+    # 2. Status-sensor (för Maintenance)
+    status_entity = config.get(CONF_BATTERY_STATUS_SENSOR)
+    if status_entity:
+        entities_to_track.append(status_entity)
+        _LOGGER.info(f"PeakGuard monitoring battery status: {status_entity}")
+
+    # Starta bevakning
+    if entities_to_track:
+        entry.async_on_unload(
+            async_track_state_change_event(hass, entities_to_track, on_load_change)
+        )
+
+    async def handle_run_peak_guard(call: ServiceCall):
+        v_load = call.data.get("virtual_load_entity", virtual_load_entity)
+        limit = call.data.get("limit_entity", LIMIT_ENTITY)
+        await peak_guard.update(v_load, limit)
+
+    hass.services.async_register(DOMAIN, "run_peak_guard", handle_run_peak_guard)
+
+    # --- REGISTRERA GLOBALA TJÄNSTER FÖR ANVÄNDAREN ---
+    async def handle_force_charge(call: ServiceCall):
+        power = call.data.get("power", 0)
+        await coordinator.battery_api.force_charge(int(power))
+
+    async def handle_force_discharge(call: ServiceCall):
+        power = call.data.get("power", 0)
+        await coordinator.battery_api.force_discharge(int(power))
+
+    async def handle_hold(call: ServiceCall):
+        await coordinator.battery_api.hold()
+
+    async def handle_auto(call: ServiceCall):
+        await coordinator.battery_api.set_auto_mode()
+
+    hass.services.async_register(DOMAIN, "force_charge", handle_force_charge)
+    hass.services.async_register(DOMAIN, "force_discharge", handle_force_discharge)
+    hass.services.async_register(DOMAIN, "hold", handle_hold)
+    hass.services.async_register(DOMAIN, "auto", handle_auto)
+
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+    entry.async_on_unload(entry.add_update_listener(update_listener))
+
+    return True
+
+class PeakGuard:
+    """Hanterar logiken för effektvakten."""
+
+    def __init__(self, hass: HomeAssistant, config, coordinator, battery_controller):
+        self.hass = hass
+        self.config = config
+        self.coordinator = coordinator
+        self.battery = battery_controller
+        self._has_reported = False
+        self._hold_command_sent = False  # Flagga för att undvika upprepade kommandon
+        self._capacity_exceeded_logged = False  # Flagga för att logga överlast en gång
+        self._is_solar_override = False  # Flagga för sol-override
+        self._solar_override_trigger_start = None  # Tidsstämpel för fördröjning
+        self._in_maintenance = False  # Flagga för underhållsläge
+        self._maintenance_reason = None  # Orsak till underhållsläge
+        self._maintenance_cooldown_start = None # Tidsstämpel för när underhållssignalen försvann
+        self._last_sent_command = None  # Håller koll på senaste kommandot för att undvika spam
+
+    @property
+    def is_active(self):
+        return self._has_reported
+
+    @property
+    def is_solar_override(self):
+        return self._is_solar_override
+
+    @property
+    def in_maintenance(self):
+        return self._in_maintenance
+
+    @property
+    def maintenance_reason(self):
+        return self._maintenance_reason
+
+    def _set_reported_state(self, state: bool):
+        if self._has_reported != state:
+            self._has_reported = state
+            # När vi går in i peak-läge är ett "hold"-kommando inte längre relevant.
+            if state is True:
+                self._hold_command_sent = False
+            else:
+                # Återställ flaggor när toppen är över
+                self._capacity_exceeded_logged = False
+            self.coordinator.async_update_listeners()
+
+    async def update(self, virtual_load_id, limit_id):
+        try:
+            # 0. Kontrollera om Peak Shaving är aktivt
+            is_active = True
+            if self.coordinator.data:
+                is_active = self.coordinator.data.get("is_peak_shaving_active", True)
+                pg_status = self.coordinator.data.get("peakguard_status")
+                if pg_status and pg_status != "Active":
+                    is_active = False
+
+            # Om PeakGuard är inaktiverat från backend, avbryt all lokal styrning.
+            if not is_active:
+                # Stäng av eventuell pågående peak-hantering
+                if self.is_active:
+                    _LOGGER.info("PeakGuard is disabled by backend. Clearing active peak.")
+                    self._set_reported_state(False)
+                # Stäng av eventuell pågående solar override
+                if self.is_solar_override:
+                    _LOGGER.info("🌑 PeakGuard is disabled by backend. Deactivating Solar Override.")
+                    self._is_solar_override = False
+                    self.coordinator.async_update_listeners()
+                return
+
+            # 0.1 Kontrollera Batteristatus (Maintenance/Full Charge)
+            status_entity = self.config.get(CONF_BATTERY_STATUS_SENSOR)
+            if status_entity:
+                status_state = self.hass.states.get(status_entity)
+
+                # SÄKERHET: Om sensorn inte är redo (t.ex. vid uppstart), avvakta med beslut.
+                if not status_state or status_state.state in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                    _LOGGER.debug(f"Status sensor {status_entity} is unavailable/unknown. Skipping update.")
+                    return
+
+                # Hämta nyckelord från config (eller använd default)
+                keywords_str = self.config.get(CONF_BATTERY_STATUS_KEYWORDS)
+                # Fallback om konfigurationen är tom eller saknas
+                if not keywords_str or not str(keywords_str).strip():
+                    keywords_str = DEFAULT_BATTERY_STATUS_KEYWORDS
+
+                keywords = [k.strip().lower() for k in keywords_str.split(",") if k.strip()]
+
+                val_display = str(status_state.state)
+
+                # Ignorera tomma värden för att undvika fladder
+                if not val_display or not val_display.strip():
+                    return
+
+                val_lower = val_display.lower()
+
+                # Debug-loggning för att spåra matchningen
+                _LOGGER.debug(f"Maintenance check: Status='{val_lower}' Keywords={keywords}")
+
+                if any(k in val_lower for k in keywords):
+                    self._maintenance_cooldown_start = None # Återställ cooldown om vi ser signalen igen
+                    if not self._in_maintenance:
+                        _LOGGER.info(f"🔋 Maintenance mode detected ({val_display}). Pausing control.")
+                        self._in_maintenance = True
+                        self.coordinator.async_update_listeners()
+
+                    self._maintenance_reason = val_display
+
+                    if self.is_active:
+                        self._set_reported_state(False)
+                    return
+                elif self._in_maintenance:
+                    # Signalen är borta, men vi väntar lite (debounce) för att undvika fladder
+                    if self._maintenance_cooldown_start is None:
+                        self._maintenance_cooldown_start = dt_util.utcnow()
+                        _LOGGER.debug(f"Maintenance signal lost (Status: {val_display}). Starting 60s cooldown.")
+                        return
+
+                    if dt_util.utcnow() - self._maintenance_cooldown_start < timedelta(seconds=60):
+                        return
+
+                    _LOGGER.info(f"🔋 Maintenance mode ended. Status is '{val_display}'. Resuming control.")
+                    self._in_maintenance = False
+                    self._maintenance_reason = None
+                    self._maintenance_cooldown_start = None
+                    self.coordinator.async_update_listeners()
+
+            # 1. Hämta Gränsvärdet
+            limit_state = self.hass.states.get(limit_id)
+            if not limit_state or limit_state.state in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                return
+
+            raw_limit = float(limit_state.state)
+            limit_w = raw_limit * 1000 if raw_limit < 100 else raw_limit
+
+            # Skydd: Om gränsvärdet är orimligt lågt (t.ex. 0), avbryt.
+            if limit_w < 100:
+                _LOGGER.warning(f"Peak limit is too low ({limit_w} W). Ignoring to prevent false triggering.")
+                return
+
+            # 2. Hämta Lasten
+            current_load = 0.0
+            if virtual_load_id:
+                # Använd manuellt vald sensor
+                load_state = self.hass.states.get(virtual_load_id)
+                if not load_state or load_state.state in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                    return
+                current_load = float(load_state.state)
+            else:
+                # Beräkna automatiskt: Grid + Batteri
+                grid_id = self.config.get(CONF_GRID_SENSOR)
+                bat_id = self.config.get(CONF_BATTERY_POWER_SENSOR)
+
+                grid_state = self.hass.states.get(grid_id)
+                bat_state = self.hass.states.get(bat_id)
+
+                grid_val = (
+                    float(grid_state.state)
+                    if grid_state and grid_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]
+                    else 0.0
+                )
+                bat_val = (
+                    float(bat_state.state)
+                    if bat_state and bat_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]
+                    else 0.0
+                )
+
+                if self.config.get(CONF_GRID_SENSOR_INVERT, False):
+                    grid_val = -grid_val
+
+                current_load = grid_val + bat_val
+
+            # --- TYST FILTER ---
+            wake_up_threshold = limit_w * 0.90
+
+            # Hämta moln-action tidigt för att se om vi behöver övervaka laddning
+            cloud_action = "HOLD"
+            if self.coordinator.data and "action" in self.coordinator.data:
+                cloud_action = str(self.coordinator.data.get("action")).upper()
+
+            # Kontrollera om batteriet rör på sig (för att kunna tvinga stopp vid HOLD)
+            bat_is_moving = False
+            bat_entity = self.config.get(CONF_BATTERY_POWER_SENSOR)
+            if bat_entity:
+                b_state = self.hass.states.get(bat_entity)
+                if b_state and b_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                    try:
+                        if abs(float(b_state.state)) > 100:
+                            bat_is_moving = True
+                    except ValueError:
+                        pass
+
+            # Avbryt bara om:
+            # 1. Ingen peak är aktiv.
+            # 2. Ingen Solar Override är aktiv (vi måste kunna stänga av den).
+            # 3. Lasten är under varningsgränsen.
+            # 4. Vi INTE exporterar (för då måste vi kolla Solar Override).
+            # 5. Vi INTE laddar (för då måste vi kolla säkringen).
+            # 6. Vi INTE behöver tvinga stopp (HOLD + Battery Moving).
+            if (
+                not self._has_reported
+                and not self._is_solar_override
+                and current_load < wake_up_threshold
+                and current_load > -200
+                and cloud_action != "CHARGE"
+                and not (cloud_action == "HOLD" and bat_is_moving)
+            ):
+                return
+
+            # 3. Hämta SoC
+            soc_entity = self.config.get(CONF_SOC_SENSOR)
+            soc_state = self.hass.states.get(soc_entity)
+            soc = (
+                float(soc_state.state)
+                if soc_state and soc_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]
+                else 0
+            )
+
+            # 4. Gränser
+            safe_limit = limit_w - 1000
+
+            # --- NY LOGIK MED HYSTERES ---
+
+            # Steg 1: Bestäm tillstånd (På / Av)
+            if is_active and not self._has_reported and current_load > limit_w and soc > 0:
+                _LOGGER.info(f"🚨 PEAK DETECTED! Load: {current_load} W > Limit: {limit_w} W. Engaging battery.")
+                self._set_reported_state(True)
+                await self._report_peak(current_load, limit_w)
+
+            elif self._has_reported and current_load <= safe_limit:
+                _LOGGER.info(f"✅ PEAK CLEARED. Load: {current_load} W. Returning to strategy.")
+                self._set_reported_state(False)
+                await self._report_peak_clear(current_load, limit_w)
+
+            # Steg 2: Agera baserat på tillstånd
+            if self._has_reported and soc > 0:
+                # TILLSTÅND PÅ: Justera urladdning
+                max_inverter = 3300.0
+                if self.coordinator.data and "max_discharge_kw" in self.coordinator.data:
+                    val = self.coordinator.data.get("max_discharge_kw")
+                    if val is not None:
+                        max_inverter = float(val) * 1000.0
+
+                need = current_load - limit_w
+
+                # Detektera om vi inte klarar att hålla gränsen
+                if need > max_inverter:
+                    if not self._capacity_exceeded_logged:
+                        _LOGGER.warning(
+                            f"PeakGuard capacity exceeded! Need: {need} W > Max: {max_inverter} W. "
+                            f"Limit {limit_w} W cannot be held."
+                        )
+                        self._capacity_exceeded_logged = True
+                        await self._report_peak_failure(current_load, limit_w)
+
+                power_to_discharge = min(max(0, need), max_inverter)
+
+                if power_to_discharge > 100:  # Skicka bara kommando om det finns ett verkligt behov
+                    await self.battery.force_discharge(int(power_to_discharge))
+                    self._last_sent_command = "PEAK"
+
+            else:
+                # TILLSTÅND AV: Återgå till molnstrategi
+                # cloud_action är redan hämtad ovan
+
+                # --- SOLAR OVERRIDE ---
+                current_bat_power = 0.0
+                bat_entity = self.config.get(CONF_BATTERY_POWER_SENSOR)
+                if bat_entity:
+                    b_state = self.hass.states.get(bat_entity)
+                    if b_state and b_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                        try:
+                            current_bat_power = float(b_state.state)
+                        except ValueError:
+                            pass
+
+                # --- EXTRA SÄKERHETSKONTROLL (Natt/Buffer Fill & Sensor Lag) ---
+                is_importing = False
+                grid_id = self.config.get(CONF_GRID_SENSOR)
+                if grid_id:
+                    g_state = self.hass.states.get(grid_id)
+                    if g_state and g_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                        try:
+                            g_val = float(g_state.state)
+                            if self.config.get(CONF_GRID_SENSOR_INVERT, False):
+                                g_val = -g_val
+
+                            # Om importen är större än 100W är vi garanterat inte i ett rent solel-scenario.
+                            if g_val > 100:
+                                is_importing = True
+                        except ValueError:
+                            pass
+
+                # Beräkna önskat läge baserat på last (oberoende av moln-status)
+                wants_override = self._is_solar_override
+
+                if current_bat_power > BATTERY_DISCHARGE_THRESHOLD_W:
+                    # Om batteriet laddar ur (>200W) är det batteriet som skapar exporten, inte solen.
+                    wants_override = False
+                    self._solar_override_trigger_start = None
+                elif current_load < SOLAR_TRIGGER_W and not is_importing:
+                    if not self._is_solar_override:
+                        # Starta timer för att kräva att värdet hålls i 30 sekunder (filtrerar bort sensor-lag)
+                        if self._solar_override_trigger_start is None:
+                            self._solar_override_trigger_start = dt_util.utcnow()
+                            _LOGGER.debug(
+                                f"☀️ Potential Solar Override detected (Load: {current_load} W). "
+                                "Waiting 30s to verify."
+                            )
+                        elif dt_util.utcnow() - self._solar_override_trigger_start >= timedelta(seconds=30):
+                            wants_override = True
+                    else:
+                        wants_override = True
+                elif current_load > SOLAR_RESET_W or is_importing:
+                    wants_override = False
+                    self._solar_override_trigger_start = None
+                else:
+                    # Inom hysteres-zonen (-400 till -100)
+                    if not self._is_solar_override:
+                        # Återställ timer om vi studsar upp över trigg-gränsen innan 30 sekunder har gått
+                        self._solar_override_trigger_start = None
+
+                new_override = False
+
+                if cloud_action == "HOLD":
+                    new_override = wants_override
+                elif cloud_action == "IDLE":
+                    # Om vi redan är i override, stanna kvar där för att undvika
+                    # att backend pendlar mellan HOLD och IDLE när flaggan skickas.
+                    if self._is_solar_override:
+                        new_override = wants_override
+                else:
+                    # CHARGE / DISCHARGE
+                    new_override = False
+
+                if new_override:
+                    cloud_action = "IDLE"  # Tvinga Auto-läge lokalt
+
+                if self._is_solar_override != new_override:
+                    self._is_solar_override = new_override
+                    self.coordinator.async_update_listeners()  # Uppdatera sensorer
+
+                    if new_override:
+                        _LOGGER.info(f"☀️ Solar Override Activated. Load: {current_load} W. Enabling Auto Mode.")
+                        await self._report_solar_override(current_load, limit_w)
+                    else:
+                        _LOGGER.info(f"🌑 Solar Override Deactivated. Load: {current_load} W. Resuming Cloud Control.")
+                        await self._report_solar_override_clear(current_load, limit_w)
+
+                if cloud_action != "HOLD":
+                    self._hold_command_sent = False  # Återställ om molnet vill något annat
+
+                if cloud_action == "CHARGE":
+                    # Kontrollera att laddning inte överskrider gränsvärdet
+                    target_kw = 0.0
+                    if self.coordinator.data and "target_power_kw" in self.coordinator.data:
+                        target_kw = float(self.coordinator.data.get("target_power_kw", 0.0))
+
+                    target_w = target_kw * 1000.0
+                    # Marginal på 200W för att vara säker
+                    available_w = limit_w - current_load - 200.0
+
+                    if target_w > available_w:
+                        throttled_w = max(0, int(available_w))
+                        # Avrunda till närmaste 50W för att minska fladder
+                        throttled_w = int(throttled_w / 50) * 50
+
+                        _LOGGER.warning(
+                            f"⚠️ CHARGE THROTTLED! Cloud: {target_w} W. Available: {available_w:.0f} W. "
+                            f"Limit: {limit_w} W. Setting: {throttled_w} W."
+                        )
+                        await self.battery.force_charge(throttled_w)
+                        self._last_sent_command = "CHARGE"
+
+                elif cloud_action == "DISCHARGE":
+                    pass # Låt molnet bestämma
+
+                elif cloud_action == "HOLD":
+                    bat_entity = self.config.get(CONF_BATTERY_POWER_SENSOR)
+                    bat_state = self.hass.states.get(bat_entity)
+                    bat_power = 0
+                    if bat_state and bat_state.state not in [
+                        STATE_UNKNOWN,
+                        STATE_UNAVAILABLE,
+                    ]:
+                        bat_power = float(bat_state.state)
+
+                    if abs(bat_power) > 100:
+                        if not self._hold_command_sent:
+                            _LOGGER.debug("HOLD requested, but battery is active. Sending stop command.")
+                            await self.battery.hold()
+                            self._hold_command_sent = True
+                            self._last_sent_command = "HOLD"
+                    else:
+                        # Batteriet är redan stilla, så nollställ flaggan.
+                        if self._hold_command_sent:
+                            _LOGGER.debug("Battery is now idle, resetting hold_command_sent flag.")
+                        self._hold_command_sent = False
+
+                elif cloud_action == "IDLE":
+                    if self._last_sent_command != "IDLE":
+                        await self.battery.set_auto_mode()
+                        self._last_sent_command = "IDLE"
+
+                else:
+                    pass  # Okänt läge -> Gör inget
+        except Exception as e:
+            _LOGGER.error(f"Error in PeakGuard update: {e}", exc_info=True)
+
+    async def _report_peak(self, grid_w, limit_w):
+        try:
+            api_url = f"{self.config[CONF_API_URL].rstrip('/')}/report_peak"
+            payload = {
+                "api_key": self.config[CONF_API_KEY],
+                "grid_power_kw": round(grid_w / 1000.0, 2),
+                "limit_kw": round(limit_w / 1000.0, 2)
+            }
+            session = async_get_clientsession(self.hass)
+            async with session.post(api_url, json=payload, timeout=10) as resp:
+                if resp.status == 200:
+                    _LOGGER.debug(f"Cloud report sent: PeakGuard Triggered: {payload['grid_power_kw']} kW")
+        except Exception as e:
+            _LOGGER.error(f"Failed to report peak: {e}")
+
+    async def _report_peak_clear(self, grid_w, limit_w):
+        try:
+            api_url = f"{self.config[CONF_API_URL].rstrip('/')}/report_peak_clear"
+            payload = {
+                "api_key": self.config[CONF_API_KEY],
+                "grid_power_kw": round(grid_w / 1000.0, 2),
+                "limit_kw": round(limit_w / 1000.0, 2)
+            }
+            session = async_get_clientsession(self.hass)
+            async with session.post(api_url, json=payload, timeout=10) as resp:
+                if resp.status == 200:
+                    _LOGGER.debug(f"Cloud report sent: PeakGuard Cleared: {payload['grid_power_kw']} kW")
+        except Exception as e:
+            _LOGGER.error(f"Failed to report peak clear: {e}")
+
+    async def _report_peak_failure(self, grid_w, limit_w):
+        try:
+            api_url = f"{self.config[CONF_API_URL].rstrip('/')}/report_peak_failure"
+            payload = {
+                "api_key": self.config[CONF_API_KEY],
+                "grid_power_kw": round(grid_w / 1000.0, 2),
+                "limit_kw": round(limit_w / 1000.0, 2)
+            }
+            session = async_get_clientsession(self.hass)
+            async with session.post(api_url, json=payload, timeout=10) as resp:
+                if resp.status == 200:
+                    _LOGGER.debug(f"Cloud report sent: PeakGuard Failure: {payload['grid_power_kw']} kW")
+        except Exception as e:
+            _LOGGER.error(f"Failed to report peak failure: {e}")
+
+    async def _report_solar_override(self, grid_w, limit_w):
+        try:
+            api_url = f"{self.config[CONF_API_URL].rstrip('/')}/report_solar_override"
+            payload = {
+                "api_key": self.config[CONF_API_KEY],
+                "grid_power_kw": round(grid_w / 1000.0, 2),
+                "limit_kw": round(limit_w / 1000.0, 2)
+            }
+            session = async_get_clientsession(self.hass)
+            async with session.post(api_url, json=payload, timeout=10) as resp:
+                if resp.status == 200:
+                    _LOGGER.debug(f"Cloud report sent: Solar Override: {payload['grid_power_kw']} kW")
+        except Exception as e:
+            _LOGGER.error(f"Failed to report solar override: {e}")
+
+    async def _report_solar_override_clear(self, grid_w, limit_w):
+        try:
+            api_url = f"{self.config[CONF_API_URL].rstrip('/')}/report_solar_override_clear"
+            payload = {
+                "api_key": self.config[CONF_API_KEY],
+                "grid_power_kw": round(grid_w / 1000.0, 2),
+                "limit_kw": round(limit_w / 1000.0, 2)
+            }
+            session = async_get_clientsession(self.hass)
+            async with session.post(api_url, json=payload, timeout=10) as resp:
+                if resp.status == 200:
+                    _LOGGER.debug(f"Cloud report sent: Solar Override Cleared: {payload['grid_power_kw']} kW")
+        except Exception as e:
+            _LOGGER.error(f"Failed to report solar override clear: {e}")
+
+
+async def update_listener(hass, entry):
+    await hass.config_entries.async_reload(entry.entry_id)
+
+async def async_unload_entry(hass, entry):
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id)
+    return unload_ok
