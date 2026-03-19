@@ -387,8 +387,8 @@ class SonnenInternalSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = name
         self._attr_unique_id = f"{main_coordinator.api_key}_sonnen_{key}"
         self._attr_native_unit_of_measurement = unit
+        self._attr_device_class = device_class
         if device_class:
-            self._attr_device_class = device_class
             self._attr_state_class = SensorStateClass.MEASUREMENT
         if entity_category:
             self._attr_entity_category = entity_category
