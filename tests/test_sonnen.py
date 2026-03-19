@@ -16,9 +16,9 @@
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-from custom_components.battery_optimizer_light_base.battery_factory import create_battery_api
-from custom_components.battery_optimizer_light_base.batteries.sonnen.sonnen import SonnenBattery
-from custom_components.battery_optimizer_light_base.const import (
+from custom_components.battery_optimizer_light_plus.battery_factory import create_battery_api
+from custom_components.battery_optimizer_light_plus.batteries.sonnen.sonnen import SonnenBattery
+from custom_components.battery_optimizer_light_plus.const import (
     CONF_BATTERY_TYPE,
     BATTERY_TYPE_SONNEN,
     CONF_HOST,
@@ -39,7 +39,7 @@ async def test_create_sonnen_battery():
         CONF_SOC_SENSOR: "sensor.sonnen_soc",
     }
 
-    with patch("custom_components.battery_optimizer_light_base.battery_factory.SonnenAPI") as mock_sonnen_api:
+    with patch("custom_components.battery_optimizer_light_plus.battery_factory.SonnenAPI") as mock_sonnen_api:
         battery_api = create_battery_api(hass, config)
 
         assert isinstance(battery_api, SonnenBattery)

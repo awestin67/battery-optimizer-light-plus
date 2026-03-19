@@ -31,7 +31,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         super().__init__(
             hass,
             _LOGGER,
-            name="Battery Optimizer Light",
+            name="Battery Optimizer Light Plus",
             update_interval=timedelta(minutes=5),
         )
         self.api_url = f"{config['api_url'].rstrip('/')}/signal"

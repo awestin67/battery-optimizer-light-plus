@@ -1,9 +1,9 @@
 # 🔋 Battery Optimizer Light
 
-<img src="https://raw.githubusercontent.com/awestin67/battery-optimizer-light-base/main/custom_components/battery_optimizer_light_base/logo.png" alt="Logo" width="200"/>
+<img src="https://raw.githubusercontent.com/awestin67/battery-optimizer-light-plus/main/custom_components/battery_optimizer_light_plus/logo.png" alt="Logo" width="200"/>
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![Validate and Test](https://github.com/awestin67/battery-optimizer-light-base/actions/workflows/run_tests.yml/badge.svg)](https://github.com/awestin67/battery-optimizer-light-base/actions/workflows/run_tests.yml)
+[![Validate and Test](https://github.com/awestin67/battery-optimizer-light-plus/actions/workflows/run_tests.yml/badge.svg)](https://github.com/awestin67/battery-optimizer-light-plus/actions/workflows/run_tests.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 **Battery Optimizer Light** är en lättviktig hybridlösning som kopplar din Home Assistant till en smart molntjänst för hembatterier.
@@ -45,7 +45,7 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
 1. Se till att HACS är installerat.
 2. Gå till **HACS** -> **Integrationer**.
 3. Klicka på de tre prickarna uppe till höger och välj **Anpassade arkiv (Custom repositories)**.
-4. Lägg till URL: `https://github.com/awestin67/battery-optimizer-light-base` och välj kategori **Integration**.
+4. Lägg till URL: `https://github.com/awestin67/battery-optimizer-light-plus` och välj kategori **Integration**.
 5. Ladda ner "Battery Optimizer Light" och starta om Home Assistant.
 
 ### Konfiguration
@@ -68,10 +68,10 @@ Om du föredrar att bygga egna automationsflöden i Home Assistant eller Node-RE
 
 Följande tjänster finns då tillgängliga för dig att anropa (ersätter gamla `rest_commands`):
 
-*   `battery_optimizer_light_base.force_charge`: Tvingar batteriet att ladda med en specifik effekt (W).
-*   `battery_optimizer_light_base.force_discharge`: Tvingar batteriet att ladda ur med en specifik effekt (W).
-*   `battery_optimizer_light_base.hold`: Sätter batteriet i vänteläge/paus.
-*   `battery_optimizer_light_base.auto`: Återställer batteriet till automatiskt driftläge.
+*   `battery_optimizer_light_plus.force_charge`: Tvingar batteriet att ladda med en specifik effekt (W).
+*   `battery_optimizer_light_plus.force_discharge`: Tvingar batteriet att ladda ur med en specifik effekt (W).
+*   `battery_optimizer_light_plus.hold`: Sätter batteriet i vänteläge/paus.
+*   `battery_optimizer_light_plus.auto`: Återställer batteriet till automatiskt driftläge.
 
 ---
 

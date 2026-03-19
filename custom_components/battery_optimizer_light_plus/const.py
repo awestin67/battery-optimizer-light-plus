@@ -34,7 +34,7 @@ CONF_AUTO_CONTROL = "auto_control"
 CONF_HOST = "host"
 CONF_API_TOKEN = "api_token"
 CONF_PORT = "port"
-DEFAULT_PORT = 7979
+DEFAULT_PORT = 80
 
 # Huawei-specifik konfiguration
 CONF_BATTERY_DEVICE_ID = "battery_device_id"

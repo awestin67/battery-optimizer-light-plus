@@ -22,4 +22,4 @@ ignore = []
 [tool.ruff.lint.per-file-ignores]
 # Ignorera import-placering i tester (eftersom vi mockar sys.modules)
 "tests/test_core.py" = ["E402"]
-"custom_components/battery_optimizer_light_base/config_flow.py" = ["E501"]
+"custom_components/battery_optimizer_light_plus/config_flow.py" = ["E501"]
