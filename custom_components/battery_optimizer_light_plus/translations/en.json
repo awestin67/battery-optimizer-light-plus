@@ -40,7 +40,7 @@
             },
             "common": {
                 "title": "Common Settings",
-                "description": "Enter your API key and select your sensors for Battery Optimizer Light Plus.",
+                "description": "Enter your API key for Battery Optimizer Light Plus. (If using Huawei or Generic, also select your sensors below).",
                 "data": {
                     "api_url": "API URL",
                     "api_key": "API Key (from Dashboard)",
@@ -95,6 +95,21 @@
                     "battery_device_id": "Huawei Device",
                     "working_mode_entity": "Working Mode (Huawei)",
                     "device_status_entity": "Device Status (Huawei)"
+                },
+                "data_description": {
+                    "api_url": "Leave the default value unless you are connecting to a custom test server.",
+                    "api_key": "Found when you log in to battery-prod.awestinconsulting.se",
+                    "soc_sensor": "The sensor displaying the battery's current charge percentage (0-100%).",
+                    "grid_sensor": "The meter for the house's grid exchange. Usually from your inverter (W).",
+                    "grid_sensor_invert": "Check this if your Grid Sensor shows a POSITIVE value when you export/sell electricity.",
+                    "battery_power_sensor": "The sensor for the battery's power (Negative = charging, Positive = discharging).",
+                    "virtual_load_sensor": "Leave empty to let the integration calculate the load automatically (Grid + Battery).",
+                    "host": "Enter the IP address of your Sonnen battery (e.g. 192.168.1.50).",
+                    "api_token": "Copy your Auth-Token from the battery's local web page under 'Software Integration' -> 'JSON API'.",
+                    "port": "Default port for Sonnen is 80.",
+                    "battery_device_id": "Select your Huawei battery or inverter from the list.",
+                    "working_mode_entity": "Select the working mode entity (e.g., 'select.inverter_working_mode').",
+                    "device_status_entity": "Select the status sensor (e.g., 'sensor.inverter_device_status')."
                 }
             }
         }

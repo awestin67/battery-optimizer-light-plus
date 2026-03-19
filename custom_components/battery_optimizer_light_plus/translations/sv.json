@@ -40,7 +40,7 @@
             },
             "common": {
                 "title": "Gemensamma inställningar",
-                "description": "Fyll i din API-nyckel och peka ut dina sensorer för Battery Optimizer Light Plus.",
+                "description": "Fyll i din API-nyckel för Battery Optimizer Light Plus. (För Huawei och Generic pekar du även ut dina mät-sensorer nedan).",
                 "data": {
                     "api_url": "API URL",
                     "api_key": "API Nyckel (från Dashboard)",
@@ -95,6 +95,21 @@
                     "battery_device_id": "Huawei-enhet",
                     "working_mode_entity": "Working Mode (Huawei)",
                     "device_status_entity": "Device Status (Huawei)"
+                },
+                "data_description": {
+                    "api_url": "Låt stå kvar på standardvärdet om du inte kör mot en egen test-server.",
+                    "api_key": "Hittas när du loggar in på battery-prod.awestinconsulting.se",
+                    "soc_sensor": "Sensorn som visar batteriets aktuella procent (0-100%).",
+                    "grid_sensor": "Mätaren för husets nätutbyte. Vanligtvis från din växelriktare (W).",
+                    "grid_sensor_invert": "Kryssa i denna om din Grid Sensor visar ett PLUS-värde när du säljer el.",
+                    "battery_power_sensor": "Sensorn för batteriets effekt (Negativ = laddar, Positiv = laddar ur).",
+                    "virtual_load_sensor": "Lämna tom för att låta integrationen räkna ut lasten automatiskt (Grid + Batteri).",
+                    "host": "Skriv in IP-adressen till ditt Sonnen-batteri (t.ex. 192.168.1.50).",
+                    "api_token": "Kopiera ditt Auth-Token från batteriets lokala webbsida under 'Software Integration' -> 'JSON API'.",
+                    "port": "Standardport för Sonnen är 80.",
+                    "battery_device_id": "Välj ditt Huawei-batteri eller växelriktare i listan.",
+                    "working_mode_entity": "Peka ut entiteten för driftläge (t.ex. 'select.inverter_working_mode').",
+                    "device_status_entity": "Peka ut sensorn för status (t.ex. 'sensor.inverter_device_status')."
                 }
             }
         }
