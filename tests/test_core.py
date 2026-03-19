@@ -108,6 +108,11 @@ def mock_battery():
     mock.force_charge = AsyncMock()
     mock.hold = AsyncMock()
     mock.set_auto_mode = AsyncMock()
+    mock.get_current_soc = AsyncMock(return_value=None)
+    mock.get_virtual_load = AsyncMock(return_value=None)
+    mock.get_battery_power = AsyncMock(return_value=None)
+    mock.get_grid_power = AsyncMock(return_value=None)
+    mock.get_status_text = AsyncMock(return_value=None)
     return mock
 
 @pytest.mark.asyncio

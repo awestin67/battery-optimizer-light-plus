@@ -22,18 +22,22 @@ from homeassistant.components.sensor import ( # type: ignore
 from homeassistant.helpers.entity import DeviceInfo # type: ignore
 from homeassistant.helpers.update_coordinator import CoordinatorEntity # type: ignore
 from homeassistant.const import STATE_UNKNOWN, STATE_UNAVAILABLE, EntityCategory # type: ignore
+from homeassistant.helpers.event import async_track_state_change_event # type: ignore
+from homeassistant.core import callback # type: ignore
 from .const import (
     DOMAIN,
     CONF_GRID_SENSOR,
     CONF_BATTERY_POWER_SENSOR,
     CONF_VIRTUAL_LOAD_SENSOR,
     CONF_GRID_SENSOR_INVERT,
+    CONF_BATTERY_TYPE,
+    BATTERY_TYPE_HUAWEI,
 )
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
-    async_add_entities([
+    entities = [
         BatteryLightActionSensor(coordinator),
         BatteryLightPowerSensor(coordinator),
         BatteryLightReasonSensor(coordinator),
@@ -43,7 +47,26 @@ async def async_setup_entry(hass, entry, async_add_entities):
         BatteryLightVirtualLoadSensor(coordinator),
         BatteryLightChargeTargetSensor(coordinator),
         BatteryLightDischargeTargetSensor(coordinator),
-    ])
+    ]
+
+    if entry.data.get(CONF_BATTERY_TYPE) == BATTERY_TYPE_HUAWEI:
+        working_mode_ent = coordinator.config.get("working_mode_entity")
+        if working_mode_ent:
+            entities.append(
+                HuaweiWrapperSensor(
+                    coordinator, working_mode_ent, "Huawei Working Mode", "huawei_working_mode", "mdi:cog-sync"
+                )
+            )
+
+        status_ent = coordinator.config.get("device_status_entity")
+        if status_ent:
+            entities.append(
+                HuaweiWrapperSensor(
+                    coordinator, status_ent, "Huawei Device Status", "huawei_device_status", "mdi:information-outline"
+                )
+            )
+
+    async_add_entities(entities)
 
 class BatteryOptimizerSensorBase(CoordinatorEntity, SensorEntity):
     """Gemensam basklass för att gruppera sensorer under en Device."""
@@ -291,6 +314,36 @@ class BatteryLightChargeTargetSensor(BatteryOptimizerSensorBase):
             kw = data.get("target_power_kw", 0.0)
             return int(kw * 1000)
         return 0
+
+class HuaweiWrapperSensor(BatteryOptimizerSensorBase):
+    """Wrapper för att visa Huawei-specifika entiteter snyggt integrerat."""
+    def __init__(self, coordinator, entity_id, name, id_suffix, icon):
+        super().__init__(coordinator)
+        self._source_entity = entity_id
+        self._attr_name = name
+        self._attr_unique_id = f"{coordinator.api_key}_{id_suffix}"
+        self._attr_icon = icon
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        if self._source_entity:
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.coordinator.hass, [self._source_entity], self._update_state
+                )
+            )
+
+    @callback
+    def _update_state(self, event):
+        self.async_write_ha_state()
+
+    @property
+    def state(self):
+        if self._source_entity:
+            state_obj = self.coordinator.hass.states.get(self._source_entity)
+            if state_obj and state_obj.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                return state_obj.state
+        return None
 
 class BatteryLightDischargeTargetSensor(BatteryOptimizerSensorBase):
     """Sensor som visar önskad urladdningseffekt i Watt (för styrning)."""

@@ -1,4 +1,4 @@
-# 🔋 Battery Optimizer Light
+# 🔋 Battery Optimizer Light Plus
 
 <img src="https://raw.githubusercontent.com/awestin67/battery-optimizer-light-plus/main/custom_components/battery_optimizer_light_plus/logo.png" alt="Logo" width="200"/>
 
@@ -6,7 +6,7 @@
 [![Validate and Test](https://github.com/awestin67/battery-optimizer-light-plus/actions/workflows/run_tests.yml/badge.svg)](https://github.com/awestin67/battery-optimizer-light-plus/actions/workflows/run_tests.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-**Battery Optimizer Light** är en lättviktig hybridlösning som kopplar din Home Assistant till en smart molntjänst för hembatterier.
+**Battery Optimizer Light Plus** är en lättviktig hybridlösning som kopplar din Home Assistant till en smart molntjänst för hembatterier.
 
 Systemet kombinerar **Molnintelligens** (för prisoptimering och arbitrage) med **Lokal Kraft** (för blixtsnabb effektvakt/peak shaving direkt i Home Assistant). Allt är nu samlat i **en enda integration** där du enkelt väljer din batterityp vid installationen.
 
@@ -46,7 +46,7 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
 2. Gå till **HACS** -> **Integrationer**.
 3. Klicka på de tre prickarna uppe till höger och välj **Anpassade arkiv (Custom repositories)**.
 4. Lägg till URL: `https://github.com/awestin67/battery-optimizer-light-plus` och välj kategori **Integration**.
-5. Ladda ner "Battery Optimizer Light" och starta om Home Assistant.
+5. Ladda ner "Battery Optimizer Light Plus" och starta om Home Assistant.
 
 ### Konfiguration
 1. Gå till **Inställningar** -> **Enheter & Tjänster**.
@@ -54,14 +54,14 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
 3. Följ guiden:
     * **Steg 1:** Välj vilken typ av batteri du har (Sonnen, Huawei, Generic).
     * **Steg 2:** Fyll i batterispecifika uppgifter (t.ex. IP och API-token för Sonnen, eller enheter för Huawei).
-    * **Steg 3:** Fyll i din API-nyckel från Dashboarden och peka ut dina huvudsakliga mät-sensorer (Grid, Batteri SoC, etc.).
+    * **Steg 3:** Fyll i din API-nyckel från Dashboarden. Om du valt Sonnen eller Huawei hanteras de flesta mätvärden automatiskt, men för Generic (eller för anpassade behov) kan du behöva peka ut sensorer för nätutbyte och batteri manuellt.
 
 ---
 
 ## 🤖 Användning & Automation
 
 ### Automatisk Styrning (Zero-Config)
-Integrationen är skapad för att fungera direkt ur lådan. Den sätter automatiskt upp en bakgrundslyssnare som agerar på besluten från molnet och styr ditt batteri – du behöver **inte** bygga några egna skript eller automationer!
+Integrationen är skapad för att fungera direkt ur lådan. Den lyssnar automatiskt på beslut från molnet och styr ditt batteri utan att du behöver bygga några egna skript eller automationer!
 
 ### Manuell Styrning (För avancerade användare)
 Om du föredrar att bygga egna automationsflöden i Home Assistant eller Node-RED, kan du stänga av den automatiska styrningen via integrationens inställningar (Konfigurera -> Avmarkera *Enable automatic control*).

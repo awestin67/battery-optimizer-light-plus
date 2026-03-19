@@ -123,35 +123,27 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self.data.update(user_input)
             return self.async_create_entry(title="Battery Optimizer Light", data=self.data)
 
-        schema = vol.Schema({
-            vol.Required(CONF_API_URL, default=DEFAULT_API_URL): TextSelector(
-                TextSelectorConfig(type="url")
-            ),
+        battery_type = self.data.get(CONF_BATTERY_TYPE)
+
+        schema_dict = {
+            vol.Required(CONF_API_URL, default=DEFAULT_API_URL): TextSelector(TextSelectorConfig(type="url")),
             vol.Required(CONF_API_KEY): TextSelector(),
-            vol.Required(CONF_SOC_SENSOR): EntitySelector(
-                EntitySelectorConfig(domain="sensor")
-            ),
-            vol.Optional(CONF_GRID_SENSOR): EntitySelector(
-                EntitySelectorConfig(domain="sensor", device_class="power")
-            ),
-            vol.Optional(CONF_GRID_SENSOR_INVERT, default=False): bool,
-            vol.Required(CONF_BATTERY_POWER_SENSOR): EntitySelector(
-                EntitySelectorConfig(domain="sensor", device_class="power")
-            ),
-            vol.Optional(CONF_BATTERY_STATUS_SENSOR): EntitySelector(
-                EntitySelectorConfig(domain="sensor")
-            ),
-            vol.Optional(CONF_BATTERY_STATUS_KEYWORDS, default=DEFAULT_BATTERY_STATUS_KEYWORDS): TextSelector(
-                TextSelectorConfig(multiline=True)
-            ),
-            vol.Optional(CONF_VIRTUAL_LOAD_SENSOR): EntitySelector(
-                EntitySelectorConfig(domain="sensor", device_class="power")
-            ),
-            vol.Optional(CONF_CONSUMPTION_FORECAST_SENSOR): EntitySelector(
-                EntitySelectorConfig(domain="sensor")
-            ),
-        })
-        return self.async_show_form(step_id="common", data_schema=schema)
+            vol.Optional(CONF_CONSUMPTION_FORECAST_SENSOR): EntitySelector(EntitySelectorConfig(domain="sensor")),
+        }
+
+        # Göm de flesta manuella sensorerna om man använder Sonnen!
+        if battery_type != BATTERY_TYPE_SONNEN:
+            schema_dict.update({
+                vol.Required(CONF_SOC_SENSOR): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                vol.Optional(CONF_GRID_SENSOR): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                vol.Optional(CONF_GRID_SENSOR_INVERT, default=False): bool,
+                vol.Required(CONF_BATTERY_POWER_SENSOR): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                vol.Optional(CONF_BATTERY_STATUS_SENSOR): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                vol.Optional(CONF_BATTERY_STATUS_KEYWORDS, default=DEFAULT_BATTERY_STATUS_KEYWORDS): TextSelector(TextSelectorConfig(multiline=True)),
+                vol.Optional(CONF_VIRTUAL_LOAD_SENSOR): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+            })
+
+        return self.async_show_form(step_id="common", data_schema=vol.Schema(schema_dict))
 
     @staticmethod
     @callback
@@ -185,31 +177,11 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
                 TextSelectorConfig(type="url")
             ),
             vol.Required(CONF_API_KEY, default=self.config_entry.data.get(CONF_API_KEY)): TextSelector(),
-            vol.Required(CONF_SOC_SENSOR, default=self.config_entry.data.get(CONF_SOC_SENSOR)): EntitySelector(
-                EntitySelectorConfig(domain="sensor")
-            ),
-            vol.Optional(CONF_GRID_SENSOR, default=self.config_entry.data.get(CONF_GRID_SENSOR)): EntitySelector(
-                EntitySelectorConfig(domain="sensor", device_class="power")
-            ),
-            vol.Optional(CONF_GRID_SENSOR_INVERT, default=self.config_entry.data.get(CONF_GRID_SENSOR_INVERT, False)): bool,
-            vol.Required(CONF_BATTERY_POWER_SENSOR, default=self.config_entry.data.get(CONF_BATTERY_POWER_SENSOR)): EntitySelector(
-                EntitySelectorConfig(domain="sensor", device_class="power")
-            ),
-            vol.Optional(CONF_BATTERY_STATUS_SENSOR, default=self.config_entry.data.get(CONF_BATTERY_STATUS_SENSOR)): EntitySelector(
-                EntitySelectorConfig(domain="sensor")
-            ),
-            vol.Optional(CONF_BATTERY_STATUS_KEYWORDS, default=self.config_entry.data.get(CONF_BATTERY_STATUS_KEYWORDS, DEFAULT_BATTERY_STATUS_KEYWORDS)): TextSelector(
-                TextSelectorConfig(multiline=True)
-            ),
-            vol.Optional(CONF_VIRTUAL_LOAD_SENSOR, default=self.config_entry.data.get(CONF_VIRTUAL_LOAD_SENSOR)): EntitySelector(
-                EntitySelectorConfig(domain="sensor", device_class="power")
-            ),
             vol.Optional(CONF_CONSUMPTION_FORECAST_SENSOR, default=self.config_entry.data.get(CONF_CONSUMPTION_FORECAST_SENSOR)): EntitySelector(
                 EntitySelectorConfig(domain="sensor")
             ),
         }
 
-        # Add battery-specific fields
         if battery_type == BATTERY_TYPE_SONNEN:
             schema_fields.update({
                 vol.Required(CONF_HOST, default=self.config_entry.data.get(CONF_HOST)): str,
@@ -217,6 +189,15 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(CONF_PORT, default=self.config_entry.data.get(CONF_PORT, DEFAULT_PORT)): int,
             })
         elif battery_type == BATTERY_TYPE_HUAWEI:
+            schema_fields.update({
+                vol.Required(CONF_SOC_SENSOR, default=self.config_entry.data.get(CONF_SOC_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                vol.Optional(CONF_GRID_SENSOR, default=self.config_entry.data.get(CONF_GRID_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                vol.Optional(CONF_GRID_SENSOR_INVERT, default=self.config_entry.data.get(CONF_GRID_SENSOR_INVERT, False)): bool,
+                vol.Required(CONF_BATTERY_POWER_SENSOR, default=self.config_entry.data.get(CONF_BATTERY_POWER_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                vol.Optional(CONF_BATTERY_STATUS_SENSOR, default=self.config_entry.data.get(CONF_BATTERY_STATUS_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                vol.Optional(CONF_BATTERY_STATUS_KEYWORDS, default=self.config_entry.data.get(CONF_BATTERY_STATUS_KEYWORDS, DEFAULT_BATTERY_STATUS_KEYWORDS)): TextSelector(TextSelectorConfig(multiline=True)),
+                vol.Optional(CONF_VIRTUAL_LOAD_SENSOR, default=self.config_entry.data.get(CONF_VIRTUAL_LOAD_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+            })
             schema_fields.update({
                 vol.Required(CONF_BATTERY_DEVICE_ID, default=self.config_entry.data.get(CONF_BATTERY_DEVICE_ID)): selector.DeviceSelector(
                     selector.DeviceSelectorConfig(integration="huawei_solar")
@@ -227,6 +208,17 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(CONF_DEVICE_STATUS_ENTITY, default=self.config_entry.data.get(CONF_DEVICE_STATUS_ENTITY)): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
+            })
+        else:
+            # GENERIC
+            schema_fields.update({
+                vol.Required(CONF_SOC_SENSOR, default=self.config_entry.data.get(CONF_SOC_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                vol.Optional(CONF_GRID_SENSOR, default=self.config_entry.data.get(CONF_GRID_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                vol.Optional(CONF_GRID_SENSOR_INVERT, default=self.config_entry.data.get(CONF_GRID_SENSOR_INVERT, False)): bool,
+                vol.Required(CONF_BATTERY_POWER_SENSOR, default=self.config_entry.data.get(CONF_BATTERY_POWER_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                vol.Optional(CONF_BATTERY_STATUS_SENSOR, default=self.config_entry.data.get(CONF_BATTERY_STATUS_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                vol.Optional(CONF_BATTERY_STATUS_KEYWORDS, default=self.config_entry.data.get(CONF_BATTERY_STATUS_KEYWORDS, DEFAULT_BATTERY_STATUS_KEYWORDS)): TextSelector(TextSelectorConfig(multiline=True)),
+                vol.Optional(CONF_VIRTUAL_LOAD_SENSOR, default=self.config_entry.data.get(CONF_VIRTUAL_LOAD_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
             })
 
         return self.async_show_form(step_id="init", data_schema=vol.Schema(schema_fields))

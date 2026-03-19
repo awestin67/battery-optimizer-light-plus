@@ -23,6 +23,7 @@ from custom_components.battery_optimizer_light_plus.const import (
     BATTERY_TYPE_HUAWEI,
     CONF_BATTERY_DEVICE_ID,
     CONF_WORKING_MODE_ENTITY,
+    CONF_DEVICE_STATUS_ENTITY,
     CONF_SOC_SENSOR,
 )
 
@@ -34,6 +35,7 @@ async def test_create_huawei_battery():
         CONF_BATTERY_TYPE: BATTERY_TYPE_HUAWEI,
         CONF_BATTERY_DEVICE_ID: "test_device_id",
         CONF_WORKING_MODE_ENTITY: "select.huawei_working_mode",
+        CONF_DEVICE_STATUS_ENTITY: "sensor.huawei_status",
         CONF_SOC_SENSOR: "sensor.huawei_soc",
     }
 
@@ -53,6 +55,18 @@ def huawei_battery():
         working_mode_entity="select.huawei_working_mode",
         soc_entity="sensor.huawei_soc"
     )
+
+@pytest.mark.asyncio
+async def test_get_status_text(huawei_battery):
+    """Testar att enhetsstatus hämtas korrekt för PeakGuard."""
+    huawei_battery._device_status_entity = "sensor.huawei_status"
+    mock_state = MagicMock()
+    mock_state.state = "On-grid"
+    huawei_battery._hass.states.get.return_value = mock_state
+
+    status = await huawei_battery.get_status_text()
+    assert status == "On-grid"
+    huawei_battery._hass.states.get.assert_called_with("sensor.huawei_status")
 
 @pytest.mark.asyncio
 async def test_get_current_soc_valid(huawei_battery):

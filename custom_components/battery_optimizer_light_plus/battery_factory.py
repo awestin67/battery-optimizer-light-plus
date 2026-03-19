@@ -15,6 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .const import (
     CONF_BATTERY_TYPE,
     BATTERY_TYPE_SONNEN,
@@ -24,6 +25,7 @@ from .const import (
     CONF_API_TOKEN,
     CONF_BATTERY_DEVICE_ID,
     CONF_WORKING_MODE_ENTITY,
+    CONF_DEVICE_STATUS_ENTITY,
     CONF_SOC_SENSOR,
 )
 from .batteries.base import BatteryApi
@@ -37,10 +39,12 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
     battery_type = config.get(CONF_BATTERY_TYPE)
 
     if battery_type == BATTERY_TYPE_SONNEN:
+        session = async_get_clientsession(hass)
         sonnen_api = SonnenAPI(
             host=config[CONF_HOST],
             port=config[CONF_PORT],
             token=config[CONF_API_TOKEN],
+            session=session,
         )
         return SonnenBattery(
             hass=hass,
@@ -54,6 +58,7 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
             device_id=config[CONF_BATTERY_DEVICE_ID],
             working_mode_entity=config[CONF_WORKING_MODE_ENTITY],
             soc_entity=config[CONF_SOC_SENSOR],
+            device_status_entity=config.get(CONF_DEVICE_STATUS_ENTITY),
         )
 
     from .batteries.generic import GenericBattery

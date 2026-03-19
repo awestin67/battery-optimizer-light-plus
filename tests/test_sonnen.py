@@ -39,7 +39,11 @@ async def test_create_sonnen_battery():
         CONF_SOC_SENSOR: "sensor.sonnen_soc",
     }
 
-    with patch("custom_components.battery_optimizer_light_plus.battery_factory.SonnenAPI") as mock_sonnen_api:
+    patch_api = "custom_components.battery_optimizer_light_plus.battery_factory.SonnenAPI"
+    patch_session = "custom_components.battery_optimizer_light_plus.battery_factory.async_get_clientsession"
+    with patch(patch_api) as mock_sonnen_api, \
+         patch(patch_session) as mock_session:
+        mock_session.return_value = "mocked_session"
         battery_api = create_battery_api(hass, config)
 
         assert isinstance(battery_api, SonnenBattery)
@@ -47,6 +51,7 @@ async def test_create_sonnen_battery():
             host="1.2.3.4",
             port=8080,
             token="test_token",
+            session="mocked_session",
         )
 
 @pytest.fixture
@@ -69,18 +74,17 @@ def sonnen_battery(mock_sonnen_api):
 @pytest.mark.asyncio
 async def test_get_current_soc_from_api(sonnen_battery, mock_sonnen_api):
     """Testar att SoC hämtas primärt via lokalt API."""
-    mock_sonnen_api.async_get_status.return_value = {"USOC": 55}
+    sonnen_battery.coordinator.data = {"USOC": 55}
 
     soc = await sonnen_battery.get_current_soc()
 
     assert soc == 55.0
-    mock_sonnen_api.async_get_status.assert_called_once()
     sonnen_battery._hass.states.get.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_get_current_soc_fallback_sensor(sonnen_battery, mock_sonnen_api):
     """Testar att SoC faller tillbaka på HA-sensorn om API:et kraschar."""
-    mock_sonnen_api.async_get_status.side_effect = Exception("Connection lost")
+    sonnen_battery.coordinator.data = None  # Simulerar ett kraschat nätverk
 
     mock_state = MagicMock()
     mock_state.state = "60"
@@ -89,7 +93,6 @@ async def test_get_current_soc_fallback_sensor(sonnen_battery, mock_sonnen_api):
     soc = await sonnen_battery.get_current_soc()
 
     assert soc == 60.0
-    mock_sonnen_api.async_get_status.assert_called_once()
     sonnen_battery._hass.states.get.assert_called_once_with("sensor.sonnen_soc")
 
 @pytest.mark.asyncio
@@ -129,3 +132,44 @@ async def test_apply_action_idle(sonnen_battery, mock_sonnen_api):
     # Inga effektkommandon ska skickas
     mock_sonnen_api.async_charge.assert_not_called()
     mock_sonnen_api.async_discharge.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_get_virtual_load(sonnen_battery):
+    """Testar att virtuell last beräknas korrekt (Consumption - Production)."""
+    sonnen_battery.coordinator.data = {"Consumption_W": 5000, "Production_W": 2000}
+    load = await sonnen_battery.get_virtual_load()
+    assert load == 3000.0
+
+    # Testar fallback om data saknas
+    sonnen_battery.coordinator.data = {"Consumption_W": 5000}
+    assert await sonnen_battery.get_virtual_load() is None
+
+@pytest.mark.asyncio
+async def test_get_battery_power(sonnen_battery):
+    """Testar att batterieffekt hämtas korrekt."""
+    sonnen_battery.coordinator.data = {"Pac_total_W": -1500}
+    power = await sonnen_battery.get_battery_power()
+    assert power == -1500.0
+
+    sonnen_battery.coordinator.data = {}
+    assert await sonnen_battery.get_battery_power() is None
+
+@pytest.mark.asyncio
+async def test_get_grid_power(sonnen_battery):
+    """Testar att nätutbyte hämtas korrekt."""
+    sonnen_battery.coordinator.data = {"GridFeedIn_W": 300}
+    power = await sonnen_battery.get_grid_power()
+    assert power == 300.0
+
+    sonnen_battery.coordinator.data = {}
+    assert await sonnen_battery.get_grid_power() is None
+
+@pytest.mark.asyncio
+async def test_get_status_text(sonnen_battery):
+    """Testar att systemstatus hämtas korrekt."""
+    sonnen_battery.coordinator.data = {"SystemStatus": "OnGrid"}
+    status = await sonnen_battery.get_status_text()
+    assert status == "OnGrid"
+
+    sonnen_battery.coordinator.data = {}
+    assert await sonnen_battery.get_status_text() is None

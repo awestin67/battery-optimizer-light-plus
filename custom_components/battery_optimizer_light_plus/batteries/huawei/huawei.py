@@ -16,6 +16,7 @@
 
 import logging
 from homeassistant.core import HomeAssistant
+from homeassistant.const import STATE_UNKNOWN, STATE_UNAVAILABLE
 from ..base import BatteryApi
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,12 +24,20 @@ _LOGGER = logging.getLogger(__name__)
 class HuaweiBattery(BatteryApi):
     """A class to interact with the Huawei battery."""
 
-    def __init__(self, hass: HomeAssistant, device_id: str, working_mode_entity: str, soc_entity: str):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        device_id: str,
+        working_mode_entity: str,
+        soc_entity: str,
+        device_status_entity: str | None = None
+    ):
         """Initialize the HuaweiBattery object."""
         self._hass = hass
         self._device_id = device_id
         self._working_mode_entity = working_mode_entity
         self._soc_entity = soc_entity
+        self._device_status_entity = device_status_entity
 
     async def get_current_soc(self) -> float | None:
         """Get the battery's state of charge (SoC)."""
@@ -39,6 +48,14 @@ class HuaweiBattery(BatteryApi):
             except (ValueError, TypeError):
                 _LOGGER.warning(f"Invalid SoC value: {soc_state.state}")
                 return None
+        return None
+
+    async def get_status_text(self) -> str | None:
+        """Hämtar enhetsstatus för automatisk konfiguration i PeakGuard."""
+        if self._device_status_entity:
+            state = self._hass.states.get(self._device_status_entity)
+            if state and state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                return str(state.state)
         return None
 
     async def async_set_charge(self, power: int):
