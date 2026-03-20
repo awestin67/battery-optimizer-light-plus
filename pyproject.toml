@@ -9,7 +9,8 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
-    "pytest"
+    "pytest",
+    "pytest-cov"
 ]
 
 [tool.ruff]

@@ -18,6 +18,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from custom_components.battery_optimizer_light_plus.battery_factory import create_battery_api
 from custom_components.battery_optimizer_light_plus.batteries.sonnen.sonnen import SonnenBattery
+from custom_components.battery_optimizer_light_plus.batteries.sonnen.api import SonnenAPI
 from custom_components.battery_optimizer_light_plus.const import (
     CONF_BATTERY_TYPE,
     BATTERY_TYPE_SONNEN,
@@ -174,3 +175,47 @@ async def test_get_status_text(sonnen_battery):
 
     sonnen_battery.coordinator.data = {}
     assert await sonnen_battery.get_status_text() is None
+
+@pytest.mark.asyncio
+async def test_sonnen_api_methods():
+    """Testar att SonnenAPI sätter ihop och skickar korrekta HTTP-anrop."""
+    mock_session = MagicMock()
+    mock_response = AsyncMock()
+
+    # aiohttp:s raise_for_status är synkron, så vi mockar den specifikt
+    mock_response.raise_for_status = MagicMock()
+
+    # Konfigurera mock_session att returnera mock_response när den anropas med 'async with'
+    mock_session.get.return_value.__aenter__.return_value = mock_response
+    mock_session.put.return_value.__aenter__.return_value = mock_response
+    mock_session.post.return_value.__aenter__.return_value = mock_response
+
+    api = SonnenAPI("192.168.1.50", 80, "my-secret-token", mock_session)
+
+    expected_headers = {"Auth-Token": "my-secret-token", "Content-Type": "application/json"}
+
+    # 1. Test get_status
+    mock_response.json.return_value = {"USOC": 50}
+    status = await api.async_get_status()
+    assert status == {"USOC": 50}
+    mock_session.get.assert_called_once_with(
+        "http://192.168.1.50:80/api/v2/status", headers=expected_headers
+    )
+
+    # 2. Test set_operating_mode
+    assert await api.async_set_operating_mode(1) is True
+    mock_session.put.assert_called_once_with(
+        "http://192.168.1.50:80/api/v2/configurations", json={"EM_OperatingMode": "1"}, headers=expected_headers
+    )
+
+    # 3. Test charge
+    assert await api.async_charge(3000) is True
+    mock_session.post.assert_any_call(
+        "http://192.168.1.50:80/api/v2/setpoint/charge/3000", json={}, headers=expected_headers
+    )
+
+    # 4. Test discharge
+    assert await api.async_discharge(2500) is True
+    mock_session.post.assert_any_call(
+        "http://192.168.1.50:80/api/v2/setpoint/discharge/2500", json={}, headers=expected_headers
+    )

@@ -67,7 +67,7 @@ MANIFEST_PATH = BASE_DIR / "custom_components" / "battery_optimizer_light_plus" 
 
 IGNORED_DIRS = {
     ".venv", "venv", "env", "__pycache__", ".git", ".pytest_cache",
-    "requests", "Lib", "site-packages", "build", "dist"
+    "requests", "Lib", "site-packages", "build", "dist", "htmlcov"
 }
 
 def run_command(command, capture_output=False, exit_on_error=True):
@@ -160,7 +160,14 @@ def run_tests():
             print("⚠️  Inga tester hittades i 'tests/'. Hoppar över.")
             return
 
-        subprocess.run(["pytest", "-v", str(test_dir)], check=True, shell=False)
+        subprocess.run([
+            "pytest",
+            "-v",
+            "--cov=custom_components.battery_optimizer_light_plus",
+            "--cov-report=term",
+            "--cov-report=html",
+            str(test_dir)
+        ], check=True, shell=False)
         print("✅ Alla tester godkända.")
     except FileNotFoundError:
         print("⚠️  Kunde inte hitta 'pytest'.")

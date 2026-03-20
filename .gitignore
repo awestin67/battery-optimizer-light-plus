@@ -21,3 +21,7 @@ Thumbs.db
 # --- Loggar och Databaser (om du kör HA lokalt) ---
 *.log
 *.db
+
+# --- Coverage ---
+.coverage
+htmlcov/

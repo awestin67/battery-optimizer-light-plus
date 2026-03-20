@@ -373,6 +373,7 @@ class PeakGuard:
             if (
                 not self._has_reported
                 and not self._is_solar_override
+                and self._solar_override_trigger_start is None
                 and current_load < wake_up_threshold
                 and current_load > -200
                 and cloud_action != "CHARGE"

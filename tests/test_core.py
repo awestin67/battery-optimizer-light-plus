@@ -14,71 +14,19 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
-import os
 from unittest.mock import MagicMock
 import datetime
 
-# --- MOCK HOME ASSISTANT ---
-# Vi måste mocka HA-moduler INNAN vi importerar komponenten
-# för att slippa installera 'homeassistant' lokalt.
-
-mock_hass = MagicMock()
-sys.modules["homeassistant"] = mock_hass
-sys.modules["homeassistant.core"] = mock_hass
-sys.modules["homeassistant.helpers"] = mock_hass
-sys.modules["homeassistant.helpers.event"] = mock_hass
-sys.modules["homeassistant.helpers.aiohttp_client"] = mock_hass
-sys.modules["homeassistant.helpers.entity"] = mock_hass
-sys.modules["homeassistant.exceptions"] = mock_hass
-sys.modules["homeassistant.components"] = mock_hass
-sys.modules["homeassistant.loader"] = mock_hass
-
-mock_util = MagicMock()
-mock_util.utcnow.side_effect = lambda: datetime.datetime.now(datetime.timezone.utc)
-sys.modules["homeassistant.util"] = mock_util
-sys.modules["homeassistant.util.dt"] = mock_util
-mock_hass.util.dt = mock_util
-
-mock_const = MagicMock()
-mock_const.STATE_UNAVAILABLE = "unavailable"
-mock_const.STATE_UNKNOWN = "unknown"
-sys.modules["homeassistant.const"] = mock_const
-
-mock_uc = MagicMock()
-class UpdateFailed(Exception):
-    pass
-mock_uc.UpdateFailed = UpdateFailed
-
-class MockDataUpdateCoordinator:
-    def __init__(self, hass, *args, **kwargs):
-        self.hass = hass
-        self.data = None
-        self.async_config_entry_first_refresh = AsyncMock()
-
-mock_uc.DataUpdateCoordinator = MockDataUpdateCoordinator
-
-class MockCoordinatorEntity:
-    def __init__(self, coordinator):
-        self.coordinator = coordinator
-mock_uc.CoordinatorEntity = MockCoordinatorEntity
-sys.modules["homeassistant.helpers.update_coordinator"] = mock_uc
-
-mock_sensor = MagicMock()
-class MockSensorEntity:
-    pass
-mock_sensor.SensorEntity = MockSensorEntity
-mock_sensor.SensorDeviceClass = MagicMock()
-mock_sensor.SensorStateClass = MagicMock()
-sys.modules["homeassistant.components.sensor"] = mock_sensor
-
-# Lägg till rotmappen i sökvägen så vi kan importera komponenten
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 import pytest  # noqa: E402
 from unittest.mock import AsyncMock, patch  # noqa: E402
-from custom_components.battery_optimizer_light_plus.coordinator import BatteryOptimizerLightCoordinator  # noqa: E402
+from homeassistant.core import CoreState  # noqa: E402
+from custom_components.battery_optimizer_light_plus.coordinator import BatteryOptimizerLightCoordinator, UpdateFailed  # noqa: E402
 from custom_components.battery_optimizer_light_plus import PeakGuard  # noqa: E402
+from custom_components.battery_optimizer_light_plus import ( # noqa: E402
+    async_setup_entry,
+    async_unload_entry,
+    update_listener,
+)
 from custom_components.battery_optimizer_light_plus.sensor import BatteryLightStatusSensor  # noqa: E402
 from custom_components.battery_optimizer_light_plus.sensor import BatteryLightVirtualLoadSensor  # noqa: E402
 
@@ -98,6 +46,9 @@ def mock_hass_instance():
     hass = MagicMock()
     hass.states.get = MagicMock()
     hass.services.async_call = AsyncMock()
+    hass.config_entries.async_forward_entry_setups = AsyncMock()
+    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+    hass.config_entries.async_reload = AsyncMock()
     return hass
 
 @pytest.fixture
@@ -113,6 +64,7 @@ def mock_battery():
     mock.get_battery_power = AsyncMock(return_value=None)
     mock.get_grid_power = AsyncMock(return_value=None)
     mock.get_status_text = AsyncMock(return_value=None)
+    mock.apply_action = AsyncMock()
     return mock
 
 @pytest.mark.asyncio
@@ -875,3 +827,267 @@ async def test_peak_guard_solar_override_with_internal_battery_api(mock_hass_ins
     # Andra körningen: Nu har tiden gått, override ska aktiveras!
     await guard.update(config.get("virtual_load_sensor"), "sensor.optimizer_light_peak_limit")
     assert guard.is_solar_override is True
+
+@pytest.mark.asyncio
+async def test_peak_guard_fallback_to_ha_sensors(mock_hass_instance):
+    """Krav: Om batteriet saknar interna metoder (Huawei/Generic), ska HA-sensorer användas."""
+    coordinator = MagicMock()
+    coordinator.data = {"action": "HOLD"}
+
+    # Skapa en klass som representerar Huawei/Generic (saknar get_virtual_load osv)
+    class DummyGenericBattery:
+        async def force_discharge(self, w): pass
+        async def force_charge(self, w): pass
+        async def hold(self): pass
+        async def set_auto_mode(self): pass
+        async def get_current_soc(self): return 50.0
+        # get_virtual_load, get_grid_power och get_battery_power SAKNAS med flit.
+
+    dummy_battery = DummyGenericBattery()
+
+    # Konfiguration som tvingar PeakGuard att räkna Grid + Batteri manuellt
+    config = MOCK_CONFIG.copy()
+    config["virtual_load_sensor"] = None
+
+    guard = PeakGuard(mock_hass_instance, config, coordinator, dummy_battery)
+
+    # Setup HA-sensorer: Grid exporterar 4500W, Batteriet är stilla
+    limit_state = MagicMock()
+    limit_state.state = "5.0"
+    grid_state = MagicMock()
+    grid_state.state = "-4500" # Export enligt branschstandard
+    bat_state = MagicMock()
+    bat_state.state = "0"
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.grid":
+            return grid_state
+        if entity_id == "sensor.bat_power":
+            return bat_state
+        return None
+
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    # Kör update första gången
+    await guard.update(None, "sensor.optimizer_light_peak_limit")
+    assert guard._solar_override_trigger_start is not None, "Timern startade inte via HA-sensorer!"
+
+    # Snabbspola och verifiera aktivering
+    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
+    await guard.update(None, "sensor.optimizer_light_peak_limit")
+    assert guard.is_solar_override is True
+
+@pytest.mark.asyncio
+async def test_coordinator_auth_failure(mock_hass_instance, mock_battery):
+    """Krav: Om API-nyckeln är fel (401) ska ett tydligt fel kastas direkt utan retries."""
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value
+        mock_post.__aenter__.return_value = mock_post
+        mock_post.status = 401
+        mock_post.text = AsyncMock(return_value="Invalid API Key")
+
+        with pytest.raises(UpdateFailed) as excinfo:
+            await coordinator._async_update_data()
+
+        assert "Authentication failed" in str(excinfo.value)
+        # Verifiera att den avbröt direkt och inte gjorde 3 försök
+        assert mock_session.post.call_count == 1
+
+@pytest.mark.asyncio
+async def test_coordinator_retry_success(mock_hass_instance, mock_battery):
+    """Krav: Coordinator ska göra 3 försök. Om den lyckas på andra försöket ska den returnera datan."""
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    patch_sleep = "custom_components.battery_optimizer_light_plus.coordinator.asyncio.sleep"
+
+    with patch(patch_target) as mock_get_session, patch(patch_sleep) as mock_sleep:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        # Första anropet: Fel 500
+        mock_fail = MagicMock()
+        mock_fail.__aenter__.return_value = mock_fail
+        mock_fail.status = 500
+        mock_fail.text = AsyncMock(return_value="Server Error")
+
+        # Andra anropet: OK 200
+        mock_success = MagicMock()
+        mock_success.__aenter__.return_value = mock_success
+        mock_success.status = 200
+        mock_success.json = AsyncMock(return_value={"action": "CHARGE", "target_power_kw": 5.0})
+
+        mock_session.post.side_effect = [mock_fail, mock_success]
+
+        data = await coordinator._async_update_data()
+
+        assert data["action"] == "CHARGE"
+        assert mock_session.post.call_count == 2
+        mock_sleep.assert_called_once_with(5)
+
+@pytest.mark.asyncio
+async def test_coordinator_total_failure(mock_hass_instance, mock_battery):
+    """Krav: Efter 3 misslyckade försök ska UpdateFailed kastas."""
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    patch_sleep = "custom_components.battery_optimizer_light_plus.coordinator.asyncio.sleep"
+
+    with patch(patch_target) as mock_get_session, patch(patch_sleep) as mock_sleep:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_fail = MagicMock()
+        mock_fail.__aenter__.return_value = mock_fail
+        mock_fail.status = 500
+        mock_fail.text = AsyncMock(return_value="Server Error")
+
+        mock_session.post.return_value = mock_fail
+
+        with pytest.raises(UpdateFailed) as excinfo:
+            await coordinator._async_update_data()
+
+        assert mock_session.post.call_count == 3
+        assert mock_sleep.call_count == 2
+        assert "Connection error after 3 attempts" in str(excinfo.value)
+
+@pytest.mark.asyncio
+async def test_lifecycle_and_services(mock_hass_instance):
+    """Testar setup, migrering, registrering av tjänster, unload och reload."""
+    entry = MagicMock()
+    entry.data = MOCK_CONFIG.copy()
+    # Sätt in gammal dev-URL för att trigga migreringslogiken
+    entry.data["api_url"] = "https://battery-prod.awestinconsulting.se/signal"
+    entry.entry_id = "test_id"
+
+    patch_int = "custom_components.battery_optimizer_light_plus.async_get_integration"
+    patch_coord = "custom_components.battery_optimizer_light_plus.BatteryOptimizerLightCoordinator"
+    patch_guard = "custom_components.battery_optimizer_light_plus.PeakGuard"
+    patch_track = "custom_components.battery_optimizer_light_plus.async_track_state_change_event"
+
+    with patch(patch_int, new_callable=AsyncMock) as mock_get_int, patch(patch_coord) as mock_coord_class, \
+         patch(patch_guard) as mock_guard_class, patch(patch_track) as mock_track:
+
+        mock_int = MagicMock()
+        mock_int.version = "1.0.0"
+        mock_get_int.return_value = mock_int
+
+        mock_coord = mock_coord_class.return_value
+        mock_coord.async_config_entry_first_refresh = AsyncMock()
+        mock_coord.battery_api = MagicMock()
+        mock_coord.battery_api.coordinator = MagicMock()
+        mock_coord.battery_api.force_charge = AsyncMock()
+        mock_coord.battery_api.force_discharge = AsyncMock()
+        mock_coord.battery_api.hold = AsyncMock()
+        mock_coord.battery_api.set_auto_mode = AsyncMock()
+        mock_guard = mock_guard_class.return_value
+        mock_guard.update = AsyncMock()
+
+        # Test setup
+        assert await async_setup_entry(mock_hass_instance, entry) is True
+
+        # Verifiera att migreringen av URL sparades i config_entries
+        mock_hass_instance.config_entries.async_update_entry.assert_called_once()
+
+        # Verifiera att background tracker sattes upp och kör dess on_load_change
+        mock_track.assert_called_once()
+        on_load_change = mock_track.call_args[0][2]
+        mock_hass_instance.state = CoreState.running # Låtsas att HA är 'running'
+        await on_load_change(None)
+        mock_guard.update.assert_called()
+
+        # Verifiera tjänster (services)
+        assert mock_hass_instance.services.async_register.call_count == 5
+        services = {call[0][1]: call[0][2] for call in mock_hass_instance.services.async_register.call_args_list}
+
+        await services["force_charge"](MagicMock(data={"power": 1000}))
+        mock_coord.battery_api.force_charge.assert_called_with(1000)
+
+        await services["force_discharge"](MagicMock(data={"power": 1500}))
+        mock_coord.battery_api.force_discharge.assert_called_with(1500)
+
+        await services["hold"](MagicMock(data={}))
+        mock_coord.battery_api.hold.assert_called_once()
+
+        await services["auto"](MagicMock(data={}))
+        mock_coord.battery_api.set_auto_mode.assert_called_once()
+
+        await services["run_peak_guard"](MagicMock(data={"virtual_load_entity": "v", "limit_entity": "l"}))
+        mock_guard.update.assert_called_with("v", "l")
+
+        # Test unload
+        mock_hass_instance.config_entries.async_unload_platforms.return_value = True
+        assert await async_unload_entry(mock_hass_instance, entry) is True
+
+        # Test update listener
+        await update_listener(mock_hass_instance, entry)
+        mock_hass_instance.config_entries.async_reload.assert_called_once_with("test_id")
+
+@pytest.mark.asyncio
+async def test_setup_sonnen_listener(mock_hass_instance):
+    """Testar att Sonnen får sin lokala polling uppsatt och kopplad till PeakGuard."""
+    entry = MagicMock()
+    entry.data = MOCK_CONFIG.copy()
+    entry.data["battery_type"] = "sonnen"
+    entry.entry_id = "test_sonnen"
+
+    patch_int = "custom_components.battery_optimizer_light_plus.async_get_integration"
+    patch_coord = "custom_components.battery_optimizer_light_plus.BatteryOptimizerLightCoordinator"
+    with patch(patch_int, new_callable=AsyncMock) as mock_get_int, patch(patch_coord) as mock_coord_class:
+        mock_get_int.return_value = MagicMock()
+        mock_coord = mock_coord_class.return_value
+        mock_coord.async_config_entry_first_refresh = AsyncMock()
+        mock_coord.battery_api.coordinator = MagicMock()
+        mock_coord.battery_api.coordinator.async_config_entry_first_refresh = AsyncMock()
+
+        await async_setup_entry(mock_hass_instance, entry)
+
+        # Verifiera att listener lades till och anropa den
+        mock_coord.battery_api.coordinator.async_add_listener.assert_called_once()
+        callback_func = mock_coord.battery_api.coordinator.async_add_listener.call_args[0][0]
+        callback_func()
+        mock_hass_instance.async_create_task.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_peakguard_reporting_methods(mock_hass_instance, mock_battery):
+    """Testar de interna HTTP-anropen för _report_* metoderna."""
+    coordinator = MagicMock()
+    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
+
+    patch_target = "custom_components.battery_optimizer_light_plus.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_session.post.return_value.__aenter__.return_value = mock_response
+
+        await guard._report_peak(5000, 4000)
+        await guard._report_peak_clear(3000, 4000)
+        await guard._report_peak_failure(7000, 4000)
+        await guard._report_solar_override(-500, 4000)
+        await guard._report_solar_override_clear(-100, 4000)
+
+        assert mock_session.post.call_count == 5
+
+@pytest.mark.asyncio
+async def test_peak_guard_update_exception(mock_hass_instance, mock_battery):
+    """Testar den breda except-satsen i PeakGuard.update för att säkerställa att den inte kraschar."""
+    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, MagicMock(), mock_battery)
+    mock_hass_instance.states.get.side_effect = Exception("Simulerad krasch")
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
