@@ -227,18 +227,18 @@ class PeakGuard:
                 return
 
             # 0.1 Kontrollera Batteristatus (Maintenance/Full Charge)
-            status_entity = self.config.get(CONF_BATTERY_STATUS_SENSOR)
             val_display = None
-            if status_entity:
-                status_state = self.hass.states.get(status_entity)
-
-                # SÄKERHET: Om sensorn inte är redo (t.ex. vid uppstart), avvakta med beslut.
-                if not status_state or status_state.state in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
-                    _LOGGER.debug(f"Status sensor {status_entity} is unavailable/unknown. Skipping update.")
-                    return
-                val_display = str(status_state.state)
-            elif hasattr(self.battery, "get_status_text"):
+            if hasattr(self.battery, "get_status_text"):
                 val_display = await self.battery.get_status_text()
+
+            if val_display is None:
+                status_entity = self.config.get(CONF_BATTERY_STATUS_SENSOR)
+                if status_entity:
+                    status_state = self.hass.states.get(status_entity)
+                    if not status_state or status_state.state in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                        _LOGGER.debug(f"Status sensor {status_entity} is unavailable/unknown. Skipping update.")
+                        return
+                    val_display = str(status_state.state)
 
             if val_display:
                 # Hämta nyckelord från config (eller använd default)
@@ -301,38 +301,37 @@ class PeakGuard:
 
             # 2. Hämta Lasten
             current_load = None
-            if virtual_load_id:
-                # Använd manuellt vald sensor
-                load_state = self.hass.states.get(virtual_load_id)
-                if not load_state or load_state.state in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
-                    return
-                current_load = float(load_state.state)
-            else:
-                # Beräkna automatiskt: Grid + Batteri
-                grid_id = self.config.get(CONF_GRID_SENSOR)
-                bat_id = self.config.get(CONF_BATTERY_POWER_SENSOR)
+            if hasattr(self.battery, "get_virtual_load"):
+                current_load = await self.battery.get_virtual_load()
 
-                if grid_id and bat_id:
-                    grid_state = self.hass.states.get(grid_id)
-                    bat_state = self.hass.states.get(bat_id)
+            if current_load is None:
+                if virtual_load_id:
+                    # Använd manuellt vald sensor
+                    load_state = self.hass.states.get(virtual_load_id)
+                    if not load_state or load_state.state in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                        return
+                    current_load = float(load_state.state)
+                else:
+                    # Beräkna automatiskt: Grid + Batteri
+                    grid_id = self.config.get(CONF_GRID_SENSOR)
+                    bat_id = self.config.get(CONF_BATTERY_POWER_SENSOR)
+                    if grid_id and bat_id:
+                        grid_state = self.hass.states.get(grid_id)
+                        bat_state = self.hass.states.get(bat_id)
+                        grid_val = (
+                            float(grid_state.state)
+                            if grid_state and grid_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]
+                            else 0.0
+                        )
+                        bat_val = (
+                            float(bat_state.state)
+                            if bat_state and bat_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]
+                            else 0.0
+                        )
 
-                    grid_val = (
-                        float(grid_state.state)
-                        if grid_state and grid_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]
-                        else 0.0
-                    )
-                    bat_val = (
-                        float(bat_state.state)
-                        if bat_state and bat_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]
-                        else 0.0
-                    )
-
-                    if self.config.get(CONF_GRID_SENSOR_INVERT, False):
-                        grid_val = -grid_val
-
-                    current_load = grid_val + bat_val
-                elif hasattr(self.battery, "get_virtual_load"):
-                    current_load = await self.battery.get_virtual_load()
+                        if self.config.get(CONF_GRID_SENSOR_INVERT, False):
+                            grid_val = -grid_val
+                        current_load = grid_val + bat_val
 
             if current_load is None:
                 return
@@ -363,10 +362,6 @@ class PeakGuard:
                                 bat_is_moving = True
                         except ValueError:
                             pass
-            elif hasattr(self.battery, "get_battery_power"):
-                bat_val = await self.battery.get_battery_power()
-                if bat_val is not None and abs(bat_val) > 100:
-                    bat_is_moving = True
 
             # Avbryt bara om:
             # 1. Ingen peak är aktiv.
@@ -386,19 +381,22 @@ class PeakGuard:
                 return
 
             # 3. Hämta SoC
-            soc_entity = self.config.get(CONF_SOC_SENSOR)
-            soc = 0.0
-            if soc_entity:
-                soc_state = self.hass.states.get(soc_entity)
-                if soc_state and soc_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
-                    try:
-                        soc = float(soc_state.state)
-                    except ValueError:
-                        pass
-            elif hasattr(self.battery, "get_current_soc"):
-                soc_val = await self.battery.get_current_soc()
-                if soc_val is not None:
-                    soc = soc_val
+            soc = None
+            if hasattr(self.battery, "get_current_soc"):
+                soc = await self.battery.get_current_soc()
+
+            if soc is None:
+                soc_entity = self.config.get(CONF_SOC_SENSOR)
+                if soc_entity:
+                    soc_state = self.hass.states.get(soc_entity)
+                    if soc_state and soc_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                        try:
+                            soc = float(soc_state.state)
+                        except ValueError:
+                            pass
+
+            if soc is None:
+                soc = 0.0
 
             # 4. Gränser
             safe_limit = limit_w - 1000
@@ -461,12 +459,9 @@ class PeakGuard:
                                 current_bat_power = float(b_state.state)
                             except ValueError:
                                 pass
+
                 if current_bat_power is None:
                     current_bat_power = 0.0
-                elif hasattr(self.battery, "get_battery_power"):
-                    bat_val = await self.battery.get_battery_power()
-                    if bat_val is not None:
-                        current_bat_power = bat_val
 
                 # --- EXTRA SÄKERHETSKONTROLL (Natt/Buffer Fill & Sensor Lag) ---
                 is_importing = False
@@ -489,10 +484,6 @@ class PeakGuard:
                                     is_importing = True
                             except ValueError:
                                 pass
-                elif hasattr(self.battery, "get_grid_power"):
-                    g_val = await self.battery.get_grid_power()
-                    if g_val is not None and g_val > 100:
-                        is_importing = True
 
                 # Beräkna önskat läge baserat på last (oberoende av moln-status)
                 wants_override = self._is_solar_override
@@ -579,22 +570,22 @@ class PeakGuard:
                     pass # Låt molnet bestämma
 
                 elif cloud_action == "HOLD":
-                    bat_entity = self.config.get(CONF_BATTERY_POWER_SENSOR)
-                    bat_power = 0.0
-                    if bat_entity:
-                        bat_state = self.hass.states.get(bat_entity)
-                        if bat_state and bat_state.state not in [
-                            STATE_UNKNOWN,
-                            STATE_UNAVAILABLE,
-                        ]:
-                            try:
-                                bat_power = float(bat_state.state)
-                            except ValueError:
-                                pass
-                    elif hasattr(self.battery, "get_battery_power"):
-                        b_val = await self.battery.get_battery_power()
-                        if b_val is not None:
-                            bat_power = b_val
+                    bat_power = None
+                    if hasattr(self.battery, "get_battery_power"):
+                        bat_power = await self.battery.get_battery_power()
+
+                    if bat_power is None:
+                        bat_entity = self.config.get(CONF_BATTERY_POWER_SENSOR)
+                        if bat_entity:
+                            bat_state = self.hass.states.get(bat_entity)
+                            if bat_state and bat_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                                try:
+                                    bat_power = float(bat_state.state)
+                                except ValueError:
+                                    pass
+
+                    if bat_power is None:
+                        bat_power = 0.0
 
                     if abs(bat_power) > 100:
                         if not self._hold_command_sent:

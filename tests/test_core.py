@@ -830,3 +830,48 @@ async def test_peak_guard_prevents_solar_override_during_buffer_fill_lag(mock_ha
     # Verifiera att Solar Override INTE aktiveras, trots att lasten är -500W
     # Detta bevisar att "Import-spärren" fungerar.
     assert guard.is_solar_override is False
+
+@pytest.mark.asyncio
+async def test_peak_guard_solar_override_with_internal_battery_api(mock_hass_instance, mock_battery):
+    """Krav: Solar Override ska triggas baserat på interna batterimetoder och ignorera spöksensorer."""
+    coordinator = MagicMock()
+    coordinator.data = {"action": "HOLD"}
+
+    # Konfigurationen INNEHÅLLER gamla spöksensorer, men vi förväntar oss att koden struntar i dem
+    config = MOCK_CONFIG.copy()
+
+    guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+
+    # Mocka interna batterimetoder för att simulera den enorma solexporten (t.ex. Sonnen)
+    mock_battery.get_virtual_load.return_value = -4581.0  # Stor export
+    mock_battery.get_grid_power.return_value = -4581.0    # Grid exporterar (negativt)
+    mock_battery.get_battery_power.return_value = 0.0     # Batteriet är stilla
+    mock_battery.get_current_soc.return_value = 50.0
+
+    # Skapa falska "spöksensorer" som annars hade blockerat Solar Override
+    bad_state = MagicMock()
+    bad_state.state = "5000" # 5000W Import (Skulle blockera override om PeakGuard lyssnade på denna)
+    limit_state = MagicMock()
+    limit_state.state = "5.0"
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        return bad_state # Alla andra (grid, bat, load) ger det falska import-värdet "5000"
+
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    # Första körningen: Systemet ser -4581W export från API:et, och startar 30s-timern
+    await guard.update(config.get("virtual_load_sensor"), "sensor.optimizer_light_peak_limit")
+    assert guard.is_solar_override is False
+
+    assert guard._solar_override_trigger_start is not None, (
+        "Timern startade inte! Spöksensorerna blockerar fortfarande logiken."
+    )
+
+    # Snabbspola tiden förbi 30 sekunder
+    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
+
+    # Andra körningen: Nu har tiden gått, override ska aktiveras!
+    await guard.update(config.get("virtual_load_sensor"), "sensor.optimizer_light_peak_limit")
+    assert guard.is_solar_override is True
