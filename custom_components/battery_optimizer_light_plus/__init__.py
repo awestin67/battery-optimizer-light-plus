@@ -347,15 +347,22 @@ class PeakGuard:
 
             # Kontrollera om batteriet rör på sig (för att kunna tvinga stopp vid HOLD)
             bat_is_moving = False
-            bat_entity = self.config.get(CONF_BATTERY_POWER_SENSOR)
-            if bat_entity:
-                b_state = self.hass.states.get(bat_entity)
-                if b_state and b_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
-                    try:
-                        if abs(float(b_state.state)) > 100:
-                            bat_is_moving = True
-                    except ValueError:
-                        pass
+            bat_val = None
+            if hasattr(self.battery, "get_battery_power"):
+                bat_val = await self.battery.get_battery_power()
+                if bat_val is not None and abs(bat_val) > 100:
+                    bat_is_moving = True
+
+            if bat_val is None:
+                bat_entity = self.config.get(CONF_BATTERY_POWER_SENSOR)
+                if bat_entity:
+                    b_state = self.hass.states.get(bat_entity)
+                    if b_state and b_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                        try:
+                            if abs(float(b_state.state)) > 100:
+                                bat_is_moving = True
+                        except ValueError:
+                            pass
             elif hasattr(self.battery, "get_battery_power"):
                 bat_val = await self.battery.get_battery_power()
                 if bat_val is not None and abs(bat_val) > 100:
@@ -441,15 +448,21 @@ class PeakGuard:
                 # cloud_action är redan hämtad ovan
 
                 # --- SOLAR OVERRIDE ---
-                current_bat_power = 0.0
-                bat_entity = self.config.get(CONF_BATTERY_POWER_SENSOR)
-                if bat_entity:
-                    b_state = self.hass.states.get(bat_entity)
-                    if b_state and b_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
-                        try:
-                            current_bat_power = float(b_state.state)
-                        except ValueError:
-                            pass
+                current_bat_power = None
+                if hasattr(self.battery, "get_battery_power"):
+                    current_bat_power = await self.battery.get_battery_power()
+
+                if current_bat_power is None:
+                    bat_entity = self.config.get(CONF_BATTERY_POWER_SENSOR)
+                    if bat_entity:
+                        b_state = self.hass.states.get(bat_entity)
+                        if b_state and b_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                            try:
+                                current_bat_power = float(b_state.state)
+                            except ValueError:
+                                pass
+                if current_bat_power is None:
+                    current_bat_power = 0.0
                 elif hasattr(self.battery, "get_battery_power"):
                     bat_val = await self.battery.get_battery_power()
                     if bat_val is not None:
@@ -457,20 +470,25 @@ class PeakGuard:
 
                 # --- EXTRA SÄKERHETSKONTROLL (Natt/Buffer Fill & Sensor Lag) ---
                 is_importing = False
-                grid_id = self.config.get(CONF_GRID_SENSOR)
-                if grid_id:
-                    g_state = self.hass.states.get(grid_id)
-                    if g_state and g_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
-                        try:
-                            g_val = float(g_state.state)
-                            if self.config.get(CONF_GRID_SENSOR_INVERT, False):
-                                g_val = -g_val
+                g_val = None
+                if hasattr(self.battery, "get_grid_power"):
+                    g_val = await self.battery.get_grid_power()
+                    if g_val is not None and g_val > 100:
+                        is_importing = True
 
-                            # Om importen är större än 100W är vi garanterat inte i ett rent solel-scenario.
-                            if g_val > 100:
-                                is_importing = True
-                        except ValueError:
-                            pass
+                if g_val is None:
+                    grid_id = self.config.get(CONF_GRID_SENSOR)
+                    if grid_id:
+                        g_state = self.hass.states.get(grid_id)
+                        if g_state and g_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                            try:
+                                g_val = float(g_state.state)
+                                if self.config.get(CONF_GRID_SENSOR_INVERT, False):
+                                    g_val = -g_val
+                                if g_val > 100:
+                                    is_importing = True
+                            except ValueError:
+                                pass
                 elif hasattr(self.battery, "get_grid_power"):
                     g_val = await self.battery.get_grid_power()
                     if g_val is not None and g_val > 100:

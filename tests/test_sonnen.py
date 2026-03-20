@@ -159,7 +159,8 @@ async def test_get_grid_power(sonnen_battery):
     """Testar att nätutbyte hämtas korrekt."""
     sonnen_battery.coordinator.data = {"GridFeedIn_W": 300}
     power = await sonnen_battery.get_grid_power()
-    assert power == 300.0
+    # Eftersom Sonnen har Positiv = Export, ska metoden returnera inverterat (Negativ = Export)
+    assert power == -300.0
 
     sonnen_battery.coordinator.data = {}
     assert await sonnen_battery.get_grid_power() is None

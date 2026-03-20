@@ -116,7 +116,8 @@ class SonnenBattery(BatteryApi):
     async def get_grid_power(self) -> float | None:
         data = self.coordinator.data
         if data and "GridFeedIn_W" in data:
-            return float(data["GridFeedIn_W"])
+            # Sonnen: Positiv = Export (Feed In). PeakGuard förväntar sig Positiv = Import.
+            return -float(data["GridFeedIn_W"])
         return None
 
     async def get_status_text(self) -> str | None:
