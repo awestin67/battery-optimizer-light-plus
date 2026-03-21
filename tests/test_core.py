@@ -676,6 +676,44 @@ async def test_peak_guard_sticky_solar_override_on_idle(mock_hass_instance, mock
     assert guard.is_solar_override is True
 
 @pytest.mark.asyncio
+async def test_peak_guard_forces_idle_on_solar_override_after_stale_idle(mock_hass_instance, mock_battery):
+    """Krav: När Solar Override aktiveras MÅSTE den skicka IDLE, även om den tror att IDLE redan var skickat."""
+    coordinator = MagicMock()
+    coordinator.data = {"action": "HOLD"}
+
+    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
+
+    # 1. Simulera att PeakGuard tidigare har skickat IDLE och sedan inte uppdaterat sin state
+    # (Händer när Coordinator skickar HOLD utan PeakGuards inblandning pga bat_power < 100)
+    guard._last_sent_command = "IDLE"
+
+    # Setup sensorer
+    limit_state = MagicMock()
+    limit_state.state = "5.0"
+    load_state = MagicMock()
+    load_state.state = "-500" # Hög export
+    soc_state = MagicMock()
+    soc_state.state = "50"
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        return None
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    # Trigga timern och snabbspola
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+    assert guard.is_solar_override is True
+    mock_battery.apply_action.assert_called_with("IDLE")
+
+@pytest.mark.asyncio
 async def test_peak_guard_handles_high_export_as_solar_override(mock_hass_instance, mock_battery):
     """Krav: Vid hög export ska Solar Override aktiveras (inte blockeras)."""
     coordinator = MagicMock()
@@ -832,8 +870,10 @@ async def test_peak_guard_fallback_to_ha_sensors(mock_hass_instance):
 
     # Skapa en klass som representerar Huawei/Generic (saknar get_virtual_load osv)
     class DummyGenericBattery:
-        async def apply_action(self, action, target_kw=0): pass
-        async def get_current_soc(self): return 50.0
+        async def apply_action(self, action, target_kw=0):
+            pass
+        async def get_current_soc(self):
+            return 50.0
         # get_virtual_load, get_grid_power och get_battery_power SAKNAS med flit.
 
     dummy_battery = DummyGenericBattery()

@@ -201,6 +201,7 @@ class PeakGuard:
             else:
                 # Återställ flaggor när toppen är över
                 self._capacity_exceeded_logged = False
+            self._last_sent_command = None
             self.coordinator.async_update_listeners()
 
     async def update(self, virtual_load_id, limit_id):
@@ -263,6 +264,7 @@ class PeakGuard:
                     if not self._in_maintenance:
                         _LOGGER.info(f"🔋 Maintenance mode detected ({val_display}). Pausing control.")
                         self._in_maintenance = True
+                        self._last_sent_command = None
                         self.coordinator.async_update_listeners()
 
                     self._maintenance_reason = val_display
@@ -284,6 +286,7 @@ class PeakGuard:
                     self._in_maintenance = False
                     self._maintenance_reason = None
                     self._maintenance_cooldown_start = None
+                    self._last_sent_command = None
                     self.coordinator.async_update_listeners()
 
             # 1. Hämta Gränsvärdet
@@ -533,6 +536,7 @@ class PeakGuard:
 
                 if self._is_solar_override != new_override:
                     self._is_solar_override = new_override
+                    self._last_sent_command = None  # Tvinga uppdatering till batteriet
                     self.coordinator.async_update_listeners()  # Uppdatera sensorer
 
                     if new_override:
