@@ -95,8 +95,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 UnitOfPower.WATT, SensorDeviceClass.POWER
             ),
             SonnenInternalSensor(
-                coordinator, sonnen_coord, "GridFeedIn_W", "Sonnen Nätutbyte",
-                UnitOfPower.WATT, SensorDeviceClass.POWER
+                coordinator, sonnen_coord, "GridFeedIn_W", "Sonnen Grid In/Out",
+                UnitOfPower.WATT, SensorDeviceClass.POWER, invert=True
             ),
             SonnenInternalSensor(
                 coordinator, sonnen_coord, "SystemStatus", "Sonnen System Status",
@@ -386,11 +386,22 @@ class HuaweiWrapperSensor(BatteryOptimizerSensorBase):
 
 class SonnenInternalSensor(CoordinatorEntity, SensorEntity):
     """Sensor som läser direkt från Sonnen-batteriets lokala API-polling."""
-    def __init__(self, main_coordinator, sonnen_coord, key, name, unit, device_class, entity_category=None):
+    def __init__(
+        self,
+        main_coordinator,
+        sonnen_coord,
+        key,
+        name,
+        unit,
+        device_class,
+        entity_category=None,
+        invert=False,
+    ):
         super().__init__(sonnen_coord)
         self.main_coordinator = main_coordinator
         self._key = key
         self._attr_name = name
+        self._invert = invert
         self._attr_unique_id = f"{main_coordinator.api_key}_sonnen_{key}"
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
@@ -412,7 +423,10 @@ class SonnenInternalSensor(CoordinatorEntity, SensorEntity):
             val = self.coordinator.data[self._key]
             try:
                 # Försök konvertera till siffror om det är mätvärden
-                return float(val) if '.' in str(val) or self._attr_device_class else val
+                parsed_val = float(val) if '.' in str(val) or self._attr_device_class else val
+                if self._invert and isinstance(parsed_val, (int, float)):
+                    return -parsed_val
+                return parsed_val
             except ValueError:
                 return val
         return None

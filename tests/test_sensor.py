@@ -171,6 +171,10 @@ def test_sonnen_internal_sensor():
     sensor4 = SonnenInternalSensor(main_coordinator, sonnen_coord, "BadFloat", "T", None, "power")
     assert sensor4.state == "NotAFloat"
 
+    # Testa inverterad sensor
+    sensor5 = SonnenInternalSensor(main_coordinator, sonnen_coord, "TestKey", "T", "W", "power", invert=True)
+    assert sensor5.state == -12.5
+
 def test_sonnen_virtual_load_sensor():
     main_coordinator = MagicMock(api_key="123")
     sonnen_coord = MagicMock(data={"Consumption_W": "2000", "Production_W": "500"})
