@@ -135,18 +135,18 @@ async def async_setup_entry(hass: HomeAssistant, entry):
 
     # --- REGISTRERA GLOBALA TJÄNSTER FÖR ANVÄNDAREN ---
     async def handle_force_charge(call: ServiceCall):
-        power = call.data.get("power", 0)
-        await coordinator.battery_api.force_charge(int(power))
+        power = float(call.data.get("power", 0))
+        await coordinator.battery_api.apply_action("CHARGE", power / 1000.0)
 
     async def handle_force_discharge(call: ServiceCall):
-        power = call.data.get("power", 0)
-        await coordinator.battery_api.force_discharge(int(power))
+        power = float(call.data.get("power", 0))
+        await coordinator.battery_api.apply_action("DISCHARGE", power / 1000.0)
 
     async def handle_hold(call: ServiceCall):
-        await coordinator.battery_api.hold()
+        await coordinator.battery_api.apply_action("HOLD")
 
     async def handle_auto(call: ServiceCall):
-        await coordinator.battery_api.set_auto_mode()
+        await coordinator.battery_api.apply_action("IDLE")
 
     hass.services.async_register(DOMAIN, "force_charge", handle_force_charge)
     hass.services.async_register(DOMAIN, "force_discharge", handle_force_discharge)
@@ -439,7 +439,7 @@ class PeakGuard:
                 power_to_discharge = min(max(0, need), max_inverter)
 
                 if power_to_discharge > 100:  # Skicka bara kommando om det finns ett verkligt behov
-                    await self.battery.force_discharge(int(power_to_discharge))
+                    await self.battery.apply_action("DISCHARGE", power_to_discharge / 1000.0)
                     self._last_sent_command = "PEAK"
 
             else:
@@ -564,7 +564,7 @@ class PeakGuard:
                             f"⚠️ CHARGE THROTTLED! Cloud: {target_w} W. Available: {available_w:.0f} W. "
                             f"Limit: {limit_w} W. Setting: {throttled_w} W."
                         )
-                        await self.battery.force_charge(throttled_w)
+                        await self.battery.apply_action("CHARGE", throttled_w / 1000.0)
                         self._last_sent_command = "CHARGE"
 
                 elif cloud_action == "DISCHARGE":
@@ -591,7 +591,7 @@ class PeakGuard:
                     if abs(bat_power) > 100:
                         if not self._hold_command_sent:
                             _LOGGER.debug("HOLD requested, but battery is active. Sending stop command.")
-                            await self.battery.hold()
+                            await self.battery.apply_action("HOLD")
                             self._hold_command_sent = True
                             self._last_sent_command = "HOLD"
                     else:
@@ -602,7 +602,7 @@ class PeakGuard:
 
                 elif cloud_action == "IDLE":
                     if self._last_sent_command != "IDLE":
-                        await self.battery.set_auto_mode()
+                        await self.battery.apply_action("IDLE")
                         self._last_sent_command = "IDLE"
 
                 else:

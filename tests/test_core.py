@@ -55,10 +55,6 @@ def mock_hass_instance():
 def mock_battery():
     """Mockerar den nya Battery Controller Factoryn."""
     mock = MagicMock()
-    mock.force_discharge = AsyncMock()
-    mock.force_charge = AsyncMock()
-    mock.hold = AsyncMock()
-    mock.set_auto_mode = AsyncMock()
     mock.get_current_soc = AsyncMock(return_value=None)
     mock.get_virtual_load = AsyncMock(return_value=None)
     mock.get_battery_power = AsyncMock(return_value=None)
@@ -123,7 +119,7 @@ async def test_peak_guard_triggers_discharge(mock_hass_instance, mock_battery):
 
     # Verifiera att scriptet anropades
     # Behovet är 7000 - 5000 = 2000 W
-    mock_battery.force_discharge.assert_called_with(2000)
+    mock_battery.apply_action.assert_called_with("DISCHARGE", 2.0)
 
     # Verifiera att _report_peak anropades med (current_load, limit_w)
     guard._report_peak.assert_called_with(7000.0, 5000.0)
@@ -163,7 +159,7 @@ async def test_peak_guard_respects_safe_limit(mock_hass_instance, mock_battery):
     await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
 
     # Eftersom molnet sa IDLE, ska vi anropa auto_mode
-    mock_battery.set_auto_mode.assert_called_once()
+    mock_battery.apply_action.assert_called_with("IDLE")
 
     # Verifiera att _report_peak_clear anropades med (current_load, limit_w)
     guard._report_peak_clear.assert_called_with(3000.0, 5000.0)
@@ -199,7 +195,7 @@ async def test_peak_guard_disabled_by_backend(mock_hass_instance, mock_battery):
     await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
 
     # Verify NO calls were made
-    mock_battery.force_discharge.assert_not_called()
+    mock_battery.apply_action.assert_not_called()
 
 def test_status_sensor():
     """Testar att status-sensorn visar rätt text (Disabled/Monitoring/Triggered)."""
@@ -586,10 +582,10 @@ async def test_peak_guard_stops_at_zero_soc(mock_hass_instance, mock_battery):
     await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
 
     # Verifiera att vi urladdar (7000 - 5000 = 2000)
-    mock_battery.force_discharge.assert_called_with(2000)
+    mock_battery.apply_action.assert_called_with("DISCHARGE", 2.0)
 
     # Återställ mock
-    mock_battery.force_discharge.reset_mock()
+    mock_battery.apply_action.reset_mock()
 
     # Fall 2: SoC = 0% -> Ska sluta tvinga urladdning
     soc_state.state = "0"
@@ -602,7 +598,7 @@ async def test_peak_guard_stops_at_zero_soc(mock_hass_instance, mock_battery):
 
     # Nu ska den skicka HOLD (force_charge 0) eftersom vi faller ur if-satsen (soc > 0 är False)
     # och hamnar i else-satsen där molnet säger HOLD.
-    mock_battery.hold.assert_called_once()
+    mock_battery.apply_action.assert_called_with("HOLD")
 
 @pytest.mark.asyncio
 async def test_peak_guard_throttles_charge(mock_hass_instance, mock_battery):
@@ -639,7 +635,7 @@ async def test_peak_guard_throttles_charge(mock_hass_instance, mock_battery):
     # Available = 5000 - 4000 - 200 (marginal) = 800W.
     # Target = 3000W.
     # Should throttle to 800W.
-    mock_battery.force_charge.assert_called_with(800)
+    mock_battery.apply_action.assert_called_with("CHARGE", 0.8)
 
 @pytest.mark.asyncio
 async def test_peak_guard_sticky_solar_override_on_idle(mock_hass_instance, mock_battery):
@@ -836,10 +832,7 @@ async def test_peak_guard_fallback_to_ha_sensors(mock_hass_instance):
 
     # Skapa en klass som representerar Huawei/Generic (saknar get_virtual_load osv)
     class DummyGenericBattery:
-        async def force_discharge(self, w): pass
-        async def force_charge(self, w): pass
-        async def hold(self): pass
-        async def set_auto_mode(self): pass
+        async def apply_action(self, action, target_kw=0): pass
         async def get_current_soc(self): return 50.0
         # get_virtual_load, get_grid_power och get_battery_power SAKNAS med flit.
 
@@ -990,10 +983,7 @@ async def test_lifecycle_and_services(mock_hass_instance):
         mock_coord.async_config_entry_first_refresh = AsyncMock()
         mock_coord.battery_api = MagicMock()
         mock_coord.battery_api.coordinator = MagicMock()
-        mock_coord.battery_api.force_charge = AsyncMock()
-        mock_coord.battery_api.force_discharge = AsyncMock()
-        mock_coord.battery_api.hold = AsyncMock()
-        mock_coord.battery_api.set_auto_mode = AsyncMock()
+        mock_coord.battery_api.apply_action = AsyncMock()
         mock_guard = mock_guard_class.return_value
         mock_guard.update = AsyncMock()
 
@@ -1015,16 +1005,16 @@ async def test_lifecycle_and_services(mock_hass_instance):
         services = {call[0][1]: call[0][2] for call in mock_hass_instance.services.async_register.call_args_list}
 
         await services["force_charge"](MagicMock(data={"power": 1000}))
-        mock_coord.battery_api.force_charge.assert_called_with(1000)
+        mock_coord.battery_api.apply_action.assert_called_with("CHARGE", 1.0)
 
         await services["force_discharge"](MagicMock(data={"power": 1500}))
-        mock_coord.battery_api.force_discharge.assert_called_with(1500)
+        mock_coord.battery_api.apply_action.assert_called_with("DISCHARGE", 1.5)
 
         await services["hold"](MagicMock(data={}))
-        mock_coord.battery_api.hold.assert_called_once()
+        mock_coord.battery_api.apply_action.assert_called_with("HOLD")
 
         await services["auto"](MagicMock(data={}))
-        mock_coord.battery_api.set_auto_mode.assert_called_once()
+        mock_coord.battery_api.apply_action.assert_called_with("IDLE")
 
         await services["run_peak_guard"](MagicMock(data={"virtual_load_entity": "v", "limit_entity": "l"}))
         mock_guard.update.assert_called_with("v", "l")
