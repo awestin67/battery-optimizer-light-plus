@@ -290,12 +290,24 @@ class PeakGuard:
                     self.coordinator.async_update_listeners()
 
             # 1. Hämta Gränsvärdet
-            limit_state = self.hass.states.get(limit_id)
-            if not limit_state or limit_state.state in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
-                return
+            limit_w = None
+            if self.coordinator.data and "peak_power_kw" in self.coordinator.data:
+                try:
+                    raw_limit = float(self.coordinator.data["peak_power_kw"])
+                    limit_w = raw_limit * 1000.0 if raw_limit < 100 else raw_limit
+                except (ValueError, TypeError):
+                    pass
 
-            raw_limit = float(limit_state.state)
-            limit_w = raw_limit * 1000 if raw_limit < 100 else raw_limit
+            if limit_w is None:
+                limit_state = self.hass.states.get(limit_id)
+                if not limit_state or limit_state.state in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                    _LOGGER.debug(f"Peak limit sensor {limit_id} is unavailable. Aborting.")
+                    return
+                try:
+                    raw_limit = float(limit_state.state)
+                    limit_w = raw_limit * 1000.0 if raw_limit < 100 else raw_limit
+                except (ValueError, TypeError):
+                    return
 
             # Skydd: Om gränsvärdet är orimligt lågt (t.ex. 0), avbryt.
             if limit_w < 100:
@@ -312,6 +324,7 @@ class PeakGuard:
                     # Använd manuellt vald sensor
                     load_state = self.hass.states.get(virtual_load_id)
                     if not load_state or load_state.state in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                        _LOGGER.debug(f"Virtual load sensor {virtual_load_id} is unavailable. Aborting.")
                         return
                     current_load = float(load_state.state)
                 else:
@@ -337,6 +350,7 @@ class PeakGuard:
                         current_load = grid_val + bat_val
 
             if current_load is None:
+                _LOGGER.debug("Could not calculate current_load. Aborting.")
                 return
 
             # --- TYST FILTER ---
