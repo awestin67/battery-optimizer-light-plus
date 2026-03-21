@@ -93,6 +93,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 UnitOfPower.WATT, SensorDeviceClass.POWER
             ),
             SonnenInternalSensor(
+                coordinator, sonnen_coord, "GridFeedIn_W", "Sonnen Nätutbyte",
+                UnitOfPower.WATT, SensorDeviceClass.POWER
+            ),
+            SonnenInternalSensor(
                 coordinator, sonnen_coord, "SystemStatus", "Sonnen System Status",
                 None, None, EntityCategory.DIAGNOSTIC
             ),
