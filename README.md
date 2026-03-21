@@ -85,3 +85,4 @@ När systemet är igång skapas en mängd sensorer för att hjälpa dig övervak
 * 🛡️ **`sensor.optimizer_light_peakguard_status`**: Aktuell status för den lokala effektvakten (t.ex. `Monitoring`, `Triggered`, `Paused`, `Solar Override Active`).
 * 🛑 **`sensor.optimizer_light_peak_limit`**: Den effektgräns (i Watt) som effektvakten just nu försvarar.
 * 🏠 **`sensor.optimizer_light_virtual_load`**: Husets beräknade nettolast i realtid (W).
+* 🔌 **`sensor.sonnen_natutbyte`** *(Endast Sonnen)*: Visar det faktiska nätutbytet (Grid In/Out) i realtid (W).
