@@ -51,10 +51,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
         BatteryLightBufferSensor(coordinator),
         BatteryLightPeakSensor(coordinator),
         BatteryLightStatusSensor(coordinator),
-        BatteryLightVirtualLoadSensor(coordinator),
         BatteryLightChargeTargetSensor(coordinator),
         BatteryLightDischargeTargetSensor(coordinator),
     ]
+
+    if entry.data.get(CONF_BATTERY_TYPE) != BATTERY_TYPE_SONNEN:
+        entities.append(BatteryLightVirtualLoadSensor(coordinator))
 
     if entry.data.get(CONF_BATTERY_TYPE) == BATTERY_TYPE_HUAWEI:
         working_mode_ent = coordinator.config.get("working_mode_entity")
@@ -81,7 +83,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 PERCENTAGE, SensorDeviceClass.BATTERY
             ),
             SonnenInternalSensor(
-                coordinator, sonnen_coord, "Pac_total_W", "Sonnen Effekt Totalt",
+                coordinator, sonnen_coord, "Pac_total_W", "Sonnen Battery In/Out",
                 UnitOfPower.WATT, SensorDeviceClass.POWER
             ),
             SonnenInternalSensor(
