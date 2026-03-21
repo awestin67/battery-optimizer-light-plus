@@ -472,8 +472,9 @@ class PeakGuard:
                 g_val = None
                 if hasattr(self.battery, "get_grid_power"):
                     g_val = await self.battery.get_grid_power()
-                    if g_val is not None and g_val > 100:
+                    if g_val is not None and g_val > 200:
                         is_importing = True
+                        _LOGGER.debug(f"Grid importing detected (API): {g_val} W. Blocking Solar Override.")
 
                 if g_val is None:
                     grid_id = self.config.get(CONF_GRID_SENSOR)
@@ -484,19 +485,19 @@ class PeakGuard:
                                 g_val = float(g_state.state)
                                 if self.config.get(CONF_GRID_SENSOR_INVERT, False):
                                     g_val = -g_val
-                                if g_val > 100:
+                                if g_val > 200:
                                     is_importing = True
+                                    _LOGGER.debug(
+                                        f"Grid importing detected (Sensor): {g_val} W. "
+                                        "Blocking Solar Override."
+                                    )
                             except ValueError:
                                 pass
 
                 # Beräkna önskat läge baserat på last (oberoende av moln-status)
                 wants_override = self._is_solar_override
 
-                if current_bat_power > BATTERY_DISCHARGE_THRESHOLD_W:
-                    # Om batteriet laddar ur (>200W) är det batteriet som skapar exporten, inte solen.
-                    wants_override = False
-                    self._solar_override_trigger_start = None
-                elif current_load < SOLAR_TRIGGER_W and not is_importing:
+                if current_load < SOLAR_TRIGGER_W and not is_importing:
                     if not self._is_solar_override:
                         # Starta timer för att kräva att värdet hålls i 30 sekunder (filtrerar bort sensor-lag)
                         if self._solar_override_trigger_start is None:
@@ -511,11 +512,18 @@ class PeakGuard:
                         wants_override = True
                 elif current_load > SOLAR_RESET_W or is_importing:
                     wants_override = False
+                    if self._solar_override_trigger_start is not None:
+                        _LOGGER.debug(
+                            f"🛑 Solar Override timer reset. Load: {current_load} W, "
+                            f"Importing: {is_importing}"
+                        )
                     self._solar_override_trigger_start = None
                 else:
                     # Inom hysteres-zonen (-400 till -100)
                     if not self._is_solar_override:
                         # Återställ timer om vi studsar upp över trigg-gränsen innan 30 sekunder har gått
+                        if self._solar_override_trigger_start is not None:
+                            _LOGGER.debug(f"🛑 Solar Override timer reset (Hysteresis bounce). Load: {current_load} W")
                         self._solar_override_trigger_start = None
 
                 new_override = False
@@ -594,7 +602,10 @@ class PeakGuard:
 
                     if abs(bat_power) > 100:
                         if not self._hold_command_sent:
-                            _LOGGER.debug("HOLD requested, but battery is active. Sending stop command.")
+                            _LOGGER.info(
+                                f"⚙️ Executing HOLD command. Battery is active ({bat_power} W), "
+                                "enforcing pause."
+                            )
                             await self.battery.apply_action("HOLD")
                             self._hold_command_sent = True
                             self._last_sent_command = "HOLD"
@@ -606,6 +617,10 @@ class PeakGuard:
 
                 elif cloud_action == "IDLE":
                     if self._last_sent_command != "IDLE":
+                        _LOGGER.info(
+                            "⚙️ Executing IDLE (Auto) command to battery. "
+                            f"(CloudAction={cloud_action}, SolarOverride={self._is_solar_override})"
+                        )
                         await self.battery.apply_action("IDLE")
                         self._last_sent_command = "IDLE"
 
