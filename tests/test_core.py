@@ -197,6 +197,46 @@ async def test_peak_guard_disabled_by_backend(mock_hass_instance, mock_battery):
     # Verify NO calls were made
     mock_battery.apply_action.assert_not_called()
 
+@pytest.mark.asyncio
+async def test_solar_override_works_when_peak_shaving_disabled(mock_hass_instance, mock_battery):
+    """Krav: Solar Override ska fortfarande övervakas och fungera även om Peak Shaving inaktiverats från molnet."""
+    coordinator = MagicMock()
+    # Backend säger att peak shaving är Off (is_active blir False)
+    coordinator.data = {"action": "HOLD", "is_peak_shaving_active": False, "peakguard_status": "Off"}
+
+    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
+
+    # Setup sensorer för stor solexport (-500W)
+    limit_state = MagicMock()
+    limit_state.state = "5.0"
+    load_state = MagicMock()
+    load_state.state = "-500"
+    soc_state = MagicMock()
+    soc_state.state = "50"
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        return None
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    # Kör update 1 - timern ska starta trots att Peak Shaving är inaktivt
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard.is_solar_override is False
+    assert guard._solar_override_trigger_start is not None
+
+    # Spola fram tiden och kör update 2
+    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+    # Override måste bli True, och skicka kommandot IDLE
+    assert guard.is_solar_override is True
+    mock_battery.apply_action.assert_called_with("IDLE")
+
 def test_status_sensor():
     """Testar att status-sensorn visar rätt text (Disabled/Monitoring/Triggered)."""
     coordinator = MagicMock()
