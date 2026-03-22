@@ -171,6 +171,7 @@ class PeakGuard:
         self._capacity_exceeded_logged = False  # Flagga för att logga överlast en gång
         self._is_solar_override = False  # Flagga för sol-override
         self._solar_override_trigger_start = None  # Tidsstämpel för fördröjning
+        self._solar_override_clear_start = None  # Tidsstämpel för deaktiveringsfördröjning
         self._in_maintenance = False  # Flagga för underhållsläge
         self._maintenance_reason = None  # Orsak till underhållsläge
         self._maintenance_cooldown_start = None # Tidsstämpel för när underhållssignalen försvann
@@ -512,6 +513,7 @@ class PeakGuard:
                 wants_override = self._is_solar_override
 
                 if current_load < SOLAR_TRIGGER_W and not is_importing:
+                    self._solar_override_clear_start = None
                     if not self._is_solar_override:
                         # Starta timer för att kräva att värdet hålls i 30 sekunder (filtrerar bort sensor-lag)
                         if self._solar_override_trigger_start is None:
@@ -525,13 +527,24 @@ class PeakGuard:
                     else:
                         wants_override = True
                 elif current_load > SOLAR_RESET_W or is_importing:
-                    wants_override = False
                     if self._solar_override_trigger_start is not None:
                         _LOGGER.debug(
                             f"🛑 Solar Override timer reset. Load: {current_load} W, "
                             f"Importing: {is_importing}"
                         )
                     self._solar_override_trigger_start = None
+
+                    if self._is_solar_override:
+                        if self._solar_override_clear_start is None:
+                            self._solar_override_clear_start = dt_util.utcnow()
+                            _LOGGER.debug(
+                                f"🛑 Solar Override stop condition met (Load: {current_load} W). "
+                                "Waiting 3 minutes to prevent flapping."
+                            )
+                        elif dt_util.utcnow() - self._solar_override_clear_start >= timedelta(minutes=3):
+                            wants_override = False
+                    else:
+                        wants_override = False
                 else:
                     # Inom hysteres-zonen (-400 till -100)
                     if not self._is_solar_override:
@@ -539,6 +552,14 @@ class PeakGuard:
                         if self._solar_override_trigger_start is not None:
                             _LOGGER.debug(f"🛑 Solar Override timer reset (Hysteresis bounce). Load: {current_load} W")
                         self._solar_override_trigger_start = None
+                    else:
+                        # Återställ clear-timer om vi studsar ner i hysteres-zonen
+                        if self._solar_override_clear_start is not None:
+                            _LOGGER.debug(
+                                "☀️ Solar Override clear timer reset (Hysteresis bounce). "
+                                f"Load: {current_load} W"
+                            )
+                            self._solar_override_clear_start = None
 
                 new_override = False
 

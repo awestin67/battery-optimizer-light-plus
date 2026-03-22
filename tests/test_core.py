@@ -505,6 +505,59 @@ async def test_peak_guard_solar_override_hysteresis(mock_hass_instance, mock_bat
 
     # 3. Gå över reset-gränsen (t.ex. -100) för att stänga av
     await set_load(-50)
+    # På grund av den nya "fladder"-spärren ska den ligga kvar i 3 minuter
+    assert guard.is_solar_override is True
+    assert guard._solar_override_clear_start is not None
+
+    guard._solar_override_clear_start -= datetime.timedelta(minutes=3, seconds=5)
+    await set_load(-50)
+    assert guard.is_solar_override is False
+
+@pytest.mark.asyncio
+async def test_peak_guard_solar_override_clear_delay(mock_hass_instance, mock_battery):
+    """Krav: Solar Override ska ha en 3-minuters fördröjning vid avstängning för att undvika fladder."""
+    coordinator = MagicMock()
+    coordinator.data = {"action": "HOLD"}
+
+    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
+
+    # 1. Trigga Override (Last < -400)
+    limit_state = MagicMock()
+    limit_state.state = "5.0"
+    load_state = MagicMock()
+    load_state.state = "-500"
+    soc_state = MagicMock()
+    soc_state.state = "50"
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        return None
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+    assert guard.is_solar_override is True
+
+    # 2. Simulera en storförbrukare (Last > -100)
+    load_state.state = "1000"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+    # 3. Direkt avstängning ska INTE ske!
+    assert guard.is_solar_override is True
+    assert guard._solar_override_clear_start is not None
+
+    # 4. Spola fram tiden > 3 minuter
+    guard._solar_override_clear_start -= datetime.timedelta(minutes=3, seconds=5)
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+    # 5. Nu ska den stängas av
     assert guard.is_solar_override is False
 
 @pytest.mark.asyncio
