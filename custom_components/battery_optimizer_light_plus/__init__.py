@@ -68,6 +68,7 @@ async def async_setup_entry(hass: HomeAssistant, entry):
     version = str(integration.version)
 
     coordinator = BatteryOptimizerLightCoordinator(hass, config, version)
+    coordinator.config = config
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator

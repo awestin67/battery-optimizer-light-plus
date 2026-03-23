@@ -99,7 +99,14 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     data = await response.json()
 
                     action = data.get("action", "IDLE")
-                    target_kw = data.get("target_power_kw", 0.0)
+
+                    try:
+                        target_kw = float(data.get("target_power_kw", 0.0))
+                        # Om backend skickar värdet i Watt istället för kW (t.ex. 1800)
+                        if target_kw > 100:
+                            target_kw = target_kw / 1000.0
+                    except (ValueError, TypeError):
+                        target_kw = 0.0
 
                     # Låt batterihanteraren verkställa beslutet, om inte PeakGuard har tagit över lokalt
                     if not is_solar_override and not (hasattr(self, "peak_guard") and self.peak_guard.is_active):
