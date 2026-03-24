@@ -86,4 +86,5 @@ När systemet är igång skapas en mängd sensorer för att hjälpa dig övervak
 * 🛑 **`sensor.optimizer_light_peak_limit`**: Den effektgräns (i Watt) som effektvakten just nu försvarar.
 * 🏠 **`sensor.optimizer_light_virtual_load`**: Husets beräknade nettolast i realtid (W).
 * 🔌 **`sensor.sonnen_grid_in_out`** *(Endast Sonnen)*: Visar det faktiska nätutbytet (Grid In/Out) i realtid (W). **Plus (+)** = Importerar (köper), **Minus (-)** = Exporterar (säljer).
-* � **`sensor.sonnen_battery_in_out`** *(Endast Sonnen)*: Batteriets effekt i realtid (W). **Minus (-)** = Laddar, **Plus (+)** = Laddar ur.
+* 🔋 **`sensor.*_battery_in_out`** *(Sonnen & Huawei)*: Batteriets effekt i realtid (W). **Minus (-)** = Laddar, **Plus (+)** = Laddar ur.
+* 📊 **`sensor.*_soc`** *(Sonnen & Huawei)*: Batteriets nuvarande laddningsnivå (%).

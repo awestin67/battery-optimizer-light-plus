@@ -32,6 +32,7 @@ from homeassistant.helpers.event import async_track_state_change_event # type: i
 from homeassistant.core import callback # type: ignore
 from .const import (
     DOMAIN,
+    CONF_SOC_SENSOR,
     CONF_GRID_SENSOR,
     CONF_BATTERY_POWER_SENSOR,
     CONF_VIRTUAL_LOAD_SENSOR,
@@ -46,7 +47,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     entities = [
         BatteryLightActionSensor(coordinator),
-        BatteryLightPowerSensor(coordinator),
         BatteryLightReasonSensor(coordinator),
         BatteryLightBufferSensor(coordinator),
         BatteryLightPeakSensor(coordinator),
@@ -71,7 +71,28 @@ async def async_setup_entry(hass, entry, async_add_entities):
         if status_ent:
             entities.append(
                 HuaweiWrapperSensor(
-                    coordinator, status_ent, "Huawei Device Status", "huawei_device_status", "mdi:information-outline"
+                    coordinator, status_ent, "Huawei Device Status", "huawei_device_status", "mdi:information-outline",
+                    entity_category=EntityCategory.DIAGNOSTIC
+                )
+            )
+
+        bat_ent = coordinator.config.get(CONF_BATTERY_POWER_SENSOR)
+        if bat_ent:
+            entities.append(
+                HuaweiWrapperSensor(
+                    coordinator, bat_ent, "Huawei Solar Battery In/Out",
+                    "huawei_battery_in_out", "mdi:battery-sync",
+                    device_class=SensorDeviceClass.POWER,
+                    state_class=SensorStateClass.MEASUREMENT, unit=UnitOfPower.WATT
+                )
+            )
+
+        soc_ent = coordinator.config.get(CONF_SOC_SENSOR)
+        if soc_ent:
+            entities.append(
+                HuaweiWrapperSensor(
+                    coordinator, soc_ent, "Huawei Solar SoC", "huawei_soc", "mdi:battery-50",
+                    device_class=SensorDeviceClass.BATTERY, state_class=SensorStateClass.MEASUREMENT, unit=PERCENTAGE
                 )
             )
 
@@ -136,23 +157,6 @@ class BatteryLightActionSensor(BatteryOptimizerSensorBase):
                 return "IDLE"
         return raw_action
 
-class BatteryLightPowerSensor(BatteryOptimizerSensorBase):
-    def __init__(self, coordinator):
-        super().__init__(coordinator)
-        self._attr_name = "Optimizer Light Power"
-        self._attr_unique_id = f"{coordinator.api_key}_light_power"
-        self._attr_unit_of_measurement = "kW"
-        self._attr_icon = "mdi:flash"
-
-        # Talar om för HA att det är effekt -> Ger rätt grafer och färger
-        self._attr_device_class = SensorDeviceClass.POWER
-        # Talar om att det är ett mätvärde -> Sparar statistik för långtidshistorik
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-
-    @property
-    def state(self):
-        return (self.coordinator.data or {}).get("target_power_kw", 0.0)
-
 class BatteryLightReasonSensor(BatteryOptimizerSensorBase):
     def __init__(self, coordinator):
         super().__init__(coordinator)
@@ -188,8 +192,11 @@ class BatteryLightBufferSensor(BatteryOptimizerSensorBase):
 
     @property
     def state(self):
-        # Hämtar 'min_soc_buffer' från backend JSON. Default 0.0 om det saknas.
-        return (self.coordinator.data or {}).get("min_soc_buffer", 0.0)
+        val = (self.coordinator.data or {}).get("min_soc_buffer", 0.0)
+        try:
+            return round(float(val), 1)
+        except (ValueError, TypeError):
+            return val
 
 class BatteryLightPeakSensor(BatteryOptimizerSensorBase):
     def __init__(self, coordinator):
@@ -202,8 +209,11 @@ class BatteryLightPeakSensor(BatteryOptimizerSensorBase):
 
     @property
     def state(self):
-        # Hämta värdet från backend. Default 12.0 (högt) om det saknas för att inte trigga i onödan.
-        return (self.coordinator.data or {}).get("peak_power_kw", 12.0)
+        val = (self.coordinator.data or {}).get("peak_power_kw", 12.0)
+        try:
+            return round(float(val), 1)
+        except (ValueError, TypeError):
+            return val
 
 class BatteryLightStatusSensor(BatteryOptimizerSensorBase):
     def __init__(self, coordinator):
@@ -300,7 +310,7 @@ class BatteryLightVirtualLoadSensor(SensorEntity):
             state = hass.states.get(virtual_load_id)
             if state and state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
                 try:
-                    return float(state.state)
+                    return round(float(state.state), 1)
                 except ValueError:
                     pass
             return None
@@ -332,7 +342,7 @@ class BatteryLightVirtualLoadSensor(SensorEntity):
         if invert_grid:
             grid_val = -grid_val
 
-        return float(grid_val + bat_val)
+        return round(grid_val + bat_val, 1)
 
 class BatteryLightChargeTargetSensor(BatteryOptimizerSensorBase):
     """Sensor som visar önskad laddningseffekt i Watt (för styrning)."""
@@ -351,17 +361,28 @@ class BatteryLightChargeTargetSensor(BatteryOptimizerSensorBase):
         action = data.get("action", "IDLE")
         if action == "CHARGE":
             kw = data.get("target_power_kw", 0.0)
-            return int(kw * 1000)
+            return int(round(kw * 1000))
         return 0
 
 class HuaweiWrapperSensor(BatteryOptimizerSensorBase):
     """Wrapper för att visa Huawei-specifika entiteter snyggt integrerat."""
-    def __init__(self, coordinator, entity_id, name, id_suffix, icon):
+    def __init__(
+        self, coordinator, entity_id, name, id_suffix, icon,
+        entity_category=None, device_class=None, state_class=None, unit=None
+    ):
         super().__init__(coordinator)
         self._source_entity = entity_id
         self._attr_name = name
         self._attr_unique_id = f"{coordinator.api_key}_{id_suffix}"
         self._attr_icon = icon
+        if entity_category:
+            self._attr_entity_category = entity_category
+        if device_class:
+            self._attr_device_class = device_class
+        if state_class:
+            self._attr_state_class = state_class
+        if unit:
+            self._attr_native_unit_of_measurement = unit
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -381,6 +402,11 @@ class HuaweiWrapperSensor(BatteryOptimizerSensorBase):
         if self._source_entity:
             state_obj = self.coordinator.hass.states.get(self._source_entity)
             if state_obj and state_obj.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                if getattr(self, "_attr_state_class", None) == SensorStateClass.MEASUREMENT:
+                    try:
+                        return round(float(state_obj.state), 1)
+                    except ValueError:
+                        pass
                 return state_obj.state
         return None
 
@@ -424,6 +450,8 @@ class SonnenInternalSensor(CoordinatorEntity, SensorEntity):
             try:
                 # Försök konvertera till siffror om det är mätvärden
                 parsed_val = float(val) if '.' in str(val) or self._attr_device_class else val
+                if isinstance(parsed_val, float):
+                    parsed_val = round(parsed_val, 1)
                 if self._invert and isinstance(parsed_val, (int, float)):
                     return -parsed_val
                 return parsed_val
@@ -454,7 +482,7 @@ class SonnenVirtualLoadSensor(CoordinatorEntity, SensorEntity):
         data = self.coordinator.data
         if data and "Consumption_W" in data and "Production_W" in data:
             try:
-                return float(data["Consumption_W"]) - float(data["Production_W"])
+                return round(float(data["Consumption_W"]) - float(data["Production_W"]), 1)
             except ValueError:
                 pass
         return None
@@ -476,5 +504,5 @@ class BatteryLightDischargeTargetSensor(BatteryOptimizerSensorBase):
         action = data.get("action", "IDLE")
         if action == "DISCHARGE":
             kw = data.get("target_power_kw", 0.0)
-            return int(kw * 1000)
+            return int(round(kw * 1000))
         return 0

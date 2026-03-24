@@ -19,7 +19,6 @@ from unittest.mock import MagicMock, patch
 from custom_components.battery_optimizer_light_plus.sensor import (
     async_setup_entry,
     BatteryLightActionSensor,
-    BatteryLightPowerSensor,
     BatteryLightReasonSensor,
     BatteryLightBufferSensor,
     BatteryLightPeakSensor,
@@ -47,19 +46,24 @@ async def test_sensor_setup_entry_generic():
 
     await async_setup_entry(hass, entry, async_add_entities)
     async_add_entities.assert_called_once()
-    assert len(async_add_entities.call_args[0][0]) == 9
+    assert len(async_add_entities.call_args[0][0]) == 8
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_huawei():
     hass = MagicMock()
     entry = MagicMock(data={CONF_BATTERY_TYPE: BATTERY_TYPE_HUAWEI})
     coordinator = MagicMock()
-    coordinator.config = {"working_mode_entity": "s.mode", "device_status_entity": "s.status"}
+    coordinator.config = {
+        "working_mode_entity": "s.mode",
+        "device_status_entity": "s.status",
+        "battery_power_sensor": "s.bat",
+        "soc_sensor": "s.soc"
+    }
     hass.data = {DOMAIN: {entry.entry_id: coordinator}}
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 11
+    assert len(async_add_entities.call_args[0][0]) == 12
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_sonnen():
@@ -71,7 +75,7 @@ async def test_sensor_setup_entry_sonnen():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 15
+    assert len(async_add_entities.call_args[0][0]) == 14
 
 def test_basic_sensors():
     coordinator = MagicMock()
@@ -92,10 +96,6 @@ def test_basic_sensors():
     coordinator.data["action"] = "HOLD"
     assert action_sensor.state == "IDLE"
     coordinator.peak_guard.is_solar_override = False
-
-    power_sensor = BatteryLightPowerSensor(coordinator)
-    assert power_sensor.state == 5.5
-    assert power_sensor.device_info["identifiers"] == {(DOMAIN, "12345")}
 
     reason_sensor = BatteryLightReasonSensor(coordinator)
     assert reason_sensor.state == "Cheap price"
@@ -119,7 +119,6 @@ def test_basic_sensors():
     # Testa felhantering när data är None
     coordinator.data = None
     assert BatteryLightActionSensor(coordinator).state == "UNKNOWN"
-    assert BatteryLightPowerSensor(coordinator).state == 0.0
     assert BatteryLightBufferSensor(coordinator).state == 0.0
     assert BatteryLightPeakSensor(coordinator).state == 12.0
     assert BatteryLightChargeTargetSensor(coordinator).state == 0

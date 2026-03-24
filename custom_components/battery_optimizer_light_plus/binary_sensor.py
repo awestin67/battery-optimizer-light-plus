@@ -39,6 +39,7 @@ class HuaweiConnectionSensor(BinarySensorEntity):
         self._attr_name = "Huawei Solar Connection"
         self._attr_unique_id = f"{coordinator.api_key}_huawei_connection"
         self._attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._soc_entity = coordinator.config.get("soc_sensor")
 
     @property
