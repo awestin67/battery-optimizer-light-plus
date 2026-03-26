@@ -136,3 +136,21 @@ async def test_options_flow():
 
     result = await flow.async_step_init()
     assert result["type"] == "form"
+
+@pytest.mark.asyncio
+async def test_options_flow_with_none_values():
+    """Testar att formuläret inte kraschar när valfria sensorer sparats som None."""
+    config_entry = MagicMock()
+    config_entry.data = {
+        CONF_BATTERY_TYPE: BATTERY_TYPE_GENERIC,
+        "api_url": "http://test",
+        "virtual_load_sensor": None,
+        "battery_status_sensor": None
+    }
+    flow = BatteryOptimizerLightOptionsFlow()
+    flow.config_entry = config_entry
+    flow.hass = MagicMock()
+
+    result = await flow.async_step_init()
+    assert result["type"] == "form"
+    assert result["step_id"] == "init"
