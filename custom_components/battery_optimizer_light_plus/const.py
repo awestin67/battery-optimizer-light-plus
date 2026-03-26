@@ -46,6 +46,7 @@ CONF_SOC_SENSOR = "soc_sensor"
 CONF_GRID_SENSOR = "grid_sensor"    # Mätare för husets totala förbrukning (Watt)
 CONF_GRID_SENSOR_INVERT = "grid_sensor_invert" # Om mätaren visar positivt vid export
 CONF_BATTERY_POWER_SENSOR = "battery_power_sensor" # Batteriets nuvarande effekt (Watt)
+CONF_BATTERY_SENSOR_INVERT = "battery_sensor_invert" # Om batteriet visar positivt vid laddning
 CONF_BATTERY_STATUS_SENSOR = "battery_status_sensor" # Sensor för driftstatus (t.ex. Operating Mode)
 CONF_BATTERY_STATUS_KEYWORDS = "battery_status_keywords" # Nyckelord för underhållsläge
 CONF_VIRTUAL_LOAD_SENSOR = "virtual_load_sensor" # Virtuell last (Husets netto utan batteri)

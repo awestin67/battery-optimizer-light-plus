@@ -461,6 +461,45 @@ async def test_peak_guard_calculates_load_with_inverted_grid(mock_hass_instance,
     # Om inverteringen fungerade är lasten -5000. -5000 < -200 -> Solar Override.
     assert guard.is_solar_override is True
 
+@pytest.mark.asyncio
+async def test_peak_guard_calculates_load_with_inverted_battery(mock_hass_instance, mock_battery):
+    """Krav: Om battery_sensor_invert är True ska batterivärdet negeras vid beräkning."""
+    config = MOCK_CONFIG.copy()
+    config["battery_sensor_invert"] = True
+    config["virtual_load_sensor"] = None
+
+    coordinator = MagicMock()
+    coordinator.data = {"action": "HOLD"}
+
+    guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+
+    limit_state = MagicMock()
+    limit_state.state = "5.0"
+
+    # Grid: 0 W
+    grid_state = MagicMock()
+    grid_state.state = "0"
+
+    # Batteri: -1500 W (Vilket pga invert=True betyder 1500 W Urladdning)
+    bat_state = MagicMock()
+    bat_state.state = "-1500"
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.grid":
+            return grid_state
+        if entity_id == "sensor.bat_power":
+            return bat_state
+        return None
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    await guard.update(None, "sensor.optimizer_light_peak_limit")
+
+    # Lasten beräknas till 0 + (-(-1500)) = 1500.
+    # 1500 > -400, så Solar Override ska INTE aktiveras.
+    assert guard.is_solar_override is False
+
 def test_virtual_load_sensor_calculation():
     """Testar att den virtuella lastsensorn räknar rätt."""
     coordinator = MagicMock()
@@ -598,6 +637,49 @@ async def test_peak_guard_solar_override_clear_delay(mock_hass_instance, mock_ba
     await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
 
     # 5. Nu ska den stängas av
+    assert guard.is_solar_override is False
+
+@pytest.mark.asyncio
+async def test_peak_guard_bypasses_delay_when_discharging(mock_hass_instance, mock_battery):
+    """Krav: Om batteriet börjar ladda ur under Solar Override, avbryt direkt för att skydda SoC."""
+    coordinator = MagicMock()
+    coordinator.data = {"action": "HOLD"}
+
+    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
+
+    # 1. Trigga Override (Last < -400)
+    limit_state = MagicMock()
+    limit_state.state = "5.0"
+    load_state = MagicMock()
+    load_state.state = "-500"
+    soc_state = MagicMock()
+    soc_state.state = "50"
+    bat_state = MagicMock()
+    bat_state.state = "0"
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        if entity_id == "sensor.bat_power":
+            return bat_state
+        return None
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard.is_solar_override is True
+
+    # 2. Simulera att moln går i moln och batteriet börjar ladda ur (t.ex. 300W urladdning)
+    load_state.state = "500"
+    bat_state.state = "300"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+    # 3. Direkt avstängning SKA ske, utan 3 minuters fördröjning!
     assert guard.is_solar_override is False
 
 @pytest.mark.asyncio

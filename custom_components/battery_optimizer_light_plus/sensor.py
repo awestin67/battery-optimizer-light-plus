@@ -37,6 +37,7 @@ from .const import (
     CONF_BATTERY_POWER_SENSOR,
     CONF_VIRTUAL_LOAD_SENSOR,
     CONF_GRID_SENSOR_INVERT,
+    CONF_BATTERY_SENSOR_INVERT,
     CONF_BATTERY_TYPE,
     BATTERY_TYPE_HUAWEI,
     BATTERY_TYPE_SONNEN,
@@ -336,6 +337,8 @@ class BatteryLightVirtualLoadSensor(SensorEntity):
             if state and state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
                 try:
                     bat_val = float(state.state)
+                    if config.get(CONF_BATTERY_SENSOR_INVERT, False):
+                        bat_val = -bat_val
                 except ValueError:
                     pass
 

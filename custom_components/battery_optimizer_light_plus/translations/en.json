@@ -48,6 +48,7 @@
                     "grid_sensor": "Grid Sensor (W) - Total house power",
                     "grid_sensor_invert": "Invert Grid Sensor? (Check if positive value = Export)",
                     "battery_power_sensor": "Battery Power Sensor (W)",
+                    "battery_sensor_invert": "Invert Battery Sensor? (Check if positive value = Charging)",
                     "battery_status_sensor": "Battery Status Sensor (Optional)",
                     "battery_status_keywords": "Maintenance Keywords (e.g. Battery-Care, Service)",
                     "virtual_load_sensor": "Virtual Load Sensor (Optional - Overrides calc)",
@@ -60,6 +61,7 @@
                     "grid_sensor": "The meter for the house's grid exchange. Usually from your inverter (W).",
                     "grid_sensor_invert": "Check this if your Grid Sensor shows a POSITIVE value when you export/sell electricity.",
                     "battery_power_sensor": "The sensor for the battery's power (Negative = charging, Positive = discharging).",
+                    "battery_sensor_invert": "Check this if your battery sensor shows a POSITIVE value when charging and NEGATIVE when discharging (e.g., standard for Huawei).",
                     "virtual_load_sensor": "Leave empty to let the integration calculate the load automatically (Grid + Battery)."
                 }
             }
@@ -85,6 +87,7 @@
                     "grid_sensor": "Grid Sensor (W)",
                     "grid_sensor_invert": "Invert Grid Sensor",
                     "battery_power_sensor": "Battery Power Sensor (W)",
+                    "battery_sensor_invert": "Invert Battery Sensor",
                     "battery_status_sensor": "Battery Status Sensor",
                     "battery_status_keywords": "Maintenance Keywords (comma-separated)",
                     "virtual_load_sensor": "Virtual Load Sensor",
@@ -103,6 +106,7 @@
                     "grid_sensor": "The meter for the house's grid exchange. Usually from your inverter (W).",
                     "grid_sensor_invert": "Check this if your Grid Sensor shows a POSITIVE value when you export/sell electricity.",
                     "battery_power_sensor": "The sensor for the battery's power (Negative = charging, Positive = discharging).",
+                    "battery_sensor_invert": "Check this if your battery sensor shows a POSITIVE value when charging and NEGATIVE when discharging (e.g., standard for Huawei).",
                     "virtual_load_sensor": "Leave empty to let the integration calculate the load automatically (Grid + Battery).",
                     "host": "Enter the IP address of your Sonnen battery (e.g. 192.168.1.50).",
                     "api_token": "Copy your Auth-Token from the battery's local web page under 'Software Integration' -> 'JSON API'.",

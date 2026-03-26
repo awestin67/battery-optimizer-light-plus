@@ -31,6 +31,7 @@ from .const import (
     CONF_API_KEY,
     CONF_GRID_SENSOR,
     CONF_GRID_SENSOR_INVERT,
+    CONF_BATTERY_SENSOR_INVERT,
     CONF_BATTERY_TYPE,
     BATTERY_TYPE_SONNEN,
     CONF_BATTERY_STATUS_SENSOR,
@@ -343,6 +344,9 @@ class PeakGuard:
                             else 0.0
                         )
 
+                        if self.config.get(CONF_BATTERY_SENSOR_INVERT, False):
+                            bat_val = -bat_val
+
                         if self.config.get(CONF_GRID_SENSOR_INVERT, False):
                             grid_val = -grid_val
                         current_load = grid_val + bat_val
@@ -373,7 +377,8 @@ class PeakGuard:
                     b_state = self.hass.states.get(bat_entity)
                     if b_state and b_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
                         try:
-                            if abs(float(b_state.state)) > 100:
+                            b_val = float(b_state.state)
+                            if abs(b_val) > 100:
                                 bat_is_moving = True
                         except ValueError:
                             pass
@@ -473,6 +478,8 @@ class PeakGuard:
                         if b_state and b_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
                             try:
                                 current_bat_power = float(b_state.state)
+                                if self.config.get(CONF_BATTERY_SENSOR_INVERT, False):
+                                    current_bat_power = -current_bat_power
                             except ValueError:
                                 pass
 
@@ -506,10 +513,12 @@ class PeakGuard:
                             except ValueError:
                                 pass
 
+                is_discharging = current_bat_power > BATTERY_DISCHARGE_THRESHOLD_W
+
                 # Beräkna önskat läge baserat på last (oberoende av moln-status)
                 wants_override = self._is_solar_override
 
-                if current_load < SOLAR_TRIGGER_W and not is_importing:
+                if current_load < SOLAR_TRIGGER_W and not is_importing and not is_discharging:
                     self._solar_override_clear_start = None
                     if not self._is_solar_override:
                         # Starta timer för att kräva att värdet hålls i 30 sekunder (filtrerar bort sensor-lag)
@@ -523,23 +532,33 @@ class PeakGuard:
                             wants_override = True
                     else:
                         wants_override = True
-                elif current_load > SOLAR_RESET_W or is_importing:
+                elif current_load > SOLAR_RESET_W or is_importing or is_discharging:
                     if self._solar_override_trigger_start is not None:
                         _LOGGER.debug(
                             f"🛑 Solar Override timer reset. Load: {current_load} W, "
-                            f"Importing: {is_importing}"
+                            f"Importing: {is_importing}, Discharging: {is_discharging}"
                         )
                     self._solar_override_trigger_start = None
 
                     if self._is_solar_override:
-                        if self._solar_override_clear_start is None:
-                            self._solar_override_clear_start = dt_util.utcnow()
-                            _LOGGER.debug(
-                                f"🛑 Solar Override stop condition met (Load: {current_load} W). "
-                                "Waiting 3 minutes to prevent flapping."
+                        # Om batteriet aktivt laddar ur för att täcka upp ett underskott,
+                        # avbryt direkt för att skydda SoC (kringgå 3-minutersregeln).
+                        if is_discharging:
+                            _LOGGER.info(
+                                f"🛑 Battery is discharging ({current_bat_power} W)! "
+                                "Bypassing 3-min delay to protect SoC."
                             )
-                        elif dt_util.utcnow() - self._solar_override_clear_start >= timedelta(minutes=3):
                             wants_override = False
+                            self._solar_override_clear_start = None
+                        else:
+                            if self._solar_override_clear_start is None:
+                                self._solar_override_clear_start = dt_util.utcnow()
+                                _LOGGER.debug(
+                                    f"🛑 Solar Override stop condition met (Load: {current_load} W). "
+                                    "Waiting 3 minutes to prevent flapping."
+                                )
+                            elif dt_util.utcnow() - self._solar_override_clear_start >= timedelta(minutes=3):
+                                wants_override = False
                     else:
                         wants_override = False
                 else:
@@ -626,6 +645,8 @@ class PeakGuard:
                             if bat_state and bat_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
                                 try:
                                     bat_power = float(bat_state.state)
+                                    if self.config.get(CONF_BATTERY_SENSOR_INVERT, False):
+                                        bat_power = -bat_power
                                 except ValueError:
                                     pass
 

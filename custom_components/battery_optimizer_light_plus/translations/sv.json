@@ -48,6 +48,7 @@
                     "grid_sensor": "Grid Sensor (W) - Husets totala effekt",
                     "grid_sensor_invert": "Invertera Grid Sensor? (Välj om positivt värde = Export)",
                     "battery_power_sensor": "Batteri Effekt Sensor (W)",
+                    "battery_sensor_invert": "Invertera Batteri Sensor? (Välj om positivt värde = Laddar)",
                     "battery_status_sensor": "Batteri Status Sensor (Valfritt)",
                     "battery_status_keywords": "Nyckelord för underhåll (t.ex. Battery-Care, Service)",
                     "virtual_load_sensor": "Virtuell Last Sensor (Valfritt - Ersätter Grid+Batteri beräkning)",
@@ -60,6 +61,7 @@
                     "grid_sensor": "Mätaren för husets nätutbyte. Vanligtvis från din växelriktare (W).",
                     "grid_sensor_invert": "Kryssa i denna om din Grid Sensor visar ett PLUS-värde när du säljer el.",
                     "battery_power_sensor": "Sensorn för batteriets effekt (Negativ = laddar, Positiv = laddar ur).",
+                    "battery_sensor_invert": "Kryssa i denna om din batterisensor visar PLUS när den laddar och MINUS när den laddar ur (t.ex. standard för Huawei).",
                     "virtual_load_sensor": "Lämna tom för att låta integrationen räkna ut lasten automatiskt (Grid + Batteri)."
                 }
             }
@@ -85,6 +87,7 @@
                     "grid_sensor": "Grid Sensor (W)",
                     "grid_sensor_invert": "Invertera Grid Sensor",
                     "battery_power_sensor": "Batteri Effekt (W)",
+                    "battery_sensor_invert": "Invertera Batteri Sensor",
                     "battery_status_sensor": "Batteri Status Sensor",
                     "battery_status_keywords": "Nyckelord för underhåll (komma-separerad)",
                     "virtual_load_sensor": "Virtuell Last Sensor",
@@ -103,6 +106,7 @@
                     "grid_sensor": "Mätaren för husets nätutbyte. Vanligtvis från din växelriktare (W).",
                     "grid_sensor_invert": "Kryssa i denna om din Grid Sensor visar ett PLUS-värde när du säljer el.",
                     "battery_power_sensor": "Sensorn för batteriets effekt (Negativ = laddar, Positiv = laddar ur).",
+                    "battery_sensor_invert": "Kryssa i denna om din batterisensor visar PLUS när den laddar och MINUS när den laddar ur (t.ex. standard för Huawei).",
                     "virtual_load_sensor": "Lämna tom för att låta integrationen räkna ut lasten automatiskt (Grid + Batteri).",
                     "host": "Skriv in IP-adressen till ditt Sonnen-batteri (t.ex. 192.168.1.50).",
                     "api_token": "Kopiera ditt Auth-Token från batteriets lokala webbsida under 'Software Integration' -> 'JSON API'.",
