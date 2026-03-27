@@ -86,6 +86,7 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_huawei(self, user_input=None):
         """Handle the Huawei battery configuration step."""
         self.data[CONF_BATTERY_TYPE] = BATTERY_TYPE_HUAWEI
+        self.data[CONF_BATTERY_SENSOR_INVERT] = True
         if user_input is not None:
             self.data.update(user_input)
             return await self.async_step_common()
@@ -131,11 +132,13 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_GRID_SENSOR): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
                 vol.Optional(CONF_GRID_SENSOR_INVERT, default=False): bool,
                 vol.Required(CONF_BATTERY_POWER_SENSOR): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
-                vol.Optional(CONF_BATTERY_SENSOR_INVERT, default=False): bool,
                 vol.Optional(CONF_BATTERY_STATUS_SENSOR): EntitySelector(EntitySelectorConfig(domain="sensor")),
                 vol.Optional(CONF_BATTERY_STATUS_KEYWORDS, default=DEFAULT_BATTERY_STATUS_KEYWORDS): TextSelector(TextSelectorConfig(multiline=True)),
                 vol.Optional(CONF_VIRTUAL_LOAD_SENSOR): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
             })
+            # Huawei hårdkodar battery_sensor_invert=True, visa inte i UI
+            if battery_type != BATTERY_TYPE_HUAWEI:
+                schema_dict[vol.Optional(CONF_BATTERY_SENSOR_INVERT, default=False)] = bool
 
         return self.async_show_form(step_id="common", data_schema=vol.Schema(schema_dict))
 
@@ -152,9 +155,13 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Manage the options."""
         if user_input is not None:
+            battery_type = self.config_entry.data.get(CONF_BATTERY_TYPE)
+            new_data = {**self.config_entry.data, **user_input}
+            if battery_type == BATTERY_TYPE_HUAWEI:
+                new_data[CONF_BATTERY_SENSOR_INVERT] = True
             # Update the config entry with new data
             self.hass.config_entries.async_update_entry(
-                self.config_entry, data={**self.config_entry.data, **user_input}
+                self.config_entry, data=new_data
             )
             return self.async_create_entry(title="", data={})
 
@@ -190,7 +197,6 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(CONF_GRID_SENSOR, default=get_default(CONF_GRID_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
                 vol.Optional(CONF_GRID_SENSOR_INVERT, default=get_default(CONF_GRID_SENSOR_INVERT, False)): bool,
                 vol.Required(CONF_BATTERY_POWER_SENSOR, default=get_default(CONF_BATTERY_POWER_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
-                vol.Optional(CONF_BATTERY_SENSOR_INVERT, default=get_default(CONF_BATTERY_SENSOR_INVERT, False)): bool,
                 vol.Optional(CONF_BATTERY_STATUS_SENSOR, default=get_default(CONF_BATTERY_STATUS_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor")),
                 vol.Optional(CONF_BATTERY_STATUS_KEYWORDS, default=get_default(CONF_BATTERY_STATUS_KEYWORDS, DEFAULT_BATTERY_STATUS_KEYWORDS)): TextSelector(TextSelectorConfig(multiline=True)),
                 vol.Optional(CONF_VIRTUAL_LOAD_SENSOR, default=get_default(CONF_VIRTUAL_LOAD_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
