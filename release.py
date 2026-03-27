@@ -585,7 +585,12 @@ def create_github_release(version, repo_slug=None, diff_uncommitted=""):
     if not notes:
         notes = f"Release v{version}"
 
-    print(f"🚀 Skapar GitHub Release på {repo_part}...")
+    # Fråga om det är en pre-release
+    is_prerelease_input = input("Är detta en pre-release? (j/n, default: j): ").lower()
+    is_prerelease = is_prerelease_input != 'n'
+
+    release_type = "Pre-release" if is_prerelease else "Full release"
+    print(f"🚀 Skapar GitHub {release_type} på {repo_part}...")
 
     url = f"https://api.github.com/repos/{repo_part}/releases"
     payload = {
@@ -593,7 +598,7 @@ def create_github_release(version, repo_slug=None, diff_uncommitted=""):
         "name": f"v{version}",
         "body": notes,
         "draft": False,
-        "prerelease": False
+        "prerelease": is_prerelease
     }
     headers = {
         "Authorization": f"token {token}",

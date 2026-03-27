@@ -25,6 +25,7 @@ from custom_components.battery_optimizer_light_plus.const import (
     BATTERY_TYPE_SONNEN,
     BATTERY_TYPE_HUAWEI,
     BATTERY_TYPE_GENERIC,
+    CONF_BATTERY_SENSOR_INVERT,
 )
 
 @pytest.mark.asyncio
@@ -154,3 +155,74 @@ async def test_options_flow_with_none_values():
     result = await flow.async_step_init()
     assert result["type"] == "form"
     assert result["step_id"] == "init"
+
+
+@pytest.mark.asyncio
+async def test_config_flow_huawei_sets_invert_true():
+    """Testar att Huawei-flödet automatiskt sätter invert till True."""
+    flow = BatteryOptimizerLightConfigFlow()
+    flow.hass = MagicMock()
+
+    # Starta flödet och välj Huawei
+    result = await flow.async_step_huawei()
+    assert result["type"] == "form"
+
+    # Nu är `battery_sensor_invert` satt till True i bakgrunden
+    assert flow.data.get(CONF_BATTERY_SENSOR_INVERT) is True
+
+    # Gå vidare till common step
+    result2 = await flow.async_step_huawei(
+        {"battery_device_id": "test_id", "working_mode_entity": "select.mode"}
+    )
+
+    # Verifiera att UI-switchen för invertering är BORTTAGEN för Huawei
+    common_schema_keys = result2["data_schema"].schema.keys()
+    invert_toggle_present = any(
+        hasattr(k, "schema") and k.schema == CONF_BATTERY_SENSOR_INVERT for k in common_schema_keys
+    )
+    assert not invert_toggle_present, "Invert-switchen ska vara dold för Huawei"
+
+    # Fyll i common och skapa entry
+    result3 = await flow.async_step_common({"api_key": "123", "api_url": "http://test"})
+
+    assert result3["type"] == "create_entry"
+    assert result3["data"][CONF_BATTERY_TYPE] == BATTERY_TYPE_HUAWEI
+    # Viktigast: verifiera att den slutgiltiga datan har invert=True
+    assert result3["data"][CONF_BATTERY_SENSOR_INVERT] is True
+
+
+@pytest.mark.asyncio
+async def test_config_flow_generic_respects_invert_choice():
+    """Testar att Generic-flödet respekterar användarens val för invertering."""
+    # --- Fall 1: Användaren väljer att invertera ---
+    flow_true = BatteryOptimizerLightConfigFlow()
+    flow_true.hass = MagicMock()
+
+    # Välj Generic
+    await flow_true.async_step_generic()
+
+    # Fyll i common-steget med invert=True
+    result_true = await flow_true.async_step_common({
+        "api_key": "123",
+        "api_url": "http://test",
+        "battery_power_sensor": "sensor.battery",
+        CONF_BATTERY_SENSOR_INVERT: True
+    })
+
+    assert result_true["type"] == "create_entry"
+    assert result_true["data"][CONF_BATTERY_SENSOR_INVERT] is True
+
+    # --- Fall 2: Användaren väljer INTE att invertera (default) ---
+    flow_false = BatteryOptimizerLightConfigFlow()
+    flow_false.hass = MagicMock()
+
+    await flow_false.async_step_generic()
+
+    # Fyll i common-steget utan att specificera invert (förlitar oss på default False)
+    result_false = await flow_false.async_step_common({
+        "api_key": "123",
+        "api_url": "http://test",
+        "battery_power_sensor": "sensor.battery"
+    })
+    assert result_false["type"] == "create_entry"
+    assert result_false["data"].get(CONF_BATTERY_SENSOR_INVERT, False) is False
