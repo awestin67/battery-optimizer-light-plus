@@ -28,14 +28,10 @@
                 "title": "Configure Huawei",
                 "description": "Select the devices and entities for your Huawei system.",
                 "data": {
-                    "battery_device_id": "Huawei Device",
-                    "working_mode_entity": "Working Mode (Entity)",
-                    "device_status_entity": "Device Status (Entity)"
+                    "battery_device_id": "Huawei Device"
                 },
                 "data_description": {
-                    "battery_device_id": "Select your Huawei battery or inverter from the list so the integration knows where to send commands.",
-                    "working_mode_entity": "Select the working mode entity (e.g., 'select.inverter_working_mode'). Used to switch between Auto and Hold.",
-                    "device_status_entity": "Select the status sensor (e.g., 'sensor.inverter_device_status') to allow PeakGuard to automatically detect errors and maintenance modes."
+                    "battery_device_id": "Select your Huawei battery or inverter from the list so the integration knows where to send commands."
                 }
             },
             "common": {
@@ -52,7 +48,9 @@
                     "battery_status_sensor": "Battery Status Sensor (Optional)",
                     "battery_status_keywords": "Maintenance Keywords (e.g. Battery-Care, Service)",
                     "virtual_load_sensor": "Virtual Load Sensor (Optional - Overrides calc)",
-                    "consumption_forecast_sensor": "Consumption Forecast Tomorrow (kWh) (Optional)"
+                    "consumption_forecast_sensor": "Consumption Forecast Tomorrow (kWh) (Optional)",
+                    "working_mode_entity": "Working Mode (Entity)",
+                    "device_status_entity": "Device Status (Entity)"
                 },
                 "data_description": {
                     "api_url": "Leave the default value unless you are connecting to a custom test server.",
@@ -62,7 +60,9 @@
                     "grid_sensor_invert": "Check this if your Grid Sensor shows a POSITIVE value when you export/sell electricity.",
                     "battery_power_sensor": "The sensor for the battery's power (Negative = charging, Positive = discharging).",
                     "battery_sensor_invert": "Check this if your battery sensor shows a POSITIVE value when charging and NEGATIVE when discharging (e.g., standard for Huawei).",
-                    "virtual_load_sensor": "Leave empty to let the integration calculate the load automatically (Grid + Battery)."
+                    "virtual_load_sensor": "Leave empty to let the integration calculate the load automatically (Grid + Battery).",
+                    "working_mode_entity": "Select the working mode entity (e.g., 'select.inverter_working_mode'). Used to switch between Auto and Hold.",
+                    "device_status_entity": "Select the status sensor (e.g., 'sensor.inverter_device_status') to allow PeakGuard to automatically detect errors and maintenance modes."
                 }
             }
         },
