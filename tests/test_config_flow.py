@@ -25,10 +25,17 @@ from custom_components.battery_optimizer_light_plus.const import (
     BATTERY_TYPE_SONNEN,
     BATTERY_TYPE_HUAWEI,
     BATTERY_TYPE_GENERIC,
+    BATTERY_TYPE_HOMEVOLT,
     CONF_BATTERY_SENSOR_INVERT,
+    CONF_GRID_SENSOR_INVERT,
 )
 
-HUAWEI_DISCOVERY_PATH = "custom_components.battery_optimizer_light_plus.config_flow.async_auto_discover_huawei_entities"
+HUAWEI_DISCOVERY_PATH = (
+    "custom_components.battery_optimizer_light_plus.config_flow.async_auto_discover_huawei_entities"
+)
+HOMEVOLT_DISCOVERY_PATH = (
+    "custom_components.battery_optimizer_light_plus.config_flow.async_auto_discover_homevolt_entities"
+)
 
 @pytest.mark.asyncio
 async def test_config_flow_user():
@@ -59,6 +66,27 @@ async def test_config_flow_huawei():
         assert result2["type"] == "form"
         assert result2["step_id"] == "common"
         assert flow.data[CONF_BATTERY_TYPE] == BATTERY_TYPE_HUAWEI
+        assert flow.data["soc_sensor"] == "sensor.discovered_soc", "Auto-discovery data sparades inte!"
+
+@pytest.mark.asyncio
+async def test_config_flow_homevolt():
+    """Testar att Homevolt-steget går vidare till common."""
+    flow = BatteryOptimizerLightConfigFlow()
+    flow.hass = MagicMock()
+
+    # Första anropet visar formuläret
+    result = await flow.async_step_homevolt()
+    assert result["type"] == "form"
+    assert result["step_id"] == "homevolt"
+
+    # Andra anropet fyller i formuläret, mockar auto-discovery, och går vidare
+    with patch(HOMEVOLT_DISCOVERY_PATH) as mock_discover:
+        mock_discover.return_value = {"soc_sensor": "sensor.discovered_soc"}
+        result2 = await flow.async_step_homevolt({"battery_device_id": "test_id"})
+
+        assert result2["type"] == "form"
+        assert result2["step_id"] == "common"
+        assert flow.data[CONF_BATTERY_TYPE] == BATTERY_TYPE_HOMEVOLT
         assert flow.data["soc_sensor"] == "sensor.discovered_soc", "Auto-discovery data sparades inte!"
 
 @pytest.mark.asyncio
@@ -115,6 +143,11 @@ async def test_options_flow_huawei_and_generic():
     config_entry.data = {CONF_BATTERY_TYPE: BATTERY_TYPE_HUAWEI, "api_url": "http://test"}
     flow.config_entry = config_entry
     with patch(HUAWEI_DISCOVERY_PATH, return_value={}):
+        assert (await flow.async_step_init())["type"] == "form"
+
+    config_entry.data = {CONF_BATTERY_TYPE: BATTERY_TYPE_HOMEVOLT, "api_url": "http://test"}
+    flow.config_entry = config_entry
+    with patch(HOMEVOLT_DISCOVERY_PATH, return_value={}):
         assert (await flow.async_step_init())["type"] == "form"
 
     config_entry.data = {CONF_BATTERY_TYPE: BATTERY_TYPE_GENERIC, "api_url": "http://test"}
@@ -193,6 +226,34 @@ async def test_options_flow_huawei_uses_auto_discovered_defaults():
         )
 
 @pytest.mark.asyncio
+async def test_options_flow_homevolt_uses_auto_discovered_defaults():
+    """Testar att OptionsFlow använder auto-discovery för att förifylla saknade fält för Homevolt."""
+    config_entry = MagicMock()
+    # Notera att t.ex. 'soc_sensor' SAKNAS i den sparade datan med flit
+    config_entry.data = {
+        CONF_BATTERY_TYPE: BATTERY_TYPE_HOMEVOLT,
+        "api_url": "http://test",
+        "battery_device_id": "test_device_123"
+    }
+
+    flow = BatteryOptimizerLightOptionsFlow()
+    flow.config_entry = config_entry
+    flow.hass = MagicMock()
+
+    with patch(HOMEVOLT_DISCOVERY_PATH) as mock_discover:
+        mock_discover.return_value = {"soc_sensor": "sensor.smart_discovered_homevolt_soc"}
+        result = await flow.async_step_init()
+
+        # Leta upp soc_sensor-nyckeln i det genererade formulärets schema
+        schema_keys = result["data_schema"].schema.keys()
+        soc_key = next((k for k in schema_keys if getattr(k, "schema", None) == "soc_sensor"), None)
+
+        assert soc_key is not None
+        assert soc_key.default() == "sensor.smart_discovered_homevolt_soc", (
+            "Auto-discovery-värdet sattes inte som default i OptionsFlow för Homevolt!"
+        )
+
+@pytest.mark.asyncio
 async def test_config_flow_huawei_sets_invert_true():
     """Testar att Huawei-flödet automatiskt sätter invert till True."""
     flow = BatteryOptimizerLightConfigFlow()
@@ -230,6 +291,44 @@ async def test_config_flow_huawei_sets_invert_true():
     # Viktigast: verifiera att den slutgiltiga datan har invert=True
     assert result3["data"][CONF_BATTERY_SENSOR_INVERT] is True
 
+@pytest.mark.asyncio
+async def test_config_flow_homevolt_sets_inverts_false():
+    """Testar att Homevolt-flödet döljer och sätter båda inverts till False."""
+    flow = BatteryOptimizerLightConfigFlow()
+    flow.hass = MagicMock()
+
+    # Starta flödet och välj Homevolt
+    result = await flow.async_step_homevolt()
+    assert result["type"] == "form"
+
+    # Verifiera att false sattes tyst i bakgrunden
+    assert flow.data.get(CONF_BATTERY_SENSOR_INVERT) is False
+    assert flow.data.get(CONF_GRID_SENSOR_INVERT) is False
+
+    # Gå vidare till common step
+    with patch(HOMEVOLT_DISCOVERY_PATH, return_value={}):
+        result2 = await flow.async_step_homevolt(
+            {"battery_device_id": "test_id"}
+        )
+
+    # Verifiera att UI-switcharna för invertering är BORTTAGNA för Homevolt
+    common_schema_keys = result2["data_schema"].schema.keys()
+    bat_invert_present = any(
+        hasattr(k, "schema") and k.schema == CONF_BATTERY_SENSOR_INVERT for k in common_schema_keys
+    )
+    grid_invert_present = any(
+        hasattr(k, "schema") and k.schema == CONF_GRID_SENSOR_INVERT for k in common_schema_keys
+    )
+    assert not bat_invert_present, "Batteri invert-switchen ska vara dold för Homevolt"
+    assert not grid_invert_present, "Grid invert-switchen ska vara dold för Homevolt"
+
+    # Fyll i common och skapa entry
+    result3 = await flow.async_step_common({"api_key": "123", "api_url": "http://test"})
+
+    assert result3["type"] == "create_entry"
+    assert result3["data"][CONF_BATTERY_TYPE] == BATTERY_TYPE_HOMEVOLT
+    assert result3["data"][CONF_BATTERY_SENSOR_INVERT] is False
+    assert result3["data"][CONF_GRID_SENSOR_INVERT] is False
 
 @pytest.mark.asyncio
 async def test_config_flow_generic_respects_invert_choice():

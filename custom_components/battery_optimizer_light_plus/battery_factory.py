@@ -20,6 +20,7 @@ from .const import (
     CONF_BATTERY_TYPE,
     BATTERY_TYPE_SONNEN,
     BATTERY_TYPE_HUAWEI,
+    BATTERY_TYPE_HOMEVOLT,
     CONF_HOST,
     CONF_PORT,
     CONF_API_TOKEN,
@@ -27,11 +28,15 @@ from .const import (
     CONF_WORKING_MODE_ENTITY,
     CONF_DEVICE_STATUS_ENTITY,
     CONF_SOC_SENSOR,
+    CONF_GRID_SENSOR,
+    CONF_BATTERY_POWER_SENSOR,
+    CONF_VIRTUAL_LOAD_SENSOR,
 )
 from .batteries.base import BatteryApi
 from .batteries.sonnen.sonnen import SonnenBattery
 from .batteries.sonnen.api import SonnenAPI
 from .batteries.huawei.huawei import HuaweiBattery
+from .batteries.homevolt.homevolt import HomevoltBattery
 
 
 def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
@@ -59,6 +64,17 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
             working_mode_entity=config[CONF_WORKING_MODE_ENTITY],
             soc_entity=config[CONF_SOC_SENSOR],
             device_status_entity=config.get(CONF_DEVICE_STATUS_ENTITY),
+        )
+
+    if battery_type == BATTERY_TYPE_HOMEVOLT:
+        return HomevoltBattery(
+            hass=hass,
+            device_id=config[CONF_BATTERY_DEVICE_ID],
+            soc_entity=config[CONF_SOC_SENSOR],
+            grid_entity=config.get(CONF_GRID_SENSOR),
+            battery_power_entity=config[CONF_BATTERY_POWER_SENSOR],
+            load_entity=config.get(CONF_VIRTUAL_LOAD_SENSOR),
+            status_entity=config.get(CONF_DEVICE_STATUS_ENTITY),
         )
 
     from .batteries.generic import GenericBattery

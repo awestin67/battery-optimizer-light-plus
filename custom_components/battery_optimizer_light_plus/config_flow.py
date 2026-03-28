@@ -32,6 +32,7 @@ from .const import (
     BATTERY_TYPE_SONNEN,
     BATTERY_TYPE_HUAWEI,
     BATTERY_TYPE_GENERIC,
+    BATTERY_TYPE_HOMEVOLT,
     CONF_API_URL,
     DEFAULT_API_URL,
     CONF_API_KEY,
@@ -78,6 +79,33 @@ def async_auto_discover_huawei_entities(hass, device_id: str) -> dict:
 
     return found_entities
 
+def async_auto_discover_homevolt_entities(hass, device_id: str) -> dict:
+    """Attempt to auto-discover standard entities for a Homevolt device."""
+    registry = er.async_get(hass)
+    entries = er.async_entries_for_device(registry, device_id)
+    found_entities = {}
+
+    for entry in entries:
+        uid = entry.unique_id
+
+        if uid.startswith("homevolt_local_total_soc_"):
+            found_entities[CONF_SOC_SENSOR] = entry.entity_id
+
+        elif uid.startswith("homevolt_local_power_"):
+            found_entities[CONF_BATTERY_POWER_SENSOR] = entry.entity_id
+
+        elif uid.startswith("homevolt_local_grid_power_"):
+            found_entities[CONF_GRID_SENSOR] = entry.entity_id
+
+        elif uid.startswith("homevolt_local_load_power_"):
+            found_entities[CONF_VIRTUAL_LOAD_SENSOR] = entry.entity_id
+
+        elif uid.startswith("homevolt_local_ems_") and "status" not in uid and "error" not in uid and "temp" not in uid and "energy" not in uid:
+            if CONF_DEVICE_STATUS_ENTITY not in found_entities:
+                found_entities[CONF_DEVICE_STATUS_ENTITY] = entry.entity_id
+
+    return found_entities
+
 class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Battery Optimizer Light."""
     VERSION = 1
@@ -90,7 +118,7 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the initial step where the user selects the battery type."""
         return self.async_show_menu(
             step_id="user",
-            menu_options=["sonnen", "huawei", "generic"]
+            menu_options=["sonnen", "huawei", "homevolt", "generic"]
         )
 
     async def async_step_sonnen(self, user_input=None):
@@ -133,6 +161,31 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             })
         )
 
+    async def async_step_homevolt(self, user_input=None):
+        """Handle the Homevolt battery configuration step."""
+        self.data[CONF_BATTERY_TYPE] = BATTERY_TYPE_HOMEVOLT
+        self.data[CONF_BATTERY_SENSOR_INVERT] = False
+        self.data[CONF_GRID_SENSOR_INVERT] = False
+
+        if user_input is not None:
+            # Auto-discover entities from the selected device
+            discovered_entities = async_auto_discover_homevolt_entities(self.hass, user_input[CONF_BATTERY_DEVICE_ID])
+            if discovered_entities:
+                _LOGGER.info(f"Auto-discovered Homevolt entities: {discovered_entities}")
+                self.data.update(discovered_entities)
+
+            self.data.update(user_input)
+            return await self.async_step_common()
+
+        return self.async_show_form(
+            step_id="homevolt",
+            data_schema=vol.Schema({
+                vol.Required(CONF_BATTERY_DEVICE_ID): selector.DeviceSelector(
+                    selector.DeviceSelectorConfig(integration="homevolt_local")
+                ),
+            })
+        )
+
     async def async_step_generic(self, user_input=None):
         """Handle the Generic battery configuration step."""
         self.data[CONF_BATTERY_TYPE] = BATTERY_TYPE_GENERIC
@@ -156,37 +209,36 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
 
         # Göm de flesta manuella sensorerna om man använder Sonnen!
-        if battery_type != BATTERY_TYPE_SONNEN:
-            schema_dict.update({
-                vol.Required(
-                    CONF_SOC_SENSOR,
-                    default=self.data.get(CONF_SOC_SENSOR)
-                ): EntitySelector(EntitySelectorConfig(domain="sensor")),
-                vol.Optional(
-                    CONF_GRID_SENSOR,
-                    default=self.data.get(CONF_GRID_SENSOR)
-                ): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
-                vol.Optional(CONF_GRID_SENSOR_INVERT, default=False): bool,
-                vol.Required(
-                    CONF_BATTERY_POWER_SENSOR,
-                    default=self.data.get(CONF_BATTERY_POWER_SENSOR)
-                ): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
-                vol.Optional(
-                    CONF_BATTERY_STATUS_SENSOR,
-                    default=self.data.get(CONF_BATTERY_STATUS_SENSOR)
-                ): EntitySelector(EntitySelectorConfig(domain="sensor")),
-                vol.Optional(
-                    CONF_BATTERY_STATUS_KEYWORDS,
-                    default=DEFAULT_BATTERY_STATUS_KEYWORDS
-                ): TextSelector(TextSelectorConfig(multiline=True)),
-                vol.Optional(
-                    CONF_VIRTUAL_LOAD_SENSOR,
-                    default=self.data.get(CONF_VIRTUAL_LOAD_SENSOR)
-                ): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
-            })
-            # Huawei hårdkodar battery_sensor_invert=True, visa inte i UI
-            if battery_type != BATTERY_TYPE_HUAWEI:
+        if battery_type not in [BATTERY_TYPE_SONNEN]:
+            schema_dict[vol.Required(
+                CONF_SOC_SENSOR, default=self.data.get(CONF_SOC_SENSOR)
+            )] = EntitySelector(EntitySelectorConfig(domain="sensor"))
+
+            schema_dict[vol.Optional(
+                CONF_GRID_SENSOR, default=self.data.get(CONF_GRID_SENSOR)
+            )] = EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power"))
+
+            if battery_type != BATTERY_TYPE_HOMEVOLT:
+                schema_dict[vol.Optional(CONF_GRID_SENSOR_INVERT, default=False)] = bool
+
+            schema_dict[vol.Required(
+                CONF_BATTERY_POWER_SENSOR, default=self.data.get(CONF_BATTERY_POWER_SENSOR)
+            )] = EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power"))
+
+            if battery_type not in [BATTERY_TYPE_HUAWEI, BATTERY_TYPE_HOMEVOLT]:
                 schema_dict[vol.Optional(CONF_BATTERY_SENSOR_INVERT, default=False)] = bool
+
+            schema_dict[vol.Optional(
+                CONF_BATTERY_STATUS_SENSOR, default=self.data.get(CONF_BATTERY_STATUS_SENSOR)
+            )] = EntitySelector(EntitySelectorConfig(domain="sensor"))
+
+            schema_dict[vol.Optional(
+                CONF_BATTERY_STATUS_KEYWORDS, default=DEFAULT_BATTERY_STATUS_KEYWORDS
+            )] = TextSelector(TextSelectorConfig(multiline=True))
+
+            schema_dict[vol.Optional(
+                CONF_VIRTUAL_LOAD_SENSOR, default=self.data.get(CONF_VIRTUAL_LOAD_SENSOR)
+            )] = EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power"))
 
             if battery_type == BATTERY_TYPE_HUAWEI:
                 schema_dict.update({
@@ -220,6 +272,9 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             new_data = {**self.config_entry.data, **user_input}
             if battery_type == BATTERY_TYPE_HUAWEI:
                 new_data[CONF_BATTERY_SENSOR_INVERT] = True
+            elif battery_type == BATTERY_TYPE_HOMEVOLT:
+                new_data[CONF_BATTERY_SENSOR_INVERT] = False
+                new_data[CONF_GRID_SENSOR_INVERT] = False
             # Update the config entry with new data
             self.hass.config_entries.async_update_entry(
                 self.config_entry, data=new_data
@@ -235,6 +290,10 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             device_id = self.config_entry.data.get(CONF_BATTERY_DEVICE_ID)
             if device_id:
                 discovered = async_auto_discover_huawei_entities(self.hass, device_id)
+        elif battery_type == BATTERY_TYPE_HOMEVOLT:
+            device_id = self.config_entry.data.get(CONF_BATTERY_DEVICE_ID)
+            if device_id:
+                discovered = async_auto_discover_homevolt_entities(self.hass, device_id)
 
         def get_default(key, default_fallback=vol.UNDEFINED):
             val = self.config_entry.data.get(key)
@@ -279,6 +338,18 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(CONF_DEVICE_STATUS_ENTITY, default=get_default(CONF_DEVICE_STATUS_ENTITY)): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
+            })
+        elif battery_type == BATTERY_TYPE_HOMEVOLT:
+            schema_fields.update({
+                vol.Required(CONF_BATTERY_DEVICE_ID, default=get_default(CONF_BATTERY_DEVICE_ID)): selector.DeviceSelector(
+                    selector.DeviceSelectorConfig(integration="homevolt_local")
+                ),
+                vol.Required(CONF_SOC_SENSOR, default=get_default(CONF_SOC_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                vol.Optional(CONF_GRID_SENSOR, default=get_default(CONF_GRID_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                vol.Required(CONF_BATTERY_POWER_SENSOR, default=get_default(CONF_BATTERY_POWER_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                vol.Optional(CONF_DEVICE_STATUS_ENTITY, default=get_default(CONF_DEVICE_STATUS_ENTITY)): selector.EntitySelector(EntitySelectorConfig(domain="sensor")),
+                vol.Optional(CONF_BATTERY_STATUS_KEYWORDS, default=get_default(CONF_BATTERY_STATUS_KEYWORDS, DEFAULT_BATTERY_STATUS_KEYWORDS)): TextSelector(TextSelectorConfig(multiline=True)),
+                vol.Optional(CONF_VIRTUAL_LOAD_SENSOR, default=get_default(CONF_VIRTUAL_LOAD_SENSOR)): selector.EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
             })
         else:
             # GENERIC

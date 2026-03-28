@@ -7,7 +7,8 @@
                 "menu_options": {
                     "sonnen": "Sonnen",
                     "huawei": "Huawei Luna2000",
-                    "generic": "Generic / Light (No local control)"
+                    "homevolt": "Homevolt",
+                    "generic": "Generic / Other (No local control)"
                 }
             },
             "sonnen": {
@@ -32,6 +33,16 @@
                 },
                 "data_description": {
                     "battery_device_id": "Select your Huawei battery or inverter from the list so the integration knows where to send commands."
+                }
+            },
+            "homevolt": {
+                "title": "Configure Homevolt",
+                "description": "Select your Homevolt device. The integration will attempt to auto-discover relevant entities.",
+                "data": {
+                    "battery_device_id": "Homevolt Device"
+                },
+                "data_description": {
+                    "battery_device_id": "Select your Homevolt device from the list."
                 }
             },
             "common": {

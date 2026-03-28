@@ -22,6 +22,7 @@ CONF_BATTERY_TYPE = "battery_type"
 BATTERY_TYPE_SONNEN = "sonnen"
 BATTERY_TYPE_HUAWEI = "huawei"
 BATTERY_TYPE_GENERIC = "generic"
+BATTERY_TYPE_HOMEVOLT = "homevolt"
 
 # Konfiguration
 CONF_API_KEY = "api_key"

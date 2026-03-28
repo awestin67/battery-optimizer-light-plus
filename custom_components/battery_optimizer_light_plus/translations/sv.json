@@ -7,7 +7,8 @@
                 "menu_options": {
                     "sonnen": "Sonnen",
                     "huawei": "Huawei Luna2000",
-                    "generic": "Generic / Light (Ingen lokal styrning)"
+                    "homevolt": "Homevolt",
+                    "generic": "Generic / Övriga (Ingen lokal styrning)"
                 }
             },
             "sonnen": {
@@ -32,6 +33,16 @@
                 },
                 "data_description": {
                     "battery_device_id": "Välj ditt Huawei-batteri eller växelriktare i listan så integrationen vet var kommandona ska skickas."
+                }
+            },
+            "homevolt": {
+                "title": "Konfigurera Homevolt",
+                "description": "Välj din Homevolt-enhet. Integrationen kommer automatiskt försöka hitta relevanta sensorer.",
+                "data": {
+                    "battery_device_id": "Homevolt-enhet"
+                },
+                "data_description": {
+                    "battery_device_id": "Välj din Homevolt-enhet från listan."
                 }
             },
             "common": {
