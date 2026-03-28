@@ -49,7 +49,7 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
         return SonnenBattery(
             hass=hass,
             api=sonnen_api,
-            soc_entity=config[CONF_SOC_SENSOR],
+            soc_entity=config.get(CONF_SOC_SENSOR),
         )
 
     if battery_type == BATTERY_TYPE_HUAWEI:
