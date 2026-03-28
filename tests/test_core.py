@@ -67,22 +67,29 @@ def mock_battery():
 async def test_coordinator_handles_unavailable_soc(mock_hass_instance):
     """
     Krav: Om SoC är otillgänglig (t.ex. vid uppstart) ska koordinatorn
-    returnera gammal data och inte krascha.
+    sätta SoC till 0.0 och ändå anropa API:et.
     """
     coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
     coordinator.data = {"action": "OLD_DATA"}  # Set some old data
 
-    # Simulate that the sensor is 'unavailable', causing get_current_soc() to return None
+    # Mocka get_current_soc att returnera None
     mock_state = MagicMock()
     mock_state.state = "unavailable"
     mock_hass_instance.states.get.return_value = mock_state
 
-    # Mock the session to verify it's not called
     patch_session = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
     with patch(patch_session) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
+
         result = await coordinator._async_update_data()
-        assert result == {"action": "OLD_DATA"}
-        mock_get_session.return_value.post.assert_not_called()
+        assert result["action"] == "IDLE"
+        mock_session.post.assert_called_once()
+        payload = mock_session.post.call_args[1]["json"]
+        assert payload["soc"] == 0.0
 
 @pytest.mark.asyncio
 async def test_peak_guard_triggers_discharge(mock_hass_instance, mock_battery):
@@ -1177,6 +1184,7 @@ async def test_coordinator_total_failure(mock_hass_instance, mock_battery):
         assert mock_session.post.call_count == 3
         assert mock_sleep.call_count == 2
         assert "Connection error after 3 attempts" in str(excinfo.value)
+        mock_battery.apply_action.assert_called_with("IDLE")
 
 @pytest.mark.asyncio
 async def test_lifecycle_and_services(mock_hass_instance):

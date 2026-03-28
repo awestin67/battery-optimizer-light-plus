@@ -54,12 +54,10 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         soc = await self.battery_api.get_current_soc()
 
         if soc is None:
-            # If we can't get SoC (e.g., during startup), log a warning but don't
-            # raise UpdateFailed. This prevents the integration from failing to set up.
-            # We return the last known data if available, otherwise None. The coordinator
-            # will try again on the next scheduled update.
-            _LOGGER.warning("Could not retrieve SoC from battery. Will retry on next scheduled update.")
-            return self.data
+            # Om vi inte kan läsa SoC vid uppstart, sätter vi den till 0.0 temporärt
+            # så att vi ändå kan hämta ett beslut från molnet och släppa manuellt läge.
+            _LOGGER.warning("Could not retrieve SoC from battery. Using 0.0 temporarily to fetch cloud action.")
+            soc = 0.0
 
         is_solar_override = False
         if hasattr(self, "peak_guard") and self.peak_guard:
@@ -139,6 +137,11 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     await asyncio.sleep(5)
                 else:
                     _LOGGER.exception("Light-Error after 3 attempts")
+                    # Släpp batteriet till Auto-läge om vi tappar kontakten helt
+                    try:
+                        await self.battery_api.apply_action("IDLE")
+                    except Exception as fallback_err:
+                        _LOGGER.error(f"Failed to set battery to IDLE on connection error: {fallback_err}")
                     raise UpdateFailed(
                         f"Connection error after 3 attempts: {type(err).__name__}: {error_detail}"
                     ) from err
