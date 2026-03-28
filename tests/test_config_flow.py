@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from custom_components.battery_optimizer_light_plus.config_flow import (
     BatteryOptimizerLightConfigFlow,
     BatteryOptimizerLightOptionsFlow,
@@ -27,6 +27,8 @@ from custom_components.battery_optimizer_light_plus.const import (
     BATTERY_TYPE_GENERIC,
     CONF_BATTERY_SENSOR_INVERT,
 )
+
+HUAWEI_DISCOVERY_PATH = "custom_components.battery_optimizer_light_plus.config_flow.async_auto_discover_huawei_entities"
 
 @pytest.mark.asyncio
 async def test_config_flow_user():
@@ -49,11 +51,15 @@ async def test_config_flow_huawei():
     assert result["type"] == "form"
     assert result["step_id"] == "huawei"
 
-    # Andra anropet fyller i formuläret och går vidare till common
-    result2 = await flow.async_step_huawei({"battery_device_id": "test_id", "working_mode_entity": "select.mode"})
-    assert result2["type"] == "form"
-    assert result2["step_id"] == "common"
-    assert flow.data[CONF_BATTERY_TYPE] == BATTERY_TYPE_HUAWEI
+    # Andra anropet fyller i formuläret, mockar auto-discovery, och går vidare
+    with patch(HUAWEI_DISCOVERY_PATH) as mock_discover:
+        mock_discover.return_value = {"soc_sensor": "sensor.discovered_soc"}
+        result2 = await flow.async_step_huawei({"battery_device_id": "test_id", "working_mode_entity": "select.mode"})
+
+        assert result2["type"] == "form"
+        assert result2["step_id"] == "common"
+        assert flow.data[CONF_BATTERY_TYPE] == BATTERY_TYPE_HUAWEI
+        assert flow.data["soc_sensor"] == "sensor.discovered_soc", "Auto-discovery data sparades inte!"
 
 @pytest.mark.asyncio
 async def test_config_flow_generic():
@@ -108,7 +114,8 @@ async def test_options_flow_huawei_and_generic():
 
     config_entry.data = {CONF_BATTERY_TYPE: BATTERY_TYPE_HUAWEI, "api_url": "http://test"}
     flow.config_entry = config_entry
-    assert (await flow.async_step_init())["type"] == "form"
+    with patch(HUAWEI_DISCOVERY_PATH, return_value={}):
+        assert (await flow.async_step_init())["type"] == "form"
 
     config_entry.data = {CONF_BATTERY_TYPE: BATTERY_TYPE_GENERIC, "api_url": "http://test"}
     flow.config_entry = config_entry
@@ -158,6 +165,34 @@ async def test_options_flow_with_none_values():
 
 
 @pytest.mark.asyncio
+async def test_options_flow_huawei_uses_auto_discovered_defaults():
+    """Testar att OptionsFlow använder auto-discovery för att förifylla saknade fält."""
+    config_entry = MagicMock()
+    # Notera att t.ex. 'soc_sensor' SAKNAS i den sparade datan med flit
+    config_entry.data = {
+        CONF_BATTERY_TYPE: BATTERY_TYPE_HUAWEI,
+        "api_url": "http://test",
+        "battery_device_id": "test_device_123"
+    }
+
+    flow = BatteryOptimizerLightOptionsFlow()
+    flow.config_entry = config_entry
+    flow.hass = MagicMock()
+
+    with patch(HUAWEI_DISCOVERY_PATH) as mock_discover:
+        mock_discover.return_value = {"soc_sensor": "sensor.smart_discovered_soc"}
+        result = await flow.async_step_init()
+
+        # Leta upp soc_sensor-nyckeln i det genererade formulärets schema
+        schema_keys = result["data_schema"].schema.keys()
+        soc_key = next((k for k in schema_keys if getattr(k, "schema", None) == "soc_sensor"), None)
+
+        assert soc_key is not None
+        assert soc_key.default() == "sensor.smart_discovered_soc", (
+            "Auto-discovery-värdet sattes inte som default i OptionsFlow!"
+        )
+
+@pytest.mark.asyncio
 async def test_config_flow_huawei_sets_invert_true():
     """Testar att Huawei-flödet automatiskt sätter invert till True."""
     flow = BatteryOptimizerLightConfigFlow()
@@ -171,9 +206,10 @@ async def test_config_flow_huawei_sets_invert_true():
     assert flow.data.get(CONF_BATTERY_SENSOR_INVERT) is True
 
     # Gå vidare till common step
-    result2 = await flow.async_step_huawei(
-        {"battery_device_id": "test_id", "working_mode_entity": "select.mode"}
-    )
+    with patch(HUAWEI_DISCOVERY_PATH, return_value={}):
+        result2 = await flow.async_step_huawei(
+            {"battery_device_id": "test_id", "working_mode_entity": "select.mode"}
+        )
 
     # Verifiera att UI-switchen för invertering är BORTTAGEN för Huawei
     common_schema_keys = result2["data_schema"].schema.keys()
