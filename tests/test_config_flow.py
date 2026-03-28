@@ -365,3 +365,53 @@ async def test_config_flow_generic_respects_invert_choice():
     })
     assert result_false["type"] == "create_entry"
     assert result_false["data"].get(CONF_BATTERY_SENSOR_INVERT, False) is False
+
+
+@pytest.mark.asyncio
+async def test_config_flow_huawei_strips_none_virtual_load_sensor():
+    """Testar att Huawei-flödet lyckas spara utan Virtual Load Sensor (None rensas)."""
+    flow = BatteryOptimizerLightConfigFlow()
+    flow.hass = MagicMock()
+
+    with patch(HUAWEI_DISCOVERY_PATH, return_value={}):
+        await flow.async_step_huawei({"battery_device_id": "test_id"})
+
+    # Skicka in common-formuläret utan virtual_load_sensor (dvs None)
+    result = await flow.async_step_common({
+        "api_key": "abc",
+        "api_url": "http://test",
+        "soc_sensor": "sensor.soc",
+        "battery_power_sensor": "sensor.battery",
+        "working_mode_entity": "select.mode",
+        "virtual_load_sensor": None,
+    })
+
+    assert result["type"] == "create_entry"
+    assert "virtual_load_sensor" not in result["data"], (
+        "virtual_load_sensor med None-värde ska inte sparas i config entry"
+    )
+
+
+@pytest.mark.asyncio
+async def test_options_flow_strips_none_values():
+    """Testar att OptionsFlow tar bort None-värden när man sparar."""
+    flow = BatteryOptimizerLightOptionsFlow()
+    flow.config_entry = MagicMock(data={CONF_BATTERY_TYPE: BATTERY_TYPE_HUAWEI})
+    flow.hass = MagicMock()
+
+    result = await flow.async_step_init({
+        "api_key": "new_key",
+        "api_url": "http://test",
+        "virtual_load_sensor": None,
+        "grid_sensor": None,
+    })
+
+    assert result["type"] == "create_entry"
+    call_args = flow.hass.config_entries.async_update_entry.call_args
+    saved_data = call_args[1]["data"]
+    assert "virtual_load_sensor" not in saved_data, (
+        "virtual_load_sensor med None ska inte sparas via OptionsFlow"
+    )
+    assert "grid_sensor" not in saved_data, (
+        "grid_sensor med None ska inte sparas via OptionsFlow"
+    )
