@@ -64,10 +64,10 @@ def async_auto_discover_huawei_entities(hass, device_id: str) -> dict:
     found_entities = {}
 
     discovery_map = {
-        CONF_SOC_SENSOR: ("sensor", "storage_state_of_capacity"),
-        CONF_BATTERY_POWER_SENSOR: ("sensor", "storage_charge_discharge_power"),
-        CONF_GRID_SENSOR: ("sensor", "grid_active_power"),
-        CONF_WORKING_MODE_ENTITY: ("select", "storage_working_mode"),
+        CONF_SOC_SENSOR: ("sensor", "battery_state_of_capacity"),
+        CONF_BATTERY_POWER_SENSOR: ("sensor", "battery_charge_discharge_power"),
+        CONF_GRID_SENSOR: ("sensor", "power_meter_active_power"),
+        CONF_WORKING_MODE_ENTITY: ("select", "battery_working_mode"),
         CONF_DEVICE_STATUS_ENTITY: ("sensor", "device_status"),
     }
 
