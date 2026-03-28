@@ -35,6 +35,11 @@ Styr Huawei-batterier via den officiella Home Assistant-integrationen.
 *   **Krav:** En fungerande, förkonfigurerad installation av den officiella `Huawei Solar`-integrationen. Du behöver peka ut entiteten för *Working Mode* under konfigurationen.
 *   **Notera:** För Huawei inverteras batterisensorn automatiskt så att **Plus (+)** betyder att batteriet **laddar** och **Minus (-)** betyder att det **laddar ur**, vilket matchar standardbeteendet för Huawei Solar-integrationen.
 
+### ⚡ Homevolt
+Styr Homevolt-batterier lokalt via Home Assistant.
+*   **Krav:** Integrationen Homevolt Local (finns att ladda ner via HACS) måste vara installerad och konfigurerad först.
+*   **Notera:** Integrationen stöder *Auto-Discovery* och hittar automatiskt dina sensorer för SoC, Batteri, Nät och Huslast vid installationen!
+
 ### ☁️ Generic / Light
 För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men sedan styra ditt batteri manuellt via egna automationsflöden.
 
@@ -53,9 +58,9 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
 1. Gå till **Inställningar** -> **Enheter & Tjänster**.
 2. Klicka på **Lägg till integration** och sök efter **Battery Optimizer Light**.
 3. Följ guiden:
-    * **Steg 1:** Välj vilken typ av batteri du har (Sonnen, Huawei, Generic).
+    * **Steg 1:** Välj vilken typ av batteri du har (Sonnen, Huawei, Homevolt, Generic).
     * **Steg 2:** Fyll i batterispecifika uppgifter (t.ex. IP och API-token för Sonnen, eller enheter för Huawei).
-    * **Steg 3:** Fyll i din API-nyckel från Dashboarden. Om du valt Sonnen eller Huawei hanteras de flesta mätvärden automatiskt, men för Generic (eller för anpassade behov) kan du behöva peka ut sensorer för nätutbyte och batteri manuellt.
+    * **Steg 3:** Fyll i din API-nyckel från Dashboarden. Om du valt Sonnen, Huawei eller Homevolt hanteras de flesta mätvärden automatiskt, men för Generic (eller för anpassade behov) kan du behöva peka ut sensorer för nätutbyte och batteri manuellt.
 
 ---
 
@@ -87,5 +92,5 @@ När systemet är igång skapas en mängd sensorer för att hjälpa dig övervak
 * 🛑 **`sensor.optimizer_light_peak_limit`**: Den effektgräns (i Watt) som effektvakten just nu försvarar.
 * 🏠 **`sensor.optimizer_light_virtual_load`**: Husets beräknade nettolast i realtid (W).
 * 🔌 **`sensor.sonnen_grid_in_out`** *(Endast Sonnen)*: Visar det faktiska nätutbytet (Grid In/Out) i realtid (W). **Plus (+)** = Importerar (köper), **Minus (-)** = Exporterar (säljer).
-* 🔋 **`sensor.*_battery_in_out`** *(Sonnen & Huawei)*: Batteriets effekt i realtid (W). Standard för Sonnen/Generic är att **Minus (-)** = Laddar. För Huawei är detta inverterat (se notis under Huawei-sektionen ovan).
-* 📊 **`sensor.*_soc`** *(Sonnen & Huawei)*: Batteriets nuvarande laddningsnivå (%).
+* 🔋 **`sensor.*_battery_in_out`** *(Sonnen, Huawei & Homevolt)*: Batteriets effekt i realtid (W). Standard för Sonnen/Homevolt/Generic är att **Minus (-)** = Laddar. För Huawei är detta inverterat (se notis under Huawei-sektionen ovan).
+* 📊 **`sensor.*_soc`** *(Sonnen, Huawei & Homevolt)*: Batteriets nuvarande laddningsnivå (%).
