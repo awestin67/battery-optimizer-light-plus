@@ -65,19 +65,24 @@ def mock_battery():
 
 @pytest.mark.asyncio
 async def test_coordinator_handles_unavailable_soc(mock_hass_instance):
-    """Krav: Om SoC är otillgänglig ska vi INTE anropa API:et (för att undvika skräpdata)."""
+    """
+    Krav: Om SoC är otillgänglig (t.ex. vid uppstart) ska koordinatorn
+    returnera gammal data och inte krascha.
+    """
     coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
+    coordinator.data = {"action": "OLD_DATA"}  # Set some old data
 
-    # Simulera att sensorn är 'unavailable'
+    # Simulate that the sensor is 'unavailable', causing get_current_soc() to return None
     mock_state = MagicMock()
     mock_state.state = "unavailable"
     mock_hass_instance.states.get.return_value = mock_state
 
-    # Vi förväntar oss att UpdateFailed kastas
-    with pytest.raises(UpdateFailed) as excinfo:
-        await coordinator._async_update_data()
-
-    assert "Could not retrieve SoC" in str(excinfo.value)
+    # Mock the session to verify it's not called
+    patch_session = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_session) as mock_get_session:
+        result = await coordinator._async_update_data()
+        assert result == {"action": "OLD_DATA"}
+        mock_get_session.return_value.post.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_peak_guard_triggers_discharge(mock_hass_instance, mock_battery):
