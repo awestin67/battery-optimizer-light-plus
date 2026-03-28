@@ -130,12 +130,6 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_BATTERY_DEVICE_ID): selector.DeviceSelector(
                     selector.DeviceSelectorConfig(integration="huawei_solar")
                 ),
-                vol.Required(CONF_WORKING_MODE_ENTITY): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="select")
-                ),
-                vol.Optional(CONF_DEVICE_STATUS_ENTITY): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor")
-                ),
             })
         )
 
@@ -193,6 +187,18 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Huawei hårdkodar battery_sensor_invert=True, visa inte i UI
             if battery_type != BATTERY_TYPE_HUAWEI:
                 schema_dict[vol.Optional(CONF_BATTERY_SENSOR_INVERT, default=False)] = bool
+
+            if battery_type == BATTERY_TYPE_HUAWEI:
+                schema_dict.update({
+                    vol.Required(
+                        CONF_WORKING_MODE_ENTITY,
+                        default=self.data.get(CONF_WORKING_MODE_ENTITY)
+                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="select")),
+                    vol.Optional(
+                        CONF_DEVICE_STATUS_ENTITY,
+                        default=self.data.get(CONF_DEVICE_STATUS_ENTITY)
+                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                })
 
         return self.async_show_form(step_id="common", data_schema=vol.Schema(schema_dict))
 

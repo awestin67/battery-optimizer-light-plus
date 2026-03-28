@@ -54,7 +54,7 @@ async def test_config_flow_huawei():
     # Andra anropet fyller i formuläret, mockar auto-discovery, och går vidare
     with patch(HUAWEI_DISCOVERY_PATH) as mock_discover:
         mock_discover.return_value = {"soc_sensor": "sensor.discovered_soc"}
-        result2 = await flow.async_step_huawei({"battery_device_id": "test_id", "working_mode_entity": "select.mode"})
+        result2 = await flow.async_step_huawei({"battery_device_id": "test_id"})
 
         assert result2["type"] == "form"
         assert result2["step_id"] == "common"
@@ -208,7 +208,7 @@ async def test_config_flow_huawei_sets_invert_true():
     # Gå vidare till common step
     with patch(HUAWEI_DISCOVERY_PATH, return_value={}):
         result2 = await flow.async_step_huawei(
-            {"battery_device_id": "test_id", "working_mode_entity": "select.mode"}
+            {"battery_device_id": "test_id"}
         )
 
     # Verifiera att UI-switchen för invertering är BORTTAGEN för Huawei
@@ -219,7 +219,11 @@ async def test_config_flow_huawei_sets_invert_true():
     assert not invert_toggle_present, "Invert-switchen ska vara dold för Huawei"
 
     # Fyll i common och skapa entry
-    result3 = await flow.async_step_common({"api_key": "123", "api_url": "http://test"})
+    result3 = await flow.async_step_common({
+        "api_key": "123",
+        "api_url": "http://test",
+        "working_mode_entity": "select.mode"
+    })
 
     assert result3["type"] == "create_entry"
     assert result3["data"][CONF_BATTERY_TYPE] == BATTERY_TYPE_HUAWEI

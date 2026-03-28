@@ -28,14 +28,10 @@
                 "title": "Konfigurera Huawei",
                 "description": "Välj enheter och entiteter för din Huawei-anläggning.",
                 "data": {
-                    "battery_device_id": "Huawei-enhet",
-                    "working_mode_entity": "Working Mode (Entitet)",
-                    "device_status_entity": "Device Status (Entitet)"
+                    "battery_device_id": "Huawei-enhet"
                 },
                 "data_description": {
-                    "battery_device_id": "Välj ditt Huawei-batteri eller växelriktare i listan så integrationen vet var kommandona ska skickas.",
-                    "working_mode_entity": "Peka ut entiteten för driftläge (t.ex. 'select.inverter_working_mode'). Används för att växla mellan Auto och Hold.",
-                    "device_status_entity": "Peka ut sensorn för status (t.ex. 'sensor.inverter_device_status') så känner PeakGuard automatiskt av fel och underhållslägen."
+                    "battery_device_id": "Välj ditt Huawei-batteri eller växelriktare i listan så integrationen vet var kommandona ska skickas."
                 }
             },
             "common": {
@@ -52,7 +48,9 @@
                     "battery_status_sensor": "Batteri Status Sensor (Valfritt)",
                     "battery_status_keywords": "Nyckelord för underhåll (t.ex. Battery-Care, Service)",
                     "virtual_load_sensor": "Virtuell Last Sensor (Valfritt - Ersätter Grid+Batteri beräkning)",
-                    "consumption_forecast_sensor": "Förbrukningsprognos imorgon (kWh) (Valfritt)"
+                    "consumption_forecast_sensor": "Förbrukningsprognos imorgon (kWh) (Valfritt)",
+                    "working_mode_entity": "Working Mode (Entitet)",
+                    "device_status_entity": "Device Status (Entitet)"
                 },
                 "data_description": {
                     "api_url": "Låt stå kvar på standardvärdet om du inte kör mot en egen test-server.",
@@ -62,7 +60,9 @@
                     "grid_sensor_invert": "Kryssa i denna om din Grid Sensor visar ett PLUS-värde när du säljer el.",
                     "battery_power_sensor": "Sensorn för batteriets effekt (Negativ = laddar, Positiv = laddar ur).",
                     "battery_sensor_invert": "Kryssa i denna om din batterisensor visar PLUS när den laddar och MINUS när den laddar ur (t.ex. standard för Huawei).",
-                    "virtual_load_sensor": "Lämna tom för att låta integrationen räkna ut lasten automatiskt (Grid + Batteri)."
+                    "virtual_load_sensor": "Lämna tom för att låta integrationen räkna ut lasten automatiskt (Grid + Batteri).",
+                    "working_mode_entity": "Peka ut entiteten för driftläge (t.ex. 'select.inverter_working_mode').",
+                    "device_status_entity": "Peka ut sensorn för status (t.ex. 'sensor.inverter_device_status') så känner PeakGuard automatiskt av fel och underhållslägen."
                 }
             }
         },
