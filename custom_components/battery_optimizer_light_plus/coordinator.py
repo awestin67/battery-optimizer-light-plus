@@ -54,7 +54,12 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         soc = await self.battery_api.get_current_soc()
 
         if soc is None:
-            raise UpdateFailed("Could not retrieve SoC from battery.")
+            # If we can't get SoC (e.g., during startup), log a warning but don't
+            # raise UpdateFailed. This prevents the integration from failing to set up.
+            # We return the last known data if available, otherwise None. The coordinator
+            # will try again on the next scheduled update.
+            _LOGGER.warning("Could not retrieve SoC from battery. Will retry on next scheduled update.")
+            return self.data
 
         is_solar_override = False
         if hasattr(self, "peak_guard") and self.peak_guard:

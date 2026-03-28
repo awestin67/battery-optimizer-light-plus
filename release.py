@@ -586,8 +586,8 @@ def create_github_release(version, repo_slug=None, diff_uncommitted=""):
         notes = f"Release v{version}"
 
     # Fråga om det är en pre-release
-    is_prerelease_input = input("Är detta en pre-release? (j/n, default: j): ").lower()
-    is_prerelease = is_prerelease_input != 'n'
+    is_prerelease_input = input("Är detta en pre-release? (j/n, default: n): ").lower()
+    is_prerelease = is_prerelease_input == 'j'
 
     release_type = "Pre-release" if is_prerelease else "Full release"
     print(f"🚀 Skapar GitHub {release_type} på {repo_part}...")

@@ -55,6 +55,24 @@ async def test_create_sonnen_battery():
             session="mocked_session",
         )
 
+@pytest.mark.asyncio
+async def test_create_sonnen_battery_without_soc_sensor():
+    """Testar att SonnenBattery kan initieras även om soc_sensor saknas (förebygger KeyError)."""
+    hass = MagicMock()
+    # Konfiguration HELT UTAN CONF_SOC_SENSOR
+    config = {
+        CONF_BATTERY_TYPE: BATTERY_TYPE_SONNEN,
+        CONF_HOST: "1.2.3.4",
+        CONF_PORT: 8080,
+        CONF_API_TOKEN: "test_token",
+    }
+
+    patch_api = "custom_components.battery_optimizer_light_plus.battery_factory.SonnenAPI"
+    patch_session = "custom_components.battery_optimizer_light_plus.battery_factory.async_get_clientsession"
+    with patch(patch_api), patch(patch_session):
+        battery_api = create_battery_api(hass, config)
+        assert isinstance(battery_api, SonnenBattery)
+
 @pytest.fixture
 def mock_sonnen_api():
     """Mockerar SonnenAPI."""
