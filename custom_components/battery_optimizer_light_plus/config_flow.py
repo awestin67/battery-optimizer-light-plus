@@ -15,6 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
+from typing import Iterable
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
@@ -56,6 +57,22 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# Valfria entity-selector-fält som inte får lagras som None
+_OPTIONAL_ENTITY_KEYS = (
+    CONF_VIRTUAL_LOAD_SENSOR,
+    CONF_GRID_SENSOR,
+    CONF_BATTERY_STATUS_SENSOR,
+    CONF_DEVICE_STATUS_ENTITY,
+    CONF_CONSUMPTION_FORECAST_SENSOR,
+)
+
+
+def _strip_none_values(data: dict, keys: Iterable[str]) -> None:
+    """Ta bort nycklar med None-värden från data för att undvika valideringsfel i HA."""
+    for key in keys:
+        if key in data and data[key] is None:
+            del data[key]
 
 def async_auto_discover_huawei_entities(hass, device_id: str) -> dict:
     """Attempt to auto-discover standard entities for a Huawei device."""
@@ -195,6 +212,7 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the common configuration step for all battery types."""
         if user_input is not None:
             self.data.update(user_input)
+            _strip_none_values(self.data, _OPTIONAL_ENTITY_KEYS)
             return self.async_create_entry(title="Battery Optimizer Light", data=self.data)
 
         battery_type = self.data.get(CONF_BATTERY_TYPE)
@@ -275,6 +293,7 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             elif battery_type == BATTERY_TYPE_HOMEVOLT:
                 new_data[CONF_BATTERY_SENSOR_INVERT] = False
                 new_data[CONF_GRID_SENSOR_INVERT] = False
+            _strip_none_values(new_data, _OPTIONAL_ENTITY_KEYS)
             # Update the config entry with new data
             self.hass.config_entries.async_update_entry(
                 self.config_entry, data=new_data
