@@ -81,16 +81,16 @@ def async_auto_discover_huawei_entities(hass, device_id: str) -> dict:
     found_entities = {}
 
     discovery_map = {
-        CONF_SOC_SENSOR: ("sensor", "battery_state_of_capacity"),
-        CONF_BATTERY_POWER_SENSOR: ("sensor", "battery_charge_discharge_power"),
-        CONF_GRID_SENSOR: ("sensor", "power_meter_active_power"),
-        CONF_WORKING_MODE_ENTITY: ("select", "battery_working_mode"),
-        CONF_DEVICE_STATUS_ENTITY: ("sensor", "device_status"),
+        CONF_SOC_SENSOR: ("sensor", ("storage_state_of_capacity", "battery_state_of_capacity")),
+        CONF_BATTERY_POWER_SENSOR: ("sensor", ("storage_charge_discharge_power", "battery_charge_discharge_power")),
+        CONF_GRID_SENSOR: ("sensor", ("power_meter_active_power",)),
+        CONF_WORKING_MODE_ENTITY: ("select", ("storage_working_mode", "battery_working_mode", "storage_working_mode_a")),
+        CONF_DEVICE_STATUS_ENTITY: ("sensor", ("storage_running_status", "running_status", "device_status")),
     }
 
-    for conf_key, (domain, translation_key) in discovery_map.items():
+    for conf_key, (domain, translation_keys) in discovery_map.items():
         for entry in entries:
-            if entry.domain == domain and entry.translation_key == translation_key:
+            if entry.domain == domain and entry.translation_key in translation_keys:
                 found_entities[conf_key] = entry.entity_id
                 break
 
