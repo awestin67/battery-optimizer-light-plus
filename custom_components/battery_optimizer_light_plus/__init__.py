@@ -78,11 +78,11 @@ async def async_setup_entry(hass: HomeAssistant, entry):
     peak_guard = PeakGuard(hass, config, coordinator, coordinator.battery_api)
     coordinator.peak_guard = peak_guard
 
-    # Kör första uppdateringen NU, när PeakGuard är kopplad.
-    await coordinator.async_config_entry_first_refresh()
+    # Hämta virtuell last-sensor från config (kan vara None)
+    virtual_load_entity = config.get(CONF_VIRTUAL_LOAD_SENSOR)
 
     if config.get(CONF_BATTERY_TYPE) == BATTERY_TYPE_SONNEN:
-        # Starta Sonne-specifik polling var 10:e sekund
+        # Starta Sonne-specifik polling var 10:e sekund INNAN vi frågar molnet första gången
         await coordinator.battery_api.coordinator.async_config_entry_first_refresh()
 
         def _sonnen_updated():
@@ -91,8 +91,8 @@ async def async_setup_entry(hass: HomeAssistant, entry):
         # Låt Sonnen-uppdateringar trigga PeakGuard blixtsnabbt!
         coordinator.battery_api.coordinator.async_add_listener(_sonnen_updated)
 
-    # Hämta virtuell last-sensor från config (kan vara None)
-    virtual_load_entity = config.get(CONF_VIRTUAL_LOAD_SENSOR)
+    # Kör första uppdateringen mot molnet NU, när det lokala batteriet är redo att svara med SoC
+    await coordinator.async_config_entry_first_refresh()
 
     # --- BAKGRUNDSBEVAKNING ---
     async def on_load_change(event):
