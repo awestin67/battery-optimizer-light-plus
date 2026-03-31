@@ -16,10 +16,10 @@
 
 import logging
 import asyncio
-from datetime import timedelta
 import aiohttp
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_track_time_pattern
 from .battery_factory import create_battery_api
 
 _LOGGER = logging.getLogger(__name__)
@@ -32,7 +32,6 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name="Battery Optimizer Light Plus",
-            update_interval=timedelta(minutes=5),
         )
         self.api_url = f"{config['api_url'].rstrip('/')}/signal"
         self.api_key = config['api_key']
@@ -47,6 +46,18 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             _LOGGER.warning("⚠️ VARNING: Integrationen körs mot DEVELOPMENT-backend: %s", self.api_url)
 
         self.consumption_forecast_entity = config.get("consumption_forecast_sensor")
+
+        # Schemalägg uppdateringar till exakt var femte minut + 30 sek (t.ex. 12:05:30, 12:10:30)
+        async def _handle_timer(now):
+            if now.minute % 5 == 0:
+                await self.async_request_refresh()
+
+        self.unsub_timer = async_track_time_pattern(
+            hass,
+            _handle_timer,
+            minute="*",
+            second=30
+        )
 
     async def _async_update_data(self):
         """Körs var 5:e minut."""
@@ -89,7 +100,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         for attempt in range(3):
             try:
                 async with session.post(
-                    self.api_url, json=payload, timeout=aiohttp.ClientTimeout(total=30)
+                    self.api_url, json=payload, timeout=aiohttp.ClientTimeout(total=10)
                 ) as response:
                     if response.status == 401:
                         text = await response.text()

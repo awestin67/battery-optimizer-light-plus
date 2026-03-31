@@ -764,5 +764,7 @@ async def update_listener(hass, entry):
 async def async_unload_entry(hass, entry):
     unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor", "binary_sensor", "switch"])
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+        coordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        if hasattr(coordinator, "unsub_timer") and callable(coordinator.unsub_timer):
+            coordinator.unsub_timer()
     return unload_ok

@@ -79,6 +79,7 @@ class MockDataUpdateCoordinator:
         self.hass = hass
         self.data = None
         self.async_config_entry_first_refresh = AsyncMock()
+        self.async_request_refresh = AsyncMock()
 
 mock_uc.DataUpdateCoordinator = MockDataUpdateCoordinator
 

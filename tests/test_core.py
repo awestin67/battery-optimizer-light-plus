@@ -27,6 +27,7 @@ from custom_components.battery_optimizer_light_plus import ( # noqa: E402
     async_unload_entry,
     update_listener,
 )
+from custom_components.battery_optimizer_light_plus.const import DOMAIN # noqa: E402
 from custom_components.battery_optimizer_light_plus.sensor import BatteryLightStatusSensor  # noqa: E402
 from custom_components.battery_optimizer_light_plus.sensor import BatteryLightVirtualLoadSensor  # noqa: E402
 
@@ -44,6 +45,7 @@ MOCK_CONFIG = {
 def mock_hass_instance():
     """Skapar en fejkad Home Assistant-instans."""
     hass = MagicMock()
+    hass.data = {}
     hass.states.get = MagicMock()
     hass.services.async_call = AsyncMock()
     hass.config_entries.async_forward_entry_setups = AsyncMock()
@@ -1048,6 +1050,63 @@ async def test_peak_guard_solar_override_with_internal_battery_api(mock_hass_ins
     # Andra körningen: Nu har tiden gått, override ska aktiveras!
     await guard.update(config.get("virtual_load_sensor"), "sensor.optimizer_light_peak_limit")
     assert guard.is_solar_override is True
+
+@pytest.mark.asyncio
+async def test_coordinator_scheduling_and_cleanup(mock_hass_instance):
+    """
+    Krav: Koordinatorn ska schemalägga uppdateringar med async_track_time_pattern
+    och städa upp lyssnaren korrekt vid unload.
+    """
+    entry = MagicMock()
+    entry.data = MOCK_CONFIG.copy()
+    entry.entry_id = "test_scheduling"
+
+    # Mocka bort factoryn så vi inte behöver bry oss om batteri-API:et
+    patch_factory = "custom_components.battery_optimizer_light_plus.coordinator.create_battery_api"
+    # Vi måste patcha den globala timern i __init__.py också
+    patch_track_init = "custom_components.battery_optimizer_light_plus.async_track_state_change_event"
+    # Och den vi vill testa i coordinator.py
+    patch_track_coord = "custom_components.battery_optimizer_light_plus.coordinator.async_track_time_pattern"
+
+    with patch(patch_factory), patch(patch_track_init), patch(patch_track_coord) as mock_track_pattern:
+
+        # Skapa en mock för unsub-funktionen som returneras av timern
+        mock_unsub = MagicMock()
+        mock_track_pattern.return_value = mock_unsub
+
+        # Mocka bort beroenden i setup
+        mock_hass_instance.config_entries.async_forward_entry_setups = AsyncMock()
+        patch_get_int = "custom_components.battery_optimizer_light_plus.async_get_integration"
+        with patch(patch_get_int, new_callable=AsyncMock) as mock_get_int:
+            mock_get_int.return_value = MagicMock(version="1.0.0")
+            # Kör setup, detta kommer att skapa vår coordinator
+            await async_setup_entry(mock_hass_instance, entry)
+
+        # 1. Verifiera att timern sattes upp korrekt
+        mock_track_pattern.assert_called_once()
+        args, kwargs = mock_track_pattern.call_args
+        timer_callback = args[1]  # _handle_timer inuti __init__
+
+        assert kwargs['minute'] == '*'
+        assert kwargs['second'] == 30
+
+        # 2. Testa callback-funktionen
+        coordinator = mock_hass_instance.data[DOMAIN][entry.entry_id]
+
+        # Anropa med en tid som INTE ska trigga (minut 4)
+        await timer_callback(datetime.datetime(2024, 1, 1, 12, 4, 30))
+        coordinator.async_request_refresh.assert_not_called()
+
+        # Anropa med en tid som SKA trigga (minut 5)
+        await timer_callback(datetime.datetime(2024, 1, 1, 12, 5, 30))
+        coordinator.async_request_refresh.assert_called_once()
+
+        # 3. Verifiera att unload städar upp
+        mock_hass_instance.config_entries.async_unload_platforms.return_value = True
+        await async_unload_entry(mock_hass_instance, entry)
+
+        # unsub_timer() ska ha anropats
+        mock_unsub.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_peak_guard_fallback_to_ha_sensors(mock_hass_instance):
