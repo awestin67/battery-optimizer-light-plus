@@ -15,8 +15,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 from custom_components.battery_optimizer_light_plus.battery_factory import create_battery_api
+from homeassistant.exceptions import ServiceNotFound
 from custom_components.battery_optimizer_light_plus.batteries.homevolt.homevolt import HomevoltBattery
 from custom_components.battery_optimizer_light_plus.const import (
     CONF_BATTERY_TYPE,
@@ -97,3 +98,17 @@ async def test_apply_action_idle(homevolt_battery):
     assert service_data["device_id"] == "test_device_id"
     assert service_data["mode"] == "auto"
     assert service_data["setpoint"] == 0
+
+@pytest.mark.asyncio
+async def test_apply_action_service_not_found(homevolt_battery):
+    """Test that ServiceNotFound is caught and logged gracefully."""
+    homevolt_battery._hass.services.async_call.side_effect = ServiceNotFound(
+        "homevolt_local", "add_schedule"
+    )
+
+    with patch("custom_components.battery_optimizer_light_plus.batteries.homevolt.homevolt._LOGGER") as mock_logger:
+        # This call should not raise an exception
+        await homevolt_battery.apply_action("CHARGE", target_kw=2.0)
+
+        mock_logger.warning.assert_called_once()
+        assert "Homevolt service not found" in mock_logger.warning.call_args[0][0]

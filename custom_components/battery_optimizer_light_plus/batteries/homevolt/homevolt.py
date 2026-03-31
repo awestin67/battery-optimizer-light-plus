@@ -19,6 +19,7 @@ from datetime import timedelta
 import homeassistant.util.dt as dt_util
 from homeassistant.core import HomeAssistant
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.exceptions import ServiceNotFound
 
 from ..base import BatteryApi
 
@@ -136,5 +137,10 @@ class HomevoltBattery(BatteryApi):
             await self._hass.services.async_call(
                 "homevolt_local", "add_schedule", service_data, blocking=True
             )
+        except ServiceNotFound as e:
+            _LOGGER.warning(
+                "Homevolt service not found: %s. The 'homevolt_local' integration might be starting up. "
+                "Please check your setup.", e
+            )
         except Exception as e:
-            _LOGGER.error(f"Failed to call homevolt_local.add_schedule service: {e}")
+            _LOGGER.error(f"Failed to call homevolt_local.add_schedule service: {e}", exc_info=True)
