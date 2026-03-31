@@ -17,10 +17,9 @@
 import logging
 import asyncio
 import aiohttp
-from datetime import timedelta
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_track_time_change
 from .battery_factory import create_battery_api
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,11 +47,16 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
         self.consumption_forecast_entity = config.get("consumption_forecast_sensor")
 
-        # Schemalägg uppdateringar till exakt var femte minut
-        self.unsub_timer = async_track_time_interval(
+        # Skapa en wrapper-funktion eftersom async_track_time_change skickar med datetime (now)
+        async def _update_interval(now):
+            await self.async_request_refresh()
+
+        # Schemalägg uppdateringar till jämna 5 minuter och 30 sekunder (t.ex. 12:00:30, 12:05:30)
+        self.unsub_timer = async_track_time_change(
             hass,
-            self.async_request_refresh,
-            timedelta(minutes=5)
+            _update_interval,
+            minute=list(range(0, 60, 5)),
+            second=30
         )
 
     async def _async_update_data(self):

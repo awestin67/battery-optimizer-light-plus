@@ -1066,13 +1066,13 @@ async def test_coordinator_scheduling_and_cleanup(mock_hass_instance):
     # Vi måste patcha den globala timern i __init__.py också
     patch_track_init = "custom_components.battery_optimizer_light_plus.async_track_state_change_event"
     # Och den vi vill testa i coordinator.py
-    patch_track_coord = "custom_components.battery_optimizer_light_plus.coordinator.async_track_time_interval"
+    patch_track_coord = "custom_components.battery_optimizer_light_plus.coordinator.async_track_time_change"
 
-    with patch(patch_factory), patch(patch_track_init), patch(patch_track_coord) as mock_track_interval:
+    with patch(patch_factory), patch(patch_track_init), patch(patch_track_coord) as mock_track_change:
 
         # Skapa en mock för unsub-funktionen som returneras av timern
         mock_unsub = MagicMock()
-        mock_track_interval.return_value = mock_unsub
+        mock_track_change.return_value = mock_unsub
 
         # Mocka bort beroenden i setup
         mock_hass_instance.config_entries.async_forward_entry_setups = AsyncMock()
@@ -1084,12 +1084,18 @@ async def test_coordinator_scheduling_and_cleanup(mock_hass_instance):
 
         # 1. Verifiera att timern sattes upp korrekt
         coordinator = mock_hass_instance.data[DOMAIN][entry.entry_id]
-        mock_track_interval.assert_called_once()
-        args, kwargs = mock_track_interval.call_args
+        mock_track_change.assert_called_once()
+        args, kwargs = mock_track_change.call_args
 
-        # args[0] är hass, args[1] är callback, args[2] är interval
-        assert args[1] == coordinator.async_request_refresh
-        assert args[2] == datetime.timedelta(minutes=5)
+        # args[0] är hass, args[1] är callback
+        callback = args[1]
+        assert kwargs["minute"] == list(range(0, 60, 5))
+        assert kwargs["second"] == 30
+
+        # Verifiera att wrappern anropar async_request_refresh
+        coordinator.async_request_refresh = AsyncMock()
+        await callback(datetime.datetime.now(datetime.timezone.utc))
+        coordinator.async_request_refresh.assert_called_once()
 
 
         # 2. Verifiera att unload städar upp
