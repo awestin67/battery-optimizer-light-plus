@@ -59,15 +59,6 @@ class HuaweiBattery(BatteryApi):
                 return str(state.state)
         return None
 
-    async def async_set_charge(self, power: int):
-        """Set the battery to charge with a specific power."""
-        await self._hass.services.async_call(
-            "huawei_solar",
-            "forcible_charge",
-            {"device_id": self._device_id, "power": power, "duration": 60},
-            blocking=True,
-        )
-
     async def apply_action(self, action: str, target_kw: float = 0.0):
         """Verkställer ett beslut från molnet eller lokalt."""
         power_w = int(target_kw * 1000)
@@ -75,13 +66,39 @@ class HuaweiBattery(BatteryApi):
 
         try:
             if action_upper == "CHARGE":
-                await self.async_set_charge(power_w)
+                await self._hass.services.async_call(
+                    "huawei_solar",
+                    "forcible_charge",
+                    {"device_id": self._device_id, "power": power_w, "duration": 60},
+                    blocking=True,
+                )
             elif action_upper == "DISCHARGE":
-                await self.async_set_discharge(power_w)
+                await self._hass.services.async_call(
+                    "huawei_solar",
+                    "forcible_discharge",
+                    {"device_id": self._device_id, "power": power_w, "duration": 60},
+                    blocking=True,
+                )
             elif action_upper == "HOLD":
-                await self.async_hold()
+                await self._hass.services.async_call(
+                    "huawei_solar", "stop_forcible_charge", {"device_id": self._device_id}, blocking=True
+                )
+                await self._hass.services.async_call(
+                    "select",
+                    "select_option",
+                    {"entity_id": self._working_mode_entity, "option": "fixed_charge_discharge"},
+                    blocking=True,
+                )
             elif action_upper == "IDLE":
-                await self.async_set_idle()
+                await self._hass.services.async_call(
+                    "huawei_solar", "stop_forcible_charge", {"device_id": self._device_id}, blocking=True
+                )
+                await self._hass.services.async_call(
+                    "select",
+                    "select_option",
+                    {"entity_id": self._working_mode_entity, "option": "maximise_self_consumption"},
+                    blocking=True,
+                )
             else:
                 _LOGGER.warning(f"Unknown action for Huawei: {action}")
         except ServiceNotFound as e:
@@ -90,31 +107,8 @@ class HuaweiBattery(BatteryApi):
                 "Please check your setup.", e
             )
         except Exception as e:
-            _LOGGER.error("An unexpected error occurred while applying Huawei action '%s': %s", action, e, exc_info=True)
-
-    async def async_set_discharge(self, power: int):
-        """Set the battery to discharge with a specific power."""
-        await self._hass.services.async_call(
-            "huawei_solar",
-            "forcible_discharge",
-            {"device_id": self._device_id, "power": power, "duration": 60},
-            blocking=True,
-        )
-
-    async def async_set_idle(self):
-        """Set the battery to idle (auto/self-consumption)."""
-        await self._hass.services.async_call(
-            "huawei_solar", "stop_forcible_charge", {"device_id": self._device_id}, blocking=True
-        )
-        await self._hass.services.async_call(
-            "select", "select_option", {"entity_id": self._working_mode_entity, "option": "maximise_self_consumption"}, blocking=True
-        )
-
-    async def async_hold(self):
-        """Set the battery to hold (manual mode, 0W)."""
-        await self._hass.services.async_call(
-            "huawei_solar", "stop_forcible_charge", {"device_id": self._device_id}, blocking=True
-        )
-        await self._hass.services.async_call(
-            "select", "select_option", {"entity_id": self._working_mode_entity, "option": "fixed_charge_discharge"}, blocking=True
-        )
+            _LOGGER.error("An unexpected error occurred while applying Huawei action '%s': %s",
+            action,
+            e,
+            exc_info=True,
+            )

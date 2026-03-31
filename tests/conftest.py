@@ -30,9 +30,14 @@ sys.modules["homeassistant.helpers.aiohttp_client"] = mock_hass
 sys.modules["homeassistant.helpers.entity"] = mock_hass
 mock_hass.DeviceInfo = dict
 sys.modules["homeassistant.helpers.selector"] = mock_hass
-sys.modules["homeassistant.exceptions"] = mock_hass
 sys.modules["homeassistant.components"] = mock_hass
 sys.modules["homeassistant.loader"] = mock_hass
+
+mock_exceptions = MagicMock()
+class ServiceNotFound(Exception):
+    pass
+mock_exceptions.ServiceNotFound = ServiceNotFound
+sys.modules["homeassistant.exceptions"] = mock_exceptions
 
 mock_config_entries = MagicMock()
 class MockFlow:

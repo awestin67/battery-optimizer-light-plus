@@ -98,7 +98,8 @@ async def test_apply_action_charge(huawei_battery):
     # 3.5 kW ska bli 3500 W
     huawei_battery._hass.services.async_call.assert_called_once_with(
         "huawei_solar", "forcible_charge",
-        {"device_id": "test_device_id", "power": 3500, "duration": 60}
+        {"device_id": "test_device_id", "power": 3500, "duration": 60},
+        blocking=True
     )
 
 @pytest.mark.asyncio
@@ -108,7 +109,8 @@ async def test_apply_action_discharge(huawei_battery):
 
     huawei_battery._hass.services.async_call.assert_called_once_with(
         "huawei_solar", "forcible_discharge",
-        {"device_id": "test_device_id", "power": 2000, "duration": 60}
+        {"device_id": "test_device_id", "power": 2000, "duration": 60},
+        blocking=True
     )
 
 @pytest.mark.asyncio
@@ -120,14 +122,16 @@ async def test_apply_action_hold(huawei_battery):
     assert len(calls) == 2
 
     # Första anropet ska vara stop_forcible_charge
-    assert calls[0][0] == ("huawei_solar", "stop_forcible_charge", {"device_id": "test_device_id"})
+    assert calls[0].args == ("huawei_solar", "stop_forcible_charge", {"device_id": "test_device_id"})
+    assert calls[0].kwargs == {"blocking": True}
 
     # Andra anropet ska ändra select_option
-    assert calls[1][0] == (
+    assert calls[1].args == (
         "select",
         "select_option",
         {"entity_id": "select.huawei_working_mode", "option": "fixed_charge_discharge"}
     )
+    assert calls[1].kwargs == {"blocking": True}
 
 @pytest.mark.asyncio
 async def test_apply_action_idle(huawei_battery):
@@ -138,14 +142,16 @@ async def test_apply_action_idle(huawei_battery):
     assert len(calls) == 2
 
     # Första anropet ska vara stop_forcible_charge
-    assert calls[0][0] == ("huawei_solar", "stop_forcible_charge", {"device_id": "test_device_id"})
+    assert calls[0].args == ("huawei_solar", "stop_forcible_charge", {"device_id": "test_device_id"})
+    assert calls[0].kwargs == {"blocking": True}
 
     # Andra anropet ska ändra select_option
-    assert calls[1][0] == (
+    assert calls[1].args == (
         "select",
         "select_option",
         {"entity_id": "select.huawei_working_mode", "option": "maximise_self_consumption"}
     )
+    assert calls[1].kwargs == {"blocking": True}
 
 @pytest.mark.asyncio
 async def test_apply_action_service_not_found(huawei_battery):
