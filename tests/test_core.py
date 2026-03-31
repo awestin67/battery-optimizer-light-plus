@@ -1054,7 +1054,7 @@ async def test_peak_guard_solar_override_with_internal_battery_api(mock_hass_ins
 @pytest.mark.asyncio
 async def test_coordinator_scheduling_and_cleanup(mock_hass_instance):
     """
-    Krav: Koordinatorn ska schemalägga uppdateringar med async_track_time_pattern
+    Krav: Koordinatorn ska schemalägga uppdateringar med async_track_time_interval
     och städa upp lyssnaren korrekt vid unload.
     """
     entry = MagicMock()
@@ -1066,13 +1066,13 @@ async def test_coordinator_scheduling_and_cleanup(mock_hass_instance):
     # Vi måste patcha den globala timern i __init__.py också
     patch_track_init = "custom_components.battery_optimizer_light_plus.async_track_state_change_event"
     # Och den vi vill testa i coordinator.py
-    patch_track_coord = "custom_components.battery_optimizer_light_plus.coordinator.async_track_time_pattern"
+    patch_track_coord = "custom_components.battery_optimizer_light_plus.coordinator.async_track_time_interval"
 
-    with patch(patch_factory), patch(patch_track_init), patch(patch_track_coord) as mock_track_pattern:
+    with patch(patch_factory), patch(patch_track_init), patch(patch_track_coord) as mock_track_interval:
 
         # Skapa en mock för unsub-funktionen som returneras av timern
         mock_unsub = MagicMock()
-        mock_track_pattern.return_value = mock_unsub
+        mock_track_interval.return_value = mock_unsub
 
         # Mocka bort beroenden i setup
         mock_hass_instance.config_entries.async_forward_entry_setups = AsyncMock()
@@ -1083,25 +1083,16 @@ async def test_coordinator_scheduling_and_cleanup(mock_hass_instance):
             await async_setup_entry(mock_hass_instance, entry)
 
         # 1. Verifiera att timern sattes upp korrekt
-        mock_track_pattern.assert_called_once()
-        args, kwargs = mock_track_pattern.call_args
-        timer_callback = args[1]  # _handle_timer inuti __init__
-
-        assert kwargs['minute'] == '*'
-        assert kwargs['second'] == 30
-
-        # 2. Testa callback-funktionen
         coordinator = mock_hass_instance.data[DOMAIN][entry.entry_id]
+        mock_track_interval.assert_called_once()
+        args, kwargs = mock_track_interval.call_args
 
-        # Anropa med en tid som INTE ska trigga (minut 4)
-        await timer_callback(datetime.datetime(2024, 1, 1, 12, 4, 30))
-        coordinator.async_request_refresh.assert_not_called()
+        # args[0] är hass, args[1] är callback, args[2] är interval
+        assert args[1] == coordinator.async_request_refresh
+        assert args[2] == datetime.timedelta(minutes=5)
 
-        # Anropa med en tid som SKA trigga (minut 5)
-        await timer_callback(datetime.datetime(2024, 1, 1, 12, 5, 30))
-        coordinator.async_request_refresh.assert_called_once()
 
-        # 3. Verifiera att unload städar upp
+        # 2. Verifiera att unload städar upp
         mock_hass_instance.config_entries.async_unload_platforms.return_value = True
         await async_unload_entry(mock_hass_instance, entry)
 

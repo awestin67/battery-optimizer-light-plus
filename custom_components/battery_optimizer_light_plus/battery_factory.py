@@ -33,10 +33,6 @@ from .const import (
     CONF_VIRTUAL_LOAD_SENSOR,
 )
 from .batteries.base import BatteryApi
-from .batteries.sonnen.sonnen import SonnenBattery
-from .batteries.sonnen.api import SonnenAPI
-from .batteries.huawei.huawei import HuaweiBattery
-from .batteries.homevolt.homevolt import HomevoltBattery
 
 
 def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
@@ -44,6 +40,9 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
     battery_type = config.get(CONF_BATTERY_TYPE)
 
     if battery_type == BATTERY_TYPE_SONNEN:
+        from .batteries.sonnen.api import SonnenAPI
+        from .batteries.sonnen.sonnen import SonnenBattery
+
         session = async_get_clientsession(hass)
         sonnen_api = SonnenAPI(
             host=config[CONF_HOST],
@@ -58,6 +57,8 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
         )
 
     if battery_type == BATTERY_TYPE_HUAWEI:
+        from .batteries.huawei.huawei import HuaweiBattery
+
         return HuaweiBattery(
             hass=hass,
             device_id=config[CONF_BATTERY_DEVICE_ID],
@@ -67,6 +68,8 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
         )
 
     if battery_type == BATTERY_TYPE_HOMEVOLT:
+        from .batteries.homevolt.homevolt import HomevoltBattery
+
         return HomevoltBattery(
             hass=hass,
             device_id=config[CONF_BATTERY_DEVICE_ID],

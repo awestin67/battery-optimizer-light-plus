@@ -40,7 +40,7 @@ async def test_create_sonnen_battery():
         CONF_SOC_SENSOR: "sensor.sonnen_soc",
     }
 
-    patch_api = "custom_components.battery_optimizer_light_plus.battery_factory.SonnenAPI"
+    patch_api = "custom_components.battery_optimizer_light_plus.batteries.sonnen.api.SonnenAPI"
     patch_session = "custom_components.battery_optimizer_light_plus.battery_factory.async_get_clientsession"
     with patch(patch_api) as mock_sonnen_api, \
          patch(patch_session) as mock_session:
@@ -67,7 +67,7 @@ async def test_create_sonnen_battery_without_soc_sensor():
         CONF_API_TOKEN: "test_token",
     }
 
-    patch_api = "custom_components.battery_optimizer_light_plus.battery_factory.SonnenAPI"
+    patch_api = "custom_components.battery_optimizer_light_plus.batteries.sonnen.api.SonnenAPI"
     patch_session = "custom_components.battery_optimizer_light_plus.battery_factory.async_get_clientsession"
     with patch(patch_api), patch(patch_session):
         battery_api = create_battery_api(hass, config)
