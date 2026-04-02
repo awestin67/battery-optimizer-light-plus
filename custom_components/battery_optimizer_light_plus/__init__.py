@@ -310,7 +310,7 @@ class PeakGuard:
 
             # Skydd: Om gränsvärdet är orimligt lågt (t.ex. 0), avbryt.
             if limit_w < 100:
-                _LOGGER.warning(f"Peak limit is too low ({limit_w} W). Ignoring to prevent false triggering.")
+                _LOGGER.debug(f"Peak limit is too low ({limit_w} W). Ignoring to prevent false triggering.")
                 return
 
             # 2. Hämta Lasten
