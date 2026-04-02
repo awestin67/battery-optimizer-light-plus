@@ -116,10 +116,12 @@ async def test_apply_action_discharge(huawei_battery):
 @pytest.mark.asyncio
 async def test_apply_action_hold(huawei_battery):
     """Testar att HOLD sätter läge till time_of_use och tvingar laddning till 0 W."""
-    await huawei_battery.apply_action("HOLD")
+    with patch("custom_components.battery_optimizer_light_plus.batteries.huawei.huawei.asyncio.sleep") as mock_sleep:
+        await huawei_battery.apply_action("HOLD")
 
     calls = huawei_battery._hass.services.async_call.call_args_list
     assert len(calls) == 2
+    mock_sleep.assert_called_once_with(2)
 
     # Första anropet ska ändra select_option till time_of_use
     assert calls[0].args == (
@@ -140,10 +142,12 @@ async def test_apply_action_hold(huawei_battery):
 @pytest.mark.asyncio
 async def test_apply_action_idle(huawei_battery):
     """Testar att IDLE stoppar laddning och sätter läge till maximise_self_consumption."""
-    await huawei_battery.apply_action("IDLE")
+    with patch("custom_components.battery_optimizer_light_plus.batteries.huawei.huawei.asyncio.sleep") as mock_sleep:
+        await huawei_battery.apply_action("IDLE")
 
     calls = huawei_battery._hass.services.async_call.call_args_list
     assert len(calls) == 2
+    mock_sleep.assert_called_once_with(2)
 
     # Första anropet ska vara stop_forcible_charge
     assert calls[0].args == ("huawei_solar", "stop_forcible_charge", {"device_id": "test_device_id"})

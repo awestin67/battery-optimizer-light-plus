@@ -15,6 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
+import asyncio
 from homeassistant.core import HomeAssistant
 from homeassistant.const import STATE_UNKNOWN, STATE_UNAVAILABLE
 from homeassistant.exceptions import ServiceNotFound
@@ -88,6 +89,9 @@ class HuaweiBattery(BatteryApi):
                     blocking=True,
                 )
 
+                # Liten paus för att växelriktaren ska hinna registrera bytet
+                await asyncio.sleep(2)
+
                 # För att överleva "Sunrise Reset" tvingar vi även en forcible_charge på 0 W.
                 # Detta låser växelriktaren från att smyg-urladda till huset på morgonen.
                 await self._hass.services.async_call(
@@ -99,6 +103,10 @@ class HuaweiBattery(BatteryApi):
                 await self._hass.services.async_call(
                     "huawei_solar", "stop_forcible_charge", {"device_id": self._device_id}, blocking=True
                 )
+
+                # Liten paus för att växelriktaren ska hinna registrera stoppet
+                await asyncio.sleep(2)
+
                 await self._hass.services.async_call(
                     "select",
                     "select_option",
