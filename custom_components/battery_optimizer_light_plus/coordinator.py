@@ -46,14 +46,18 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             _LOGGER.warning("⚠️ VARNING: Integrationen körs mot DEVELOPMENT-backend: %s", self.api_url)
 
         self.consumption_forecast_entity = config.get("consumption_forecast_sensor")
+        self.unsub_timer = None
 
-        # Skapa en wrapper-funktion eftersom async_track_time_change skickar med datetime (now)
+    def setup_timer(self):
+        """Startar schemaläggaren.
+
+        Anropas efter lyckad första uppdatering för att undvika minnesläckor vid setup-fel.
+        """
         async def _update_interval(now):
             await self.async_request_refresh()
 
-        # Schemalägg uppdateringar till jämna 5 minuter och 30 sekunder (t.ex. 12:00:30, 12:05:30)
         self.unsub_timer = async_track_time_change(
-            hass,
+            self.hass,
             _update_interval,
             minute=list(range(0, 60, 5)),
             second=30

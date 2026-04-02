@@ -200,6 +200,13 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self.data.update(user_input)
             _strip_none_values(self.data)
+
+            # Förhindra att användaren lägger till samma API-nyckel två gånger
+            api_key = self.data.get(CONF_API_KEY)
+            if api_key:
+                await self.async_set_unique_id(api_key)
+                self._abort_if_unique_id_configured()
+
             return self.async_create_entry(title="Battery Optimizer Light", data=self.data)
 
         battery_type = self.data.get(CONF_BATTERY_TYPE)

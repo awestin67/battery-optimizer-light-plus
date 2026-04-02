@@ -94,6 +94,10 @@ async def async_setup_entry(hass: HomeAssistant, entry):
     # Kör första uppdateringen mot molnet NU, när det lokala batteriet är redo att svara med SoC
     await coordinator.async_config_entry_first_refresh()
 
+    # När första uppdateringen har lyckats och vi vet att integrationen startar ordentligt,
+    # sätter vi upp den schemalagda timern (detta förhindrar timer-läckor vid HA-omstarter).
+    coordinator.setup_timer()
+
     # --- BAKGRUNDSBEVAKNING ---
     async def on_load_change(event):
         """Körs tyst i bakgrunden varje gång lasten ändras."""
