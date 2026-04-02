@@ -39,7 +39,6 @@ DEFAULT_PORT = 80
 
 # Huawei-specifik konfiguration
 CONF_BATTERY_DEVICE_ID = "battery_device_id"
-CONF_WORKING_MODE_ENTITY = "working_mode_entity"
 CONF_DEVICE_STATUS_ENTITY = "device_status_entity"
 
 # Sensorer

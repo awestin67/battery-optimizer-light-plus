@@ -51,7 +51,6 @@ from .const import (
     CONF_PORT,
     DEFAULT_PORT,
     CONF_BATTERY_DEVICE_ID,
-    CONF_WORKING_MODE_ENTITY,
     CONF_DEVICE_STATUS_ENTITY,
 )
 
@@ -73,7 +72,6 @@ def async_auto_discover_huawei_entities(hass, device_id: str) -> dict:
         CONF_SOC_SENSOR: ("sensor", ("storage_state_of_capacity", "battery_state_of_capacity")),
         CONF_BATTERY_POWER_SENSOR: ("sensor", ("storage_charge_discharge_power", "battery_charge_discharge_power")),
         CONF_GRID_SENSOR: ("sensor", ("power_meter_active_power",)),
-        CONF_WORKING_MODE_ENTITY: ("select", ("storage_working_mode", "battery_working_mode", "storage_working_mode_a")),
         CONF_DEVICE_STATUS_ENTITY: ("sensor", ("storage_running_status", "running_status", "device_status")),
     }
 
@@ -254,10 +252,6 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             if battery_type == BATTERY_TYPE_HUAWEI:
                 schema_dict.update({
-                    vol.Required(
-                        CONF_WORKING_MODE_ENTITY,
-                        default=get_val(CONF_WORKING_MODE_ENTITY)
-                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="select")),
                     vol.Optional(
                         CONF_DEVICE_STATUS_ENTITY,
                         default=get_val(CONF_DEVICE_STATUS_ENTITY)
@@ -343,9 +337,6 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             schema_fields.update({
                 vol.Required(CONF_BATTERY_DEVICE_ID, default=get_default(CONF_BATTERY_DEVICE_ID)): selector.DeviceSelector(
                     selector.DeviceSelectorConfig(integration="huawei_solar")
-                ),
-                vol.Required(CONF_WORKING_MODE_ENTITY, default=get_default(CONF_WORKING_MODE_ENTITY)): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="select")
                 ),
                 vol.Optional(CONF_DEVICE_STATUS_ENTITY, default=get_default(CONF_DEVICE_STATUS_ENTITY)): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")

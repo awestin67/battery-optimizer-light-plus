@@ -1365,3 +1365,48 @@ async def test_peak_guard_update_exception(mock_hass_instance, mock_battery):
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, MagicMock(), mock_battery)
     mock_hass_instance.states.get.side_effect = Exception("Simulerad krasch")
     await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+
+@pytest.mark.asyncio
+async def test_huawei_battery_apply_action_hold():
+    """Krav: Huawei HOLD ska skicka en forcible_charge på 1 W i 1440 minuter."""
+    from custom_components.battery_optimizer_light_plus.batteries.huawei.huawei import HuaweiBattery
+
+    mock_hass = MagicMock()
+    mock_hass.services.async_call = AsyncMock()
+
+    battery = HuaweiBattery(
+        hass=mock_hass,
+        device_id="huawei_inv_1",
+        soc_entity="sensor.soc",
+    )
+
+    await battery.apply_action("HOLD")
+
+    # Verifiera att rätt anrop gjordes för att "pausa" batteriet (1 W charge i 24h)
+    mock_hass.services.async_call.assert_called_once_with(
+        "huawei_solar",
+        "forcible_charge",
+        {"device_id": "huawei_inv_1", "power": 1, "duration": 1440},
+        blocking=True
+    )
+
+@pytest.mark.asyncio
+async def test_huawei_battery_apply_action_idle():
+    """Krav: Huawei IDLE ska släppa spärren med stop_forcible_charge."""
+    from custom_components.battery_optimizer_light_plus.batteries.huawei.huawei import HuaweiBattery
+
+    mock_hass = MagicMock()
+    mock_hass.services.async_call = AsyncMock()
+
+    battery = HuaweiBattery(
+        hass=mock_hass,
+        device_id="huawei_inv_1",
+        soc_entity="sensor.soc",
+    )
+
+    await battery.apply_action("IDLE")
+
+    mock_hass.services.async_call.assert_called_once_with(
+        "huawei_solar", "stop_forcible_charge", {"device_id": "huawei_inv_1"}, blocking=True
+    )

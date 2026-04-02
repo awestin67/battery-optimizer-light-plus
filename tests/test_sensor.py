@@ -54,7 +54,6 @@ async def test_sensor_setup_entry_huawei():
     entry = MagicMock(data={CONF_BATTERY_TYPE: BATTERY_TYPE_HUAWEI})
     coordinator = MagicMock()
     coordinator.config = {
-        "working_mode_entity": "s.mode",
         "device_status_entity": "s.status",
         "battery_power_sensor": "s.bat",
         "soc_sensor": "s.soc"
@@ -63,7 +62,7 @@ async def test_sensor_setup_entry_huawei():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 12
+    assert len(async_add_entities.call_args[0][0]) == 11
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_sonnen():

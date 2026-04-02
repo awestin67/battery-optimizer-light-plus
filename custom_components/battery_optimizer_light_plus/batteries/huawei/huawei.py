@@ -15,7 +15,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-import asyncio
 from homeassistant.core import HomeAssistant
 from homeassistant.const import STATE_UNKNOWN, STATE_UNAVAILABLE
 from homeassistant.exceptions import ServiceNotFound
@@ -30,14 +29,12 @@ class HuaweiBattery(BatteryApi):
         self,
         hass: HomeAssistant,
         device_id: str,
-        working_mode_entity: str,
         soc_entity: str,
         device_status_entity: str | None = None
     ):
         """Initialize the HuaweiBattery object."""
         self._hass = hass
         self._device_id = device_id
-        self._working_mode_entity = working_mode_entity
         self._soc_entity = soc_entity
         self._device_status_entity = device_status_entity
 
@@ -81,37 +78,18 @@ class HuaweiBattery(BatteryApi):
                     blocking=True,
                 )
             elif action_upper == "HOLD":
-            # Bombsäkert Huawei-HOLD: Vi sätter working mode till TOU (Time of Use)
+                # Simulerar ett HOLD genom att tvinga en extremt låg laddning (1 W).
+                # cv.positive_int avvisar 0 W, så 1 W håller batteriet låst utan att dra ström.
+                # Duration sätts till maxtillåtna 1440 min (24h) tills vi aktivt stoppar den.
                 await self._hass.services.async_call(
-                    "select",
-                    "select_option",
-                    {"entity_id": self._working_mode_entity, "option": "time_of_use"},
-                    blocking=True,
-                )
-
-                # Liten paus för att växelriktaren ska hinna registrera bytet
-                await asyncio.sleep(2)
-
-                # För att överleva "Sunrise Reset" tvingar vi även en forcible_charge på 0 W.
-                # Detta låser växelriktaren från att smyg-urladda till huset på morgonen.
-                await self._hass.services.async_call(
-                    "huawei_solar", "forcible_charge",
-                    {"device_id": self._device_id, "power": 0, "duration": 10},
+                    "huawei_solar",
+                    "forcible_charge",
+                    {"device_id": self._device_id, "power": 1, "duration": 1440},
                     blocking=True
                 )
             elif action_upper == "IDLE":
                 await self._hass.services.async_call(
                     "huawei_solar", "stop_forcible_charge", {"device_id": self._device_id}, blocking=True
-                )
-
-                # Liten paus för att växelriktaren ska hinna registrera stoppet
-                await asyncio.sleep(2)
-
-                await self._hass.services.async_call(
-                    "select",
-                    "select_option",
-                    {"entity_id": self._working_mode_entity, "option": "maximise_self_consumption"},
-                    blocking=True,
                 )
             else:
                 _LOGGER.warning(f"Unknown action for Huawei: {action}")

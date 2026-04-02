@@ -32,7 +32,7 @@ Kräver ett Sonnen-batteri med **API v2** aktiverat.
 
 ### 🌑 Huawei Luna2000
 Styr Huawei-batterier via den officiella Home Assistant-integrationen.
-*   **Krav:** En fungerande, förkonfigurerad installation av den officiella `Huawei Solar`-integrationen. Du behöver peka ut entiteten för *Working Mode* under konfigurationen.
+*   **Krav:** En fungerande, förkonfigurerad installation av den officiella `Huawei Solar`-integrationen.
 *   **Notera:** För Huawei inverteras batterisensorn automatiskt så att **Plus (+)** betyder att batteriet **laddar** och **Minus (-)** betyder att det **laddar ur**, vilket matchar standardbeteendet för Huawei Solar-integrationen.
 
 ### ⚡ Homevolt

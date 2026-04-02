@@ -60,14 +60,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
         entities.append(BatteryLightVirtualLoadSensor(coordinator))
 
     if entry.data.get(CONF_BATTERY_TYPE) == BATTERY_TYPE_HUAWEI:
-        working_mode_ent = coordinator.config.get("working_mode_entity")
-        if working_mode_ent:
-            entities.append(
-                HuaweiWrapperSensor(
-                    coordinator, working_mode_ent, "Huawei Working Mode", "huawei_working_mode", "mdi:cog-sync"
-                )
-            )
-
         status_ent = coordinator.config.get("device_status_entity")
         if status_ent:
             entities.append(

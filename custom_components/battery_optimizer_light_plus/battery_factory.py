@@ -25,7 +25,6 @@ from .const import (
     CONF_PORT,
     CONF_API_TOKEN,
     CONF_BATTERY_DEVICE_ID,
-    CONF_WORKING_MODE_ENTITY,
     CONF_DEVICE_STATUS_ENTITY,
     CONF_SOC_SENSOR,
     CONF_GRID_SENSOR,
@@ -62,7 +61,6 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
         return HuaweiBattery(
             hass=hass,
             device_id=config[CONF_BATTERY_DEVICE_ID],
-            working_mode_entity=config[CONF_WORKING_MODE_ENTITY],
             soc_entity=config[CONF_SOC_SENSOR],
             device_status_entity=config.get(CONF_DEVICE_STATUS_ENTITY),
         )

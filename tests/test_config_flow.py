@@ -283,7 +283,6 @@ async def test_config_flow_huawei_sets_invert_true():
     result3 = await flow.async_step_common({
         "api_key": "123",
         "api_url": "http://test",
-        "working_mode_entity": "select.mode"
     })
 
     assert result3["type"] == "create_entry"
@@ -382,7 +381,6 @@ async def test_config_flow_huawei_strips_none_virtual_load_sensor():
         "api_url": "http://test",
         "soc_sensor": "sensor.soc",
         "battery_power_sensor": "sensor.battery",
-        "working_mode_entity": "select.mode",
         "virtual_load_sensor": None,
     })
 
