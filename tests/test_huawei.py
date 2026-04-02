@@ -115,21 +115,25 @@ async def test_apply_action_discharge(huawei_battery):
 
 @pytest.mark.asyncio
 async def test_apply_action_hold(huawei_battery):
-    """Testar att HOLD stoppar laddning och sätter läge till fixed_charge_discharge."""
+    """Testar att HOLD sätter läge till time_of_use och tvingar laddning till 0 W."""
     await huawei_battery.apply_action("HOLD")
 
     calls = huawei_battery._hass.services.async_call.call_args_list
     assert len(calls) == 2
 
-    # Första anropet ska vara stop_forcible_charge
-    assert calls[0].args == ("huawei_solar", "stop_forcible_charge", {"device_id": "test_device_id"})
-    assert calls[0].kwargs == {"blocking": True}
-
-    # Andra anropet ska ändra select_option
-    assert calls[1].args == (
+    # Första anropet ska ändra select_option till time_of_use
+    assert calls[0].args == (
         "select",
         "select_option",
-        {"entity_id": "select.huawei_working_mode", "option": "fixed_charge_discharge"}
+        {"entity_id": "select.huawei_working_mode", "option": "time_of_use"}
+    )
+    assert calls[0].kwargs == {"blocking": True}
+
+    # Andra anropet ska vara forcible_charge med 0 W
+    assert calls[1].args == (
+        "huawei_solar",
+        "forcible_charge",
+        {"device_id": "test_device_id", "power": 0, "duration": 10}
     )
     assert calls[1].kwargs == {"blocking": True}
 

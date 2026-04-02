@@ -80,14 +80,20 @@ class HuaweiBattery(BatteryApi):
                     blocking=True,
                 )
             elif action_upper == "HOLD":
-                await self._hass.services.async_call(
-                    "huawei_solar", "stop_forcible_charge", {"device_id": self._device_id}, blocking=True
-                )
+            # Bombsäkert Huawei-HOLD: Vi sätter working mode till TOU (Time of Use)
                 await self._hass.services.async_call(
                     "select",
                     "select_option",
-                    {"entity_id": self._working_mode_entity, "option": "fixed_charge_discharge"},
+                    {"entity_id": self._working_mode_entity, "option": "time_of_use"},
                     blocking=True,
+                )
+
+                # För att överleva "Sunrise Reset" tvingar vi även en forcible_charge på 0 W.
+                # Detta låser växelriktaren från att smyg-urladda till huset på morgonen.
+                await self._hass.services.async_call(
+                    "huawei_solar", "forcible_charge",
+                    {"device_id": self._device_id, "power": 0, "duration": 10},
+                    blocking=True
                 )
             elif action_upper == "IDLE":
                 await self._hass.services.async_call(
