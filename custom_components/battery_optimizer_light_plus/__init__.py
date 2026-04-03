@@ -94,6 +94,11 @@ async def async_setup_entry(hass: HomeAssistant, entry):
     # Kör första uppdateringen mot molnet NU, när det lokala batteriet är redo att svara med SoC
     await coordinator.async_config_entry_first_refresh()
 
+    def _cloud_updated():
+        hass.async_create_task(peak_guard.update(virtual_load_entity, LIMIT_ENTITY))
+
+    coordinator.async_add_listener(_cloud_updated)
+
     # När första uppdateringen har lyckats och vi vet att integrationen startar ordentligt,
     # sätter vi upp den schemalagda timern (detta förhindrar timer-läckor vid HA-omstarter).
     coordinator.setup_timer()
@@ -182,6 +187,7 @@ class PeakGuard:
         self._maintenance_reason = None  # Orsak till underhållsläge
         self._maintenance_cooldown_start = None # Tidsstämpel för när underhållssignalen försvann
         self._last_sent_command = None  # Håller koll på senaste kommandot för att undvika spam
+        self._is_updating = False  # Lås för att förhindra överlappande exekvering
 
     @property
     def is_active(self):
@@ -212,6 +218,10 @@ class PeakGuard:
             self.coordinator.async_update_listeners()
 
     async def update(self, virtual_load_id, limit_id):
+        if self._is_updating:
+            return
+        self._is_updating = True
+
         try:
             # 0. Kontrollera om Peak Shaving är aktivt
             is_active = True
@@ -228,7 +238,7 @@ class PeakGuard:
                     return bool(val)
 
                 global_active = _parse_bool(self.coordinator.data.get("is_active"), False)
-                is_active = _parse_bool(self.coordinator.data.get("is_peak_shaving_active"), False)
+                is_active = _parse_bool(self.coordinator.data.get("is_peak_shaving_active"), True)
                 pg_status = self.coordinator.data.get("peakguard_status")
 
                 if not global_active:
@@ -700,6 +710,8 @@ class PeakGuard:
                     pass  # Okänt läge -> Gör inget
         except Exception as e:
             _LOGGER.error(f"Error in PeakGuard update: {e}", exc_info=True)
+        finally:
+            self._is_updating = False
 
     async def _report_peak(self, grid_w, limit_w):
         try:
