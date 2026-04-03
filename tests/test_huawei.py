@@ -112,13 +112,17 @@ async def test_apply_action_discharge(huawei_battery):
 
 @pytest.mark.asyncio
 async def test_apply_action_hold(huawei_battery):
-    """Testar att HOLD skickar en forcible_charge på 1 W i 1440 minuter."""
+    """Testar att HOLD använder forcible_charge_soc för att stanna på nuvarande SoC."""
+    mock_state = MagicMock()
+    mock_state.state = "55.0"
+    huawei_battery._hass.states.get.return_value = mock_state
+
     await huawei_battery.apply_action("HOLD")
 
     huawei_battery._hass.services.async_call.assert_called_once_with(
         "huawei_solar",
-        "forcible_charge",
-        {"device_id": "test_device_id", "power": 1, "duration": 1440},
+        "forcible_charge_soc",
+        {"device_id": "test_device_id", "power": 100, "target_soc": 55.0},
         blocking=True
     )
 

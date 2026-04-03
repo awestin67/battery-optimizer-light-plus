@@ -78,13 +78,15 @@ class HuaweiBattery(BatteryApi):
                     blocking=True,
                 )
             elif action_upper == "HOLD":
-                # Simulerar ett HOLD genom att tvinga en extremt låg laddning (1 W).
-                # cv.positive_int avvisar 0 W, så 1 W håller batteriet låst utan att dra ström.
-                # Duration sätts till maxtillåtna 1440 min (24h) tills vi aktivt stoppar den.
+                # Eftersom Huawei-integrationen validerar att power > 0 för forcible_charge,
+                # använder vi istället forcible_charge_soc satt till nuvarande SoC.
+                # Detta säger åt växelriktaren att "ladda" till den nivå den redan är på,
+                # vilket försätter den i vila/Hold och undviker små smygladdningar.
+                current_soc = await self.get_current_soc() or 0.0
                 await self._hass.services.async_call(
                     "huawei_solar",
-                    "forcible_charge",
-                    {"device_id": self._device_id, "power": 1, "duration": 1440},
+                    "forcible_charge_soc",
+                    {"device_id": self._device_id, "power": 100, "target_soc": current_soc},
                     blocking=True
                 )
             elif action_upper == "IDLE":

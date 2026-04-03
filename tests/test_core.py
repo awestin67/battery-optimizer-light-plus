@@ -1369,11 +1369,15 @@ async def test_peak_guard_update_exception(mock_hass_instance, mock_battery):
 
 @pytest.mark.asyncio
 async def test_huawei_battery_apply_action_hold():
-    """Krav: Huawei HOLD ska skicka en forcible_charge på 1 W i 1440 minuter."""
+    """Krav: Huawei HOLD ska använda forcible_charge_soc mot aktuell SoC."""
     from custom_components.battery_optimizer_light_plus.batteries.huawei.huawei import HuaweiBattery
 
     mock_hass = MagicMock()
     mock_hass.services.async_call = AsyncMock()
+
+    mock_state = MagicMock()
+    mock_state.state = "42.5"
+    mock_hass.states.get.return_value = mock_state
 
     battery = HuaweiBattery(
         hass=mock_hass,
@@ -1383,11 +1387,11 @@ async def test_huawei_battery_apply_action_hold():
 
     await battery.apply_action("HOLD")
 
-    # Verifiera att rätt anrop gjordes för att "pausa" batteriet (1 W charge i 24h)
+    # Verifiera att rätt anrop gjordes för att "pausa" batteriet
     mock_hass.services.async_call.assert_called_once_with(
         "huawei_solar",
-        "forcible_charge",
-        {"device_id": "huawei_inv_1", "power": 1, "duration": 1440},
+        "forcible_charge_soc",
+        {"device_id": "huawei_inv_1", "power": 100, "target_soc": 42.5},
         blocking=True
     )
 
