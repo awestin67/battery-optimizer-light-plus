@@ -237,7 +237,7 @@ class PeakGuard:
                             return True
                     return bool(val)
 
-                global_active = _parse_bool(self.coordinator.data.get("is_active"), False)
+                global_active = _parse_bool(self.coordinator.data.get("is_active"), True)
                 is_active = _parse_bool(self.coordinator.data.get("is_peak_shaving_active"), True)
                 pg_status = self.coordinator.data.get("peakguard_status")
 

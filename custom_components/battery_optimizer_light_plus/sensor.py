@@ -231,7 +231,7 @@ class BatteryLightStatusSensor(BatteryOptimizerSensorBase):
                     return True
             return bool(val)
 
-        global_active = _parse_bool(data.get("is_active"), False)
+        global_active = _parse_bool(data.get("is_active"), True)
         is_active = _parse_bool(data.get("is_peak_shaving_active"), True)
         pg_status = data.get("peakguard_status")
 
