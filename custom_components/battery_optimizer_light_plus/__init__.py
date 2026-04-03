@@ -216,9 +216,13 @@ class PeakGuard:
             # 0. Kontrollera om Peak Shaving är aktivt
             is_active = True
             if self.coordinator.data:
+                global_active = self.coordinator.data.get("is_active", True)
                 is_active = self.coordinator.data.get("is_peak_shaving_active", True)
                 pg_status = self.coordinator.data.get("peakguard_status")
-                if pg_status and pg_status != "Active":
+
+                if not global_active:
+                    is_active = False
+                elif pg_status and pg_status != "Active":
                     is_active = False
 
             # Om Peak Shaving är inaktiverat från backend, avbryter vi bara lastkapningen.

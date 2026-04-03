@@ -287,6 +287,16 @@ def test_status_sensor():
     assert sensor.state == "Paused"
     assert sensor.icon == "mdi:pause-circle-outline"
 
+    # Fall 3c: Global optimerare avstängd (is_active=False men pg_status=Active)
+    coordinator.data = {"is_peak_shaving_active": False, "peakguard_status": "Active"}
+    assert sensor.state == "Disabled"
+    assert sensor.icon == "mdi:shield-off"
+
+    # Fall 3d: Global optimerare helt avstängd (is_active i payload är False)
+    coordinator.data = {"is_active": False}
+    assert sensor.state == "Disabled"
+    assert sensor.icon == "mdi:shield-off"
+
     # Fall 4: Maintenance
     coordinator.data = {"is_peak_shaving_active": True, "peakguard_status": "Active"}
     peak_guard.is_active = False
