@@ -219,8 +219,20 @@ class BatteryLightStatusSensor(BatteryOptimizerSensorBase):
     def state(self):
         # Hämtar data från coordinator och lokal peak_guard instans. Först säkerställ att data finns.
         data = self.coordinator.data or {}
-        global_active = data.get("is_active", True)
-        is_active = data.get("is_peak_shaving_active", True)
+
+        def _parse_bool(val, default=False):
+            if val is None:
+                return default
+            if isinstance(val, str):
+                v = val.strip().lower()
+                if v in ("false", "0", "no", "off", "inactive", ""):
+                    return False
+                if v in ("true", "1", "yes", "on", "active"):
+                    return True
+            return bool(val)
+
+        global_active = _parse_bool(data.get("is_active"), False)
+        is_active = _parse_bool(data.get("is_peak_shaving_active"), False)
         pg_status = data.get("peakguard_status")
 
         is_triggered = False
@@ -251,7 +263,7 @@ class BatteryLightStatusSensor(BatteryOptimizerSensorBase):
         # Om Peak Shaving är inaktivt (t.ex. global optimerare avstängd)
         # ska vi visa "Disabled" (eller t.ex. "Paused" om det skickas explicit).
         if not is_active:
-            if pg_status and pg_status != "Active":
+            if pg_status and pg_status.strip().lower() not in ("active", "monitoring"):
                 return pg_status
             return "Disabled"
 

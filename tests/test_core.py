@@ -97,7 +97,12 @@ async def test_coordinator_handles_unavailable_soc(mock_hass_instance):
 async def test_peak_guard_triggers_discharge(mock_hass_instance, mock_battery):
     """Krav: Om lasten är högre än gränsen ska batteriet urladdas."""
     coordinator = MagicMock()
-    coordinator.data = {"action": "HOLD"} # Molnet säger HOLD, men PeakGuard ska ta över
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
 
@@ -142,7 +147,12 @@ async def test_peak_guard_triggers_discharge(mock_hass_instance, mock_battery):
 async def test_peak_guard_respects_safe_limit(mock_hass_instance, mock_battery):
     """Krav: Om lasten är låg ska vi återgå till molnets plan (eller Auto)."""
     coordinator = MagicMock()
-    coordinator.data = {"action": "IDLE"} # Molnet säger IDLE
+    coordinator.data = {
+        "action": "IDLE",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
     guard._has_reported = True # Låtsas att vi var i ett larm-läge
@@ -183,7 +193,7 @@ async def test_peak_guard_disabled_by_backend(mock_hass_instance, mock_battery):
     """Krav: Om backend säger att peak shaving är inaktivt ska inget hända."""
     coordinator = MagicMock()
     # is_peak_shaving_active = False
-    coordinator.data = {"action": "HOLD", "is_peak_shaving_active": False, "peakguard_status": "Off"}
+    coordinator.data = {"action": "HOLD", "is_active": True, "is_peak_shaving_active": False, "peakguard_status": "Off"}
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
 
@@ -216,7 +226,7 @@ async def test_solar_override_works_when_peak_shaving_disabled(mock_hass_instanc
     """Krav: Solar Override ska fortfarande övervakas och fungera även om Peak Shaving inaktiverats från molnet."""
     coordinator = MagicMock()
     # Backend säger att peak shaving är Off (is_active blir False)
-    coordinator.data = {"action": "HOLD", "is_peak_shaving_active": False, "peakguard_status": "Off"}
+    coordinator.data = {"action": "HOLD", "is_active": True, "is_peak_shaving_active": False, "peakguard_status": "Off"}
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
 
@@ -255,7 +265,7 @@ def test_status_sensor():
     """Testar att status-sensorn visar rätt text (Disabled/Monitoring/Triggered)."""
     coordinator = MagicMock()
     coordinator.api_key = "12345"
-    coordinator.data = {"is_peak_shaving_active": True}
+    coordinator.data = {"is_active": True, "is_peak_shaving_active": True, "peakguard_status": "Active"}
 
     # Mocka peak_guard på coordinatorn
     peak_guard = MagicMock()
@@ -277,18 +287,18 @@ def test_status_sensor():
     assert sensor.icon == "mdi:shield-alert"
 
     # Fall 3: Disabled
-    coordinator.data = {"is_peak_shaving_active": False, "peakguard_status": "Off"}
+    coordinator.data = {"is_active": True, "is_peak_shaving_active": False, "peakguard_status": "Off"}
     peak_guard.is_active = False
     assert sensor.state == "Off"
     assert sensor.icon == "mdi:shield-off"
 
     # Fall 3b: Paused
-    coordinator.data = {"is_peak_shaving_active": False, "peakguard_status": "Paused"}
+    coordinator.data = {"is_active": True, "is_peak_shaving_active": False, "peakguard_status": "Paused"}
     assert sensor.state == "Paused"
     assert sensor.icon == "mdi:pause-circle-outline"
 
     # Fall 3c: Global optimerare avstängd (is_active=False men pg_status=Active)
-    coordinator.data = {"is_peak_shaving_active": False, "peakguard_status": "Active"}
+    coordinator.data = {"is_active": False, "is_peak_shaving_active": False, "peakguard_status": "Active"}
     assert sensor.state == "Disabled"
     assert sensor.icon == "mdi:shield-off"
 
@@ -298,7 +308,7 @@ def test_status_sensor():
     assert sensor.icon == "mdi:shield-off"
 
     # Fall 4: Maintenance
-    coordinator.data = {"is_peak_shaving_active": True, "peakguard_status": "Active"}
+    coordinator.data = {"is_active": True, "is_peak_shaving_active": True, "peakguard_status": "Active"}
     peak_guard.is_active = False
     peak_guard.in_maintenance = True
     peak_guard.maintenance_reason = "Service Mode"
@@ -316,7 +326,13 @@ async def test_peak_guard_reports_failure_on_overload(mock_hass_instance, mock_b
     """Krav: Om behovet överstiger max växelriktareffekt ska failure rapporteras."""
     coordinator = MagicMock()
     # Sätt max_discharge_kw till 3.3 kW (3300 W)
-    coordinator.data = {"action": "HOLD", "max_discharge_kw": 3.3}
+    coordinator.data = {
+        "action": "HOLD",
+        "max_discharge_kw": 3.3,
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
 
@@ -362,7 +378,12 @@ async def test_peak_guard_reports_failure_on_overload(mock_hass_instance, mock_b
 async def test_solar_override_reports_to_cloud(mock_hass_instance, mock_battery):
     """Krav: När Solar Override aktiveras ska det rapporteras till molnet."""
     coordinator = MagicMock()
-    coordinator.data = {"action": "HOLD"} # Molnet säger HOLD
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
 
@@ -450,7 +471,12 @@ async def test_peak_guard_calculates_load_with_inverted_grid(mock_hass_instance,
     config["virtual_load_sensor"] = None
 
     coordinator = MagicMock()
-    coordinator.data = {"action": "HOLD"}
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
 
@@ -493,7 +519,12 @@ async def test_peak_guard_calculates_load_with_inverted_battery(mock_hass_instan
     config["virtual_load_sensor"] = None
 
     coordinator = MagicMock()
-    coordinator.data = {"action": "HOLD"}
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
 
@@ -568,7 +599,12 @@ def test_virtual_load_sensor_calculation():
 async def test_peak_guard_solar_override_hysteresis(mock_hass_instance, mock_battery):
     """Krav: Solar Override ska ha hysteres för att undvika 'flapping' vid gränsvärdet."""
     coordinator = MagicMock()
-    coordinator.data = {"action": "HOLD"}
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
 
@@ -620,7 +656,12 @@ async def test_peak_guard_solar_override_hysteresis(mock_hass_instance, mock_bat
 async def test_peak_guard_solar_override_clear_delay(mock_hass_instance, mock_battery):
     """Krav: Solar Override ska ha en 3-minuters fördröjning vid avstängning för att undvika fladder."""
     coordinator = MagicMock()
-    coordinator.data = {"action": "HOLD"}
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
 
@@ -667,7 +708,12 @@ async def test_peak_guard_solar_override_clear_delay(mock_hass_instance, mock_ba
 async def test_peak_guard_bypasses_delay_when_discharging(mock_hass_instance, mock_battery):
     """Krav: Om batteriet börjar ladda ur under Solar Override, avbryt direkt för att skydda SoC."""
     coordinator = MagicMock()
-    coordinator.data = {"action": "HOLD"}
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
 
@@ -715,7 +761,12 @@ async def test_peak_guard_pauses_on_custom_keyword(mock_hass_instance, mock_batt
     config["battery_status_keywords"] = "service mode, critical error"
 
     coordinator = MagicMock()
-    coordinator.data = {"action": "HOLD"}
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
 
@@ -745,7 +796,12 @@ async def test_peak_guard_pauses_on_custom_keyword(mock_hass_instance, mock_batt
 async def test_peak_guard_stops_at_zero_soc(mock_hass_instance, mock_battery):
     """Krav: PeakGuard ska sluta urladda när SoC når 0%."""
     coordinator = MagicMock()
-    coordinator.data = {"action": "HOLD"} # Molnet säger HOLD
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
     guard._has_reported = True # Vi simulerar att PeakGuard redan är aktivt
@@ -803,7 +859,13 @@ async def test_peak_guard_stops_at_zero_soc(mock_hass_instance, mock_battery):
 async def test_peak_guard_throttles_charge(mock_hass_instance, mock_battery):
     """Krav: Om molnet vill ladda men lasten är hög, ska laddningen strypas."""
     coordinator = MagicMock()
-    coordinator.data = {"action": "CHARGE", "target_power_kw": 3.0} # 3000W
+    coordinator.data = {
+        "action": "CHARGE",
+        "target_power_kw": 3.0,
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
 
@@ -840,7 +902,12 @@ async def test_peak_guard_throttles_charge(mock_hass_instance, mock_battery):
 async def test_peak_guard_sticky_solar_override_on_idle(mock_hass_instance, mock_battery):
     """Krav: Om Solar Override är aktiv och molnet svarar IDLE, ska override ligga kvar."""
     coordinator = MagicMock()
-    coordinator.data = {"action": "IDLE"} # Molnet svarar IDLE (Auto)
+    coordinator.data = {
+        "action": "IDLE",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
 
@@ -878,7 +945,12 @@ async def test_peak_guard_sticky_solar_override_on_idle(mock_hass_instance, mock
 async def test_peak_guard_forces_idle_on_solar_override_after_stale_idle(mock_hass_instance, mock_battery):
     """Krav: När Solar Override aktiveras MÅSTE den skicka IDLE, även om den tror att IDLE redan var skickat."""
     coordinator = MagicMock()
-    coordinator.data = {"action": "HOLD"}
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
 
@@ -916,7 +988,12 @@ async def test_peak_guard_forces_idle_on_solar_override_after_stale_idle(mock_ha
 async def test_peak_guard_handles_high_export_as_solar_override(mock_hass_instance, mock_battery):
     """Krav: Vid hög export ska Solar Override aktiveras (inte blockeras)."""
     coordinator = MagicMock()
-    coordinator.data = {"action": "HOLD"}
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
 
@@ -968,7 +1045,12 @@ async def test_peak_guard_prevents_solar_override_during_buffer_fill_lag(mock_ha
     Med fixen ska vi se att Grid Import > 100W och blockera det.
     """
     coordinator = MagicMock()
-    coordinator.data = {"action": "HOLD"} # Molnet säger HOLD (Buffer Fill active)
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
 
@@ -1020,7 +1102,12 @@ async def test_peak_guard_prevents_solar_override_during_buffer_fill_lag(mock_ha
 async def test_peak_guard_solar_override_with_internal_battery_api(mock_hass_instance, mock_battery):
     """Krav: Solar Override ska triggas baserat på interna batterimetoder och ignorera spöksensorer."""
     coordinator = MagicMock()
-    coordinator.data = {"action": "HOLD"}
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     # Konfigurationen INNEHÅLLER gamla spöksensorer, men vi förväntar oss att koden struntar i dem
     config = MOCK_CONFIG.copy()
@@ -1119,7 +1206,12 @@ async def test_coordinator_scheduling_and_cleanup(mock_hass_instance):
 async def test_peak_guard_fallback_to_ha_sensors(mock_hass_instance):
     """Krav: Om batteriet saknar interna metoder (Huawei/Generic), ska HA-sensorer användas."""
     coordinator = MagicMock()
-    coordinator.data = {"action": "HOLD"}
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
 
     # Skapa en klass som representerar Huawei/Generic (saknar get_virtual_load osv)
     class DummyGenericBattery:

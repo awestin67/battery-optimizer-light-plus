@@ -216,13 +216,24 @@ class PeakGuard:
             # 0. Kontrollera om Peak Shaving är aktivt
             is_active = True
             if self.coordinator.data:
-                global_active = self.coordinator.data.get("is_active", True)
-                is_active = self.coordinator.data.get("is_peak_shaving_active", True)
+                def _parse_bool(val, default=False):
+                    if val is None:
+                        return default
+                    if isinstance(val, str):
+                        v = val.strip().lower()
+                        if v in ("false", "0", "no", "off", "inactive", ""):
+                            return False
+                        if v in ("true", "1", "yes", "on", "active"):
+                            return True
+                    return bool(val)
+
+                global_active = _parse_bool(self.coordinator.data.get("is_active"), False)
+                is_active = _parse_bool(self.coordinator.data.get("is_peak_shaving_active"), False)
                 pg_status = self.coordinator.data.get("peakguard_status")
 
                 if not global_active:
                     is_active = False
-                elif pg_status and pg_status != "Active":
+                elif pg_status and pg_status.strip().lower() not in ("active", "monitoring"):
                     is_active = False
 
             # Om Peak Shaving är inaktiverat från backend, avbryter vi bara lastkapningen.
