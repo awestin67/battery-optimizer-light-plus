@@ -1471,15 +1471,11 @@ async def test_peak_guard_update_exception(mock_hass_instance, mock_battery):
 
 @pytest.mark.asyncio
 async def test_huawei_battery_apply_action_hold():
-    """Krav: Huawei HOLD ska använda forcible_charge_soc mot aktuell SoC."""
+    """Krav: Huawei HOLD ska sätta max urladdning till 0 och stoppa forcible charge."""
     from custom_components.battery_optimizer_light_plus.batteries.huawei.huawei import HuaweiBattery
 
     mock_hass = MagicMock()
     mock_hass.services.async_call = AsyncMock()
-
-    mock_state = MagicMock()
-    mock_state.state = "42.5"
-    mock_hass.states.get.return_value = mock_state
 
     battery = HuaweiBattery(
         hass=mock_hass,
@@ -1487,15 +1483,36 @@ async def test_huawei_battery_apply_action_hold():
         soc_entity="sensor.soc",
     )
 
-    await battery.apply_action("HOLD")
+    with patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get, \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+        mock_registry = MagicMock()
+        mock_er_get.return_value = mock_registry
 
-    # Verifiera att rätt anrop gjordes för att "pausa" batteriet
-    mock_hass.services.async_call.assert_called_once_with(
-        "huawei_solar",
-        "forcible_charge_soc",
-        {"device_id": "huawei_inv_1", "power": 100, "target_soc": 42.5},
-        blocking=True
-    )
+        mock_entry = MagicMock()
+        mock_entry.domain = "number"
+        mock_entry.translation_key = "maximum_discharging_power"
+        mock_entry.entity_id = "number.battery_max_discharge"
+        mock_entries.return_value = [mock_entry]
+
+        mock_state = MagicMock()
+        mock_state.state = "5000"
+        mock_hass.states.get.return_value = mock_state
+
+        await battery.apply_action("HOLD")
+
+        # Verifiera att rätt anrop gjordes för att "pausa" batteriet
+        mock_hass.services.async_call.assert_any_call(
+            "number",
+            "set_value",
+            {"entity_id": "number.battery_max_discharge", "value": 0},
+            blocking=True,
+        )
+        mock_hass.services.async_call.assert_any_call(
+            "huawei_solar",
+            "stop_forcible_charge",
+            {"device_id": "huawei_inv_1"},
+            blocking=True,
+        )
 
 @pytest.mark.asyncio
 async def test_huawei_battery_apply_action_idle():

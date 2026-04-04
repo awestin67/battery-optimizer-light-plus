@@ -112,19 +112,76 @@ async def test_apply_action_discharge(huawei_battery):
 
 @pytest.mark.asyncio
 async def test_apply_action_hold(huawei_battery):
-    """Testar att HOLD använder forcible_charge_soc för att stanna på nuvarande SoC."""
-    mock_state = MagicMock()
-    mock_state.state = "55.0"
-    huawei_battery._hass.states.get.return_value = mock_state
+    """Testar att HOLD sätter max urladdning till 0 och stoppar forcible charge."""
+    with patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get, \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+        mock_registry = MagicMock()
+        mock_er_get.return_value = mock_registry
 
-    await huawei_battery.apply_action("HOLD")
+        mock_entry = MagicMock()
+        mock_entry.domain = "number"
+        mock_entry.translation_key = "maximum_discharging_power"
+        mock_entry.entity_id = "number.battery_max_discharge"
+        mock_entries.return_value = [mock_entry]
 
-    huawei_battery._hass.services.async_call.assert_called_once_with(
-        "huawei_solar",
-        "forcible_charge_soc",
-        {"device_id": "test_device_id", "power": 100, "target_soc": 55.0},
-        blocking=True
-    )
+        mock_state = MagicMock()
+        mock_state.state = "5000"
+        huawei_battery._hass.states.get.return_value = mock_state
+
+        await huawei_battery.apply_action("HOLD")
+
+        huawei_battery._hass.services.async_call.assert_any_call(
+            "number",
+            "set_value",
+            {"entity_id": "number.battery_max_discharge", "value": 0},
+            blocking=True,
+        )
+        huawei_battery._hass.services.async_call.assert_any_call(
+            "huawei_solar",
+            "stop_forcible_charge",
+            {"device_id": "test_device_id"},
+            blocking=True,
+        )
+
+@pytest.mark.asyncio
+async def test_apply_action_idle_restores_discharge(huawei_battery):
+    """Testar att IDLE återställer max urladdningseffekt om den är 0."""
+    # Mocka Coordinator-data för att testa The Restart Trap (Skydd #1)
+    mock_coord = MagicMock()
+    mock_coord.data = {"max_discharge_kw": 4.5}
+    huawei_battery._hass.data = {"battery_optimizer_light_plus": {"test_entry": mock_coord}}
+
+    with patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get, \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+        mock_registry = MagicMock()
+        mock_er_get.return_value = mock_registry
+
+        mock_entry = MagicMock()
+        mock_entry.domain = "number"
+        mock_entry.translation_key = "maximum_discharging_power"
+        mock_entry.entity_id = "number.battery_max_discharge"
+        mock_entries.return_value = [mock_entry]
+
+        mock_state = MagicMock()
+        mock_state.state = "0"
+        mock_state.attributes = {"max": 5000.0}
+        huawei_battery._hass.states.get.return_value = mock_state
+
+        await huawei_battery.apply_action("IDLE")
+
+        # 4.5 kW från cloud datan = 4500 W
+        huawei_battery._hass.services.async_call.assert_any_call(
+            "number",
+            "set_value",
+            {"entity_id": "number.battery_max_discharge", "value": 4500.0},
+            blocking=True,
+        )
+        huawei_battery._hass.services.async_call.assert_any_call(
+            "huawei_solar",
+            "stop_forcible_charge",
+            {"device_id": "test_device_id"},
+            blocking=True,
+        )
 
 @pytest.mark.asyncio
 async def test_apply_action_idle(huawei_battery):

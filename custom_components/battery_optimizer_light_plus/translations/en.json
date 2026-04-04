@@ -61,7 +61,8 @@
                     "virtual_load_sensor": "Virtual Load Sensor (Optional - Overrides calc)",
                     "consumption_forecast_sensor": "Consumption Forecast Tomorrow (kWh) (Optional)",
                     "working_mode_entity": "Working Mode (Entity)",
-                    "device_status_entity": "Device Status (Entity)"
+                    "device_status_entity": "Device Status (Entity)",
+                    "max_discharge_entity": "Max Discharge (Entity)"
                 },
                 "data_description": {
                     "api_url": "Leave the default value unless you are connecting to a custom test server.",
@@ -73,7 +74,8 @@
                     "battery_sensor_invert": "Check this if your battery sensor shows a POSITIVE value when charging and NEGATIVE when discharging (e.g., standard for Huawei).",
                     "virtual_load_sensor": "Leave empty to let the integration calculate the load automatically (Grid + Battery).",
                     "working_mode_entity": "Select the working mode entity (e.g., 'select.inverter_working_mode'). Used to switch between Auto and Hold.",
-                    "device_status_entity": "Select the status sensor (e.g., 'sensor.inverter_device_status') to allow PeakGuard to automatically detect errors and maintenance modes."
+                    "device_status_entity": "Select the status sensor (e.g., 'sensor.inverter_device_status') to allow PeakGuard to automatically detect errors and maintenance modes.",
+                    "max_discharge_entity": "Select the Number entity for Maximum Discharging Power. Leave empty for auto-discovery."
                 }
             }
         },
@@ -108,7 +110,8 @@
                     "port": "Port (Sonnen)",
                     "battery_device_id": "Huawei Device",
                     "working_mode_entity": "Working Mode (Huawei)",
-                    "device_status_entity": "Device Status (Huawei)"
+                    "device_status_entity": "Device Status (Huawei)",
+                    "max_discharge_entity": "Max Discharge (Huawei)"
                 },
                 "data_description": {
                     "api_url": "Leave the default value unless you are connecting to a custom test server.",
@@ -124,7 +127,8 @@
                     "port": "Default port for Sonnen is 80.",
                     "battery_device_id": "Select your Huawei battery or inverter from the list.",
                     "working_mode_entity": "Select the working mode entity (e.g., 'select.inverter_working_mode').",
-                    "device_status_entity": "Select the status sensor (e.g., 'sensor.inverter_device_status')."
+                    "device_status_entity": "Select the status sensor (e.g., 'sensor.inverter_device_status').",
+                    "max_discharge_entity": "Select the Number entity for Maximum Discharging Power. Leave empty for auto-discovery."
                 }
             }
         }

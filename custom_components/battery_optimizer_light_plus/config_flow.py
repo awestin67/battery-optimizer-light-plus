@@ -52,6 +52,7 @@ from .const import (
     DEFAULT_PORT,
     CONF_BATTERY_DEVICE_ID,
     CONF_DEVICE_STATUS_ENTITY,
+    CONF_MAX_DISCHARGE_ENTITY,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -73,6 +74,7 @@ def async_auto_discover_huawei_entities(hass, device_id: str) -> dict:
         CONF_BATTERY_POWER_SENSOR: ("sensor", ("storage_charge_discharge_power", "battery_charge_discharge_power")),
         CONF_GRID_SENSOR: ("sensor", ("power_meter_active_power",)),
         CONF_DEVICE_STATUS_ENTITY: ("sensor", ("storage_running_status", "running_status", "device_status")),
+        CONF_MAX_DISCHARGE_ENTITY: ("number", ("storage_maximum_discharge_power", "storage_maximum_discharging_power", "battery_maximum_discharge_power", "battery_maximum_discharging_power", "maximum_discharging_power")),
     }
 
     for conf_key, (domain, translation_keys) in discovery_map.items():
@@ -263,6 +265,10 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_DEVICE_STATUS_ENTITY,
                         default=get_val(CONF_DEVICE_STATUS_ENTITY)
                     ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                    vol.Optional(
+                        CONF_MAX_DISCHARGE_ENTITY,
+                        default=get_val(CONF_MAX_DISCHARGE_ENTITY)
+                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="number")),
                 })
 
         return self.async_show_form(step_id="common", data_schema=vol.Schema(schema_dict))
@@ -348,6 +354,7 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(CONF_DEVICE_STATUS_ENTITY, default=get_default(CONF_DEVICE_STATUS_ENTITY)): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
+                vol.Optional(CONF_MAX_DISCHARGE_ENTITY, default=get_default(CONF_MAX_DISCHARGE_ENTITY)): selector.EntitySelector(selector.EntitySelectorConfig(domain="number")),
             })
         elif battery_type == BATTERY_TYPE_HOMEVOLT:
             schema_fields.update({

@@ -26,6 +26,7 @@ from .const import (
     CONF_API_TOKEN,
     CONF_BATTERY_DEVICE_ID,
     CONF_DEVICE_STATUS_ENTITY,
+    CONF_MAX_DISCHARGE_ENTITY,
     CONF_SOC_SENSOR,
     CONF_GRID_SENSOR,
     CONF_BATTERY_POWER_SENSOR,
@@ -63,6 +64,7 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
             device_id=config[CONF_BATTERY_DEVICE_ID],
             soc_entity=config[CONF_SOC_SENSOR],
             device_status_entity=config.get(CONF_DEVICE_STATUS_ENTITY),
+            max_discharge_entity=config.get(CONF_MAX_DISCHARGE_ENTITY),
         )
 
     if battery_type == BATTERY_TYPE_HOMEVOLT:
