@@ -104,7 +104,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         for attempt in range(3):
             try:
                 async with session.post(
-                    self.api_url, json=payload, timeout=aiohttp.ClientTimeout(total=10)
+                    self.api_url, json=payload, timeout=aiohttp.ClientTimeout(total=30)
                 ) as response:
                     if response.status == 401:
                         text = await response.text()

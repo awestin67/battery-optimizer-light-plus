@@ -617,42 +617,58 @@ def create_github_release(version, repo_slug=None, diff_uncommitted=""):
         print(f"❌ Fel vid API-anrop: {e}")
 
 def main():
+    print("\nVad vill du göra?")
+    print("1. Gör endast en lokal git commit (Kör tester och linting först)")
+    print("2. Gör en full release (Bumpar manifest, committar, pushar och taggar)")
+    print("3. Avbryt")
+    action_choice = input("Val (1/2/3): ").strip()
+
+    if action_choice == '3':
+        print("Avbryter.")
+        return
+    elif action_choice not in ('1', '2'):
+        print("Ogiltigt val. Avbryter.")
+        return
+
     # 1. Säkerhetskollar
-    check_branch()
+    if action_choice == '2':
+        check_branch()
     repo_slug = get_github_repo_slug()
 
+    # Testerna körs ALLTID först. Om de misslyckas avbryts skriptet direkt
+    # via sys.exit(1) och ingen commit kommer att skapas!
     run_tests()
     run_lint()
     check_license_headers()
-    sort_manifest_keys(MANIFEST_PATH) # Fixar sorteringen automatiskt före release
-    run_hassfest_local() # Kör Hassfest via Docker
-    run_hacs_validation_local() # Kör lokal HACS-koll
-    check_images()
-    check_for_updates()
-    check_github_metadata(repo_slug, os.getenv("GITHUB_TOKEN"))
 
-    # 2. Hämta nuvarande version
     current_ver = get_current_version(MANIFEST_PATH)
-    print(f"\n🔹 Nuvarande HA-version: {current_ver}")
+    new_ver = current_ver
 
-    # 3. Fråga om ny version
-    print("\nVilken typ av uppdatering?")
-    print("1. Patch (Bugfix) -> x.x.+1")
-    print("2. Minor (Feature) -> x.+1.0")
-    print("3. Major (Breaking) -> +1.0.0")
-    choice = input("Val: ")
+    if action_choice == '2':
+        sort_manifest_keys(MANIFEST_PATH)
+        run_hassfest_local()
+        run_hacs_validation_local()
+        check_images()
+        check_for_updates()
+        check_github_metadata(repo_slug, os.getenv("GITHUB_TOKEN"))
 
-    type_map = {"1": "patch", "2": "minor", "3": "major"}
-    if choice not in type_map:
-        print("❌ Ogiltigt val. Avbryter.")
-        return
+        print(f"\n🔹 Nuvarande HA-version: {current_ver}")
+        print("\nVilken typ av uppdatering?")
+        print("1. Patch (Bugfix) -> x.x.+1")
+        print("2. Minor (Feature) -> x.+1.0")
+        print("3. Major (Breaking) -> +1.0.0")
+        choice = input("Val: ")
 
-    new_ver = bump_version(current_ver, type_map[choice])
-    print(f"➡️  Ny version blir: {new_ver}")
+        type_map = {"1": "patch", "2": "minor", "3": "major"}
+        if choice not in type_map:
+            print("❌ Ogiltigt val. Avbryter.")
+            return
 
-    confirm = input("Vill du uppdatera manifest.json och pusha? (j/n): ")
-    if confirm.lower() != 'j':
-        return
+        new_ver = bump_version(current_ver, type_map[choice])
+        print(f"➡️  Ny version blir: {new_ver}")
+
+    # Lägg till alla filer (även nya) i git innan diffen skapas så AI:n ser allt
+    run_command(["git", "add", "."])
 
     # Hämta osparade ändringar (diff) INNAN vi committar dem
     try:
@@ -660,17 +676,73 @@ def main():
     except Exception:
         uncommitted_diff = ""
 
-    # 4. Uppdatera filen
+    api_key = os.getenv("GEMINI_API_KEY")
+    suggested_commit_msg = f"Release {new_ver}" if action_choice == '2' else "Update"
+
+    if api_key and uncommitted_diff:
+        print("\n🤖 Ber Gemini AI att generera ett commit-meddelande baserat på dina ändringar...")
+        prompt = (
+            "Generate a concise, professional git commit message in English for the following diff. "
+            "Do NOT wrap it in quotes or markdown blocks. Just return the raw text.\n\n"
+            "Diff:\n"
+        )
+        diff_trunc = uncommitted_diff[:20000] if len(uncommitted_diff) > 20000 else uncommitted_diff
+        prompt += diff_trunc
+
+        url_gemini = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+        headers_gemini = {"Content-Type": "application/json"}
+        payload_gemini = {"contents": [{"parts": [{"text": prompt}]}]}
+
+        try:
+            resp_gemini = requests.post(url_gemini, json=payload_gemini, headers=headers_gemini, timeout=30)
+            if resp_gemini.status_code == 200:
+                data = resp_gemini.json()
+                ai_text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                if ai_text:
+                    cleaned_text = ai_text.strip().strip("`")
+                    if cleaned_text.startswith("text\n"):
+                        cleaned_text = cleaned_text[5:]
+                    elif cleaned_text.startswith("plaintext\n"):
+                        cleaned_text = cleaned_text[10:]
+
+                    if action_choice == '2':
+                        suggested_commit_msg = f"Release {new_ver} - {cleaned_text.strip()}"
+                    else:
+                        suggested_commit_msg = cleaned_text.strip()
+            else:
+                print(f"⚠️ Kunde inte generera AI-commitmeddelande: API svarade med {resp_gemini.status_code}")
+        except Exception as e:
+            print(f"⚠️ Kunde inte generera AI-commitmeddelande: {e}")
+
+    print("\n📝 Föreslaget commit-meddelande:")
+    print("-" * 40)
+    print(suggested_commit_msg)
+    print("-" * 40)
+    print("Tryck ENTER för att använda detta, skriv ett eget, eller skriv 'avbryt' för att avbryta.")
+
+    user_msg = input("> ").strip()
+    if user_msg.lower() == 'avbryt':
+        print("Avbryter. (Filer har indexerats av git add, men ingen commit har skapats).")
+        return
+
+    final_commit_msg = user_msg if user_msg else suggested_commit_msg
+
+    if action_choice == '1':
+        print("\n--- 💾 SPARAR LOKAL COMMIT ---")
+        run_command(["git", "commit", "-m", final_commit_msg])
+        print("✅ Ändringarna sparades lokalt. Du kan fortsätta jobba.")
+        return
+
+    # Fortsätt med Full Release (action_choice == 2)
     update_manifest(MANIFEST_PATH, new_ver)
     print(f"\n✅ {MANIFEST_PATH} uppdaterad.")
 
-    # 5. Git Commit & Push & Tag
     print("\n--- 💾 SPARAR TILL GITHUB ---")
 
     # VIKTIGT: Lägg till alla ändringar (inklusive om du ändrade länken manuellt nyss)
     run_command(["git", "add", "."])
 
-    run_command(["git", "commit", "-m", f"Release {new_ver}"])
+    run_command(["git", "commit", "-m", final_commit_msg])
 
     # Skapa tagg för HACS
     tag_name = f"v{new_ver}"
