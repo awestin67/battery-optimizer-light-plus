@@ -74,10 +74,17 @@ async def test_coordinator_handles_unavailable_soc(mock_hass_instance):
     coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
     coordinator.data = {"action": "OLD_DATA"}  # Set some old data
 
-    # Mocka get_current_soc att returnera None
-    mock_state = MagicMock()
-    mock_state.state = "unavailable"
-    mock_hass_instance.states.get.return_value = mock_state
+    # Mocka get_current_soc att returnera None och virtuella lasten att returnera 3000W
+    def mock_get_state(entity_id):
+        mock_state = MagicMock()
+        if entity_id == "sensor.soc":
+            mock_state.state = "unavailable"
+        elif entity_id == "sensor.husets_netto_last_virtuell":
+            mock_state.state = "3000"
+        else:
+            mock_state.state = "unavailable"
+        return mock_state
+    mock_hass_instance.states.get.side_effect = mock_get_state
 
     patch_session = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
     with patch(patch_session) as mock_get_session:
@@ -92,6 +99,7 @@ async def test_coordinator_handles_unavailable_soc(mock_hass_instance):
         mock_session.post.assert_called_once()
         payload = mock_session.post.call_args[1]["json"]
         assert payload["soc"] == 0.0
+        assert payload["current_consumption_kw"] == 3.0
 
 @pytest.mark.asyncio
 async def test_peak_guard_triggers_discharge(mock_hass_instance, mock_battery):
@@ -429,10 +437,15 @@ async def test_coordinator_sends_solar_override_flag(mock_hass_instance):
     """Krav: Coordinator ska skicka med is_solar_override flaggan till backend."""
     coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG, version="1.2.3")
 
-    # Mocka SoC state
-    mock_state = MagicMock()
-    mock_state.state = "50"
-    mock_hass_instance.states.get.return_value = mock_state
+    # Mocka SoC state och last
+    def mock_get_state(entity_id):
+        mock_state = MagicMock()
+        if entity_id == "sensor.soc":
+            mock_state.state = "50"
+        elif entity_id == "sensor.husets_netto_last_virtuell":
+            mock_state.state = "4500"
+        return mock_state
+    mock_hass_instance.states.get.side_effect = mock_get_state
 
     # Mocka PeakGuard och sätt override till True
     peak_guard = MagicMock()
@@ -461,6 +474,7 @@ async def test_coordinator_sends_solar_override_flag(mock_hass_instance):
         assert payload["is_solar_override"] is True
         assert payload["soc"] == 50.0
         assert payload["ha_version"] == "1.2.3"
+        assert payload["current_consumption_kw"] == 4.5
 
 @pytest.mark.asyncio
 async def test_peak_guard_calculates_load_with_inverted_grid(mock_hass_instance, mock_battery):

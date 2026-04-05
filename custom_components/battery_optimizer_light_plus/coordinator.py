@@ -36,6 +36,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         self.api_url = f"{config['api_url'].rstrip('/')}/signal"
         self.api_key = config['api_key']
         self.version = version
+        self.config = config
         self.battery_api = create_battery_api(hass, config)
 
         # --- DEV OVERRIDE (Avkommentera vid lokal utveckling) ---
@@ -88,13 +89,56 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                 except ValueError:
                     pass  # Ignorera om värdet inte är ett tal
 
-        # 2. Payload (Endast det backend behöver)
+        # 4. Hämta aktuell förbrukning / Huslast (kW)
+        current_consumption_kw = None
+        current_load_w = None
+
+        if hasattr(self.battery_api, "get_virtual_load"):
+            current_load_w = await self.battery_api.get_virtual_load()
+
+        if current_load_w is None:
+            virtual_load_id = self.config.get("virtual_load_sensor")
+            if virtual_load_id:
+                state = self.hass.states.get(virtual_load_id)
+                if state and state.state not in ["unknown", "unavailable"]:
+                    try:
+                        current_load_w = float(state.state)
+                    except ValueError:
+                        pass
+            else:
+                grid_id = self.config.get("grid_sensor")
+                bat_id = self.config.get("battery_power_sensor")
+                if grid_id and bat_id:
+                    grid_state = self.hass.states.get(grid_id)
+                    bat_state = self.hass.states.get(bat_id)
+                    if (
+                        grid_state
+                        and bat_state
+                        and grid_state.state not in ["unknown", "unavailable"]
+                        and bat_state.state not in ["unknown", "unavailable"]
+                    ):
+                        try:
+                            g_val = float(grid_state.state)
+                            b_val = float(bat_state.state)
+                            if self.config.get("grid_sensor_invert", False):
+                                g_val = -g_val
+                            if self.config.get("battery_sensor_invert", False):
+                                b_val = -b_val
+                            current_load_w = g_val + b_val
+                        except ValueError:
+                            pass
+
+        if current_load_w is not None:
+            current_consumption_kw = round(current_load_w / 1000.0, 3)
+
+        # 5. Payload (Endast det backend behöver)
         payload = {
             "api_key": self.api_key,
             "soc": soc,
             "is_solar_override": is_solar_override,
             "consumption_forecast_kwh": consumption_forecast,
-            "ha_version": self.version
+            "ha_version": self.version,
+            "current_consumption_kw": current_consumption_kw
         }
 
         _LOGGER.debug(f"Light-Request: {payload}")
