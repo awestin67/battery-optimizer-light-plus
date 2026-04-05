@@ -108,25 +108,34 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             else:
                 grid_id = self.config.get("grid_sensor")
                 bat_id = self.config.get("battery_power_sensor")
-                if grid_id and bat_id:
-                    grid_state = self.hass.states.get(grid_id)
-                    bat_state = self.hass.states.get(bat_id)
-                    if (
-                        grid_state
-                        and bat_state
-                        and grid_state.state not in ["unknown", "unavailable"]
-                        and bat_state.state not in ["unknown", "unavailable"]
-                    ):
-                        try:
-                            g_val = float(grid_state.state)
-                            b_val = float(bat_state.state)
-                            if self.config.get("grid_sensor_invert", False):
-                                g_val = -g_val
-                            if self.config.get("battery_sensor_invert", False):
-                                b_val = -b_val
-                            current_load_w = g_val + b_val
-                        except ValueError:
-                            pass
+
+                if grid_id or bat_id:
+                    g_val = None
+                    b_val = None
+
+                    if grid_id:
+                        grid_state = self.hass.states.get(grid_id)
+                        if grid_state and grid_state.state not in ["unknown", "unavailable"]:
+                            try:
+                                g_val = float(grid_state.state)
+                                if self.config.get("grid_sensor_invert", False):
+                                    g_val = -g_val
+                            except ValueError:
+                                pass
+
+                    if bat_id:
+                        bat_state = self.hass.states.get(bat_id)
+                        if bat_state and bat_state.state not in ["unknown", "unavailable"]:
+                            try:
+                                b_val = float(bat_state.state)
+                                if self.config.get("battery_sensor_invert", False):
+                                    b_val = -b_val
+                            except ValueError:
+                                pass
+
+                    # Endast om vi fick fram minst ETT giltigt värde från sensorerna
+                    if g_val is not None or b_val is not None:
+                        current_load_w = (g_val or 0.0) + (b_val or 0.0)
 
         if current_load_w is not None:
             current_consumption_kw = round(current_load_w / 1000.0, 3)
