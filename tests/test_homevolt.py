@@ -60,43 +60,43 @@ def homevolt_battery():
 
 @pytest.mark.asyncio
 async def test_apply_action_charge(homevolt_battery):
-    """Test that CHARGE is translated to add_schedule with mode 'charge'."""
+    """Test that CHARGE is translated to add_schedule with mode '1'."""
     await homevolt_battery.apply_action("CHARGE", target_kw=3.5)
 
     # 3.5 kW should be 3500 W
     service_data = homevolt_battery._hass.services.async_call.call_args[0][2]
     assert service_data["device_id"] == "test_device_id"
-    assert service_data["mode"] == "charge"
+    assert service_data["mode"] == "1"
     assert service_data["setpoint"] == 3500
 
 @pytest.mark.asyncio
 async def test_apply_action_discharge(homevolt_battery):
-    """Test that DISCHARGE is translated to add_schedule with mode 'discharge'."""
+    """Test that DISCHARGE is translated to add_schedule with mode '2'."""
     await homevolt_battery.apply_action("DISCHARGE", target_kw=2.0)
 
     service_data = homevolt_battery._hass.services.async_call.call_args[0][2]
     assert service_data["device_id"] == "test_device_id"
-    assert service_data["mode"] == "discharge"
+    assert service_data["mode"] == "2"
     assert service_data["setpoint"] == 2000
 
 @pytest.mark.asyncio
 async def test_apply_action_hold(homevolt_battery):
-    """Test that HOLD is translated to add_schedule with mode 'manual' and 0 setpoint."""
+    """Test that HOLD is translated to add_schedule with mode '0' and 0 setpoint."""
     await homevolt_battery.apply_action("HOLD")
 
     service_data = homevolt_battery._hass.services.async_call.call_args[0][2]
     assert service_data["device_id"] == "test_device_id"
-    assert service_data["mode"] == "manual"
+    assert service_data["mode"] == "0"
     assert service_data["setpoint"] == 0
 
 @pytest.mark.asyncio
 async def test_apply_action_idle(homevolt_battery):
-    """Test that IDLE is translated to add_schedule with mode 'auto'."""
+    """Test that IDLE is translated to add_schedule with mode '0'."""
     await homevolt_battery.apply_action("IDLE")
 
     service_data = homevolt_battery._hass.services.async_call.call_args[0][2]
     assert service_data["device_id"] == "test_device_id"
-    assert service_data["mode"] == "auto"
+    assert service_data["mode"] == "0"
     assert service_data["setpoint"] == 0
 
 @pytest.mark.asyncio

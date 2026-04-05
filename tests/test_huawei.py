@@ -88,6 +88,44 @@ async def test_get_current_soc_invalid(huawei_battery):
     assert soc is None
 
 @pytest.mark.asyncio
+async def test_get_house_consumption(huawei_battery):
+    """Testar att husförbrukningen hämtas från registret om den finns."""
+    with patch("homeassistant.helpers.entity_registry.async_get"), \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+
+        mock_entry = MagicMock()
+        mock_entry.domain = "sensor"
+        mock_entry.translation_key = "load_power"
+        mock_entry.entity_id = "sensor.huawei_house_consumption"
+        mock_entries.return_value = [mock_entry]
+
+        mock_state = MagicMock()
+        mock_state.state = "1500"
+        huawei_battery._hass.states.get.return_value = mock_state
+
+        consumption = await huawei_battery.get_house_consumption()
+        assert consumption == 1500.0
+
+@pytest.mark.asyncio
+async def test_get_house_consumption_sdongle(huawei_battery):
+    """Testar att husförbrukningen från SDongle konverteras från kW till W."""
+    with patch("homeassistant.helpers.entity_registry.async_get"), \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+
+        mock_entry = MagicMock()
+        mock_entry.domain = "sensor"
+        mock_entry.translation_key = "sdongle_load_power"
+        mock_entry.entity_id = "sensor.huawei_sdongle_consumption"
+        mock_entries.return_value = [mock_entry]
+
+        mock_state = MagicMock()
+        mock_state.state = "1.5" # 1.5 kW
+        huawei_battery._hass.states.get.return_value = mock_state
+
+        consumption = await huawei_battery.get_house_consumption()
+        assert consumption == 1500.0 # Ska returnera i Watt
+
+@pytest.mark.asyncio
 async def test_apply_action_charge(huawei_battery):
     """Testar att CHARGE översätts till forcible_charge."""
     await huawei_battery.apply_action("CHARGE", target_kw=3.5)

@@ -24,6 +24,10 @@ class BatteryApi(ABC):
         """Hämtar aktuell SoC (State of Charge)."""
         pass
 
+    async def get_house_consumption(self) -> float | None:
+        """Returnerar husets rena förbrukning i Watt om det stöds direkt av API:et."""
+        return None
+
     @abstractmethod
     async def apply_action(self, action: str, target_kw: float = 0.0):
         """

@@ -92,6 +92,18 @@ class HomevoltBattery(BatteryApi):
                 return None
         return None
 
+    async def get_house_consumption(self) -> float | None:
+        """Hämtar husets förbrukning direkt från den konfigurerade Homevolt-lastsensorn."""
+        if not self._load_entity:
+            return None
+        state = self._hass.states.get(self._load_entity)
+        if state and state.state not in [STATE_UNAVAILABLE, STATE_UNKNOWN]:
+            try:
+                return float(state.state)
+            except (ValueError, TypeError):
+                return None
+        return None
+
     async def get_status_text(self) -> str | None:
         """Get the current battery status text."""
         if not self._status_entity:
@@ -108,28 +120,34 @@ class HomevoltBattery(BatteryApi):
         action_upper = action.upper()
         target_w = int(target_kw * 1000)
 
-        if action_upper in ["CHARGE", "DISCHARGE"]:
-            mode = action_upper.lower()
+        now = dt_util.now()
+        end_time = now + timedelta(minutes=10)
+
+        if action_upper == "CHARGE":
+            mode = "1"  # 1 = Charging
+            setpoint = abs(target_w)
+        elif action_upper == "DISCHARGE":
+            mode = "2"  # 2 = Discharging
             setpoint = abs(target_w)
         elif action_upper == "HOLD":
-            mode = "manual"
+            mode = "0"  # 0 = Idle
             setpoint = 0
         elif action_upper == "IDLE":
-            mode = "auto"
+            mode = "0"  # 0 = Idle
             setpoint = 0
+            # Eftersom "clear_schedule" saknas låter vi schemat förfalla direkt (1 sek)
+            # så att Homevolt omedelbart återgår till sin inbyggda Auto-logik.
+            end_time = now + timedelta(seconds=1)
         else:
             _LOGGER.warning(f"Unknown action for Homevolt: {action}")
             return
-
-        now = dt_util.now()
-        end_time = now + timedelta(minutes=10)
 
         service_data = {
             "device_id": self._device_id,
             "mode": mode,
             "setpoint": setpoint,
-            "from_time": now.isoformat(),
-            "to_time": end_time.isoformat(),
+            "from_time": now,      # Måste vara datetime-objekt, INTE .isoformat()!
+            "to_time": end_time,   # Måste vara datetime-objekt, INTE .isoformat()!
         }
 
         _LOGGER.info(f"Calling homevolt_local.add_schedule with: {service_data}")

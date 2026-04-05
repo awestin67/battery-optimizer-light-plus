@@ -59,6 +59,32 @@ class HuaweiBattery(BatteryApi):
                 return str(state.state)
         return None
 
+    async def get_house_consumption(self) -> float | None:
+        """Försöker hitta Huaweis inbyggda husförbrukningssensor automatiskt via enhetsregistret."""
+        from homeassistant.helpers import entity_registry as er
+        registry = er.async_get(self._hass)
+        entries = er.async_entries_for_device(registry, self._device_id)
+
+        for entry in entries:
+            if entry.domain == "sensor":
+                # EMMA-enheten rapporterar huslast i Watt
+                if entry.translation_key == "load_power":
+                    state = self._hass.states.get(entry.entity_id)
+                    if state and state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                        try:
+                            return float(state.state)
+                        except ValueError:
+                            pass
+                # SDongle-enheten rapporterar huslast i kiloWatt (kW)
+                elif entry.translation_key == "sdongle_load_power":
+                    state = self._hass.states.get(entry.entity_id)
+                    if state and state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                        try:
+                            return float(state.state) * 1000.0
+                        except ValueError:
+                            pass
+        return None
+
     async def _get_max_discharge_entity(self) -> str | None:
         """Hittar number-entiteten för max urladdningseffekt via konfig eller enhetsregistret."""
         if getattr(self, "_max_discharge_entity", None):

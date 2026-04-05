@@ -61,6 +61,7 @@ def mock_battery():
     mock.get_virtual_load = AsyncMock(return_value=None)
     mock.get_battery_power = AsyncMock(return_value=None)
     mock.get_grid_power = AsyncMock(return_value=None)
+    mock.get_house_consumption = AsyncMock(return_value=None)
     mock.get_status_text = AsyncMock(return_value=None)
     mock.apply_action = AsyncMock()
     return mock
@@ -1547,3 +1548,34 @@ async def test_huawei_battery_apply_action_idle():
     mock_hass.services.async_call.assert_called_once_with(
         "huawei_solar", "stop_forcible_charge", {"device_id": "huawei_inv_1"}, blocking=True
     )
+
+@pytest.mark.asyncio
+async def test_end_to_end_power_conversion(mock_hass_instance):
+    """Krav: Säkerställ att molnets target_power_kw översätts korrekt till Watt för Huawei och Homevolt."""
+    from custom_components.battery_optimizer_light_plus.batteries.huawei.huawei import HuaweiBattery
+    from custom_components.battery_optimizer_light_plus.batteries.homevolt.homevolt import HomevoltBattery
+
+    # --- 1. Testa Huawei ---
+    huawei = HuaweiBattery(mock_hass_instance, "huawei_1", "sensor.soc")
+    mock_hass_instance.services.async_call.reset_mock()
+
+    await huawei.apply_action("CHARGE", target_kw=3.5)
+
+    huawei_call = mock_hass_instance.services.async_call.call_args_list[0]
+    assert huawei_call[0][0] == "huawei_solar"
+    assert huawei_call[0][1] == "forcible_charge"
+    assert huawei_call[0][2]["power"] == 3500, "3.5 kW ska översättas till 3500 W för Huawei"
+
+    # --- 2. Testa Homevolt ---
+    homevolt = HomevoltBattery(
+        mock_hass_instance, "homevolt_1", "sensor.soc", None, "sensor.bat", None, None
+    )
+    mock_hass_instance.services.async_call.reset_mock()
+
+    await homevolt.apply_action("DISCHARGE", target_kw=2.2)
+
+    homevolt_call = mock_hass_instance.services.async_call.call_args_list[0]
+    assert homevolt_call[0][0] == "homevolt_local"
+    assert homevolt_call[0][1] == "add_schedule"
+    assert homevolt_call[0][2]["setpoint"] == 2200, "2.2 kW ska översättas till 2200 W för Homevolt"
+    assert homevolt_call[0][2]["mode"] == "2", "DISCHARGE ska sätta mode '2' för Homevolt"

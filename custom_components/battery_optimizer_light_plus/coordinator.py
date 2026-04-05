@@ -93,7 +93,21 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         current_consumption_kw = None
         current_load_w = None
 
-        if hasattr(self.battery_api, "get_virtual_load"):
+        # --- FÖRSÖK 1: Hämta ren husförbrukning (House Consumption) ---
+        if hasattr(self.battery_api, "get_house_consumption"):
+            current_load_w = await self.battery_api.get_house_consumption()
+
+        # Inbyggd genväg för Sonnen (Sonnen Husförbrukning / Consumption_W)
+        if current_load_w is None and hasattr(self.battery_api, "coordinator"):
+            data = getattr(self.battery_api.coordinator, "data", None)
+            if data and "Consumption_W" in data:
+                try:
+                    current_load_w = float(data["Consumption_W"])
+                except (ValueError, TypeError):
+                    pass
+
+        # --- FÖRSÖK 2: Fallback till PeakGuards Nettolast (Grid + Batteri) ---
+        if current_load_w is None and hasattr(self.battery_api, "get_virtual_load"):
             current_load_w = await self.battery_api.get_virtual_load()
 
         if current_load_w is None:
@@ -138,6 +152,10 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                         current_load_w = (g_val or 0.0) + (b_val or 0.0)
 
         if current_load_w is not None:
+            # Ett hus kan inte ha negativ förbrukning. Negativa värden beror oftast på
+            # mätfel eller fördröjningar mellan sensorernas uppdateringar.
+            if current_load_w < 0:
+                current_load_w = 0.0
             current_consumption_kw = round(current_load_w / 1000.0, 3)
 
         # 5. Payload (Endast det backend behöver)
