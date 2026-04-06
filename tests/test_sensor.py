@@ -24,6 +24,7 @@ from custom_components.battery_optimizer_light_plus.sensor import (
     BatteryLightPeakSensor,
     BatteryLightChargeTargetSensor,
     BatteryLightDischargeTargetSensor,
+    BatteryLightHouseConsumptionSensor,
     BatteryLightVirtualLoadSensor,
     HuaweiWrapperSensor,
     SonnenInternalSensor,
@@ -46,7 +47,7 @@ async def test_sensor_setup_entry_generic():
 
     await async_setup_entry(hass, entry, async_add_entities)
     async_add_entities.assert_called_once()
-    assert len(async_add_entities.call_args[0][0]) == 8
+    assert len(async_add_entities.call_args[0][0]) == 9
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_huawei():
@@ -62,7 +63,7 @@ async def test_sensor_setup_entry_huawei():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 11
+    assert len(async_add_entities.call_args[0][0]) == 12
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_sonnen():
@@ -74,7 +75,7 @@ async def test_sensor_setup_entry_sonnen():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 14
+    assert len(async_add_entities.call_args[0][0]) == 15
 
 def test_basic_sensors():
     coordinator = MagicMock()
@@ -115,6 +116,9 @@ def test_basic_sensors():
     coordinator.data["action"] = "DISCHARGE"
     assert BatteryLightDischargeTargetSensor(coordinator).state == 5500
 
+    coordinator.current_load_w = 2500.5
+    assert BatteryLightHouseConsumptionSensor(coordinator).state == 2500.5
+
     # Testa felhantering när data är None
     coordinator.data = None
     assert BatteryLightActionSensor(coordinator).state == "UNKNOWN"
@@ -122,6 +126,9 @@ def test_basic_sensors():
     assert BatteryLightPeakSensor(coordinator).state == 12.0
     assert BatteryLightChargeTargetSensor(coordinator).state == 0
     assert BatteryLightDischargeTargetSensor(coordinator).state == 0
+
+    delattr(coordinator, "current_load_w")
+    assert BatteryLightHouseConsumptionSensor(coordinator).state is None
 
     delattr(coordinator, "peak_guard")
     assert BatteryLightReasonSensor(coordinator).state == "Unknown"

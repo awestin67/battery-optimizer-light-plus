@@ -51,7 +51,9 @@ def huawei_battery():
     return HuaweiBattery(
         hass=hass,
         device_id="test_device_id",
-        soc_entity="sensor.huawei_soc"
+        soc_entity="sensor.huawei_soc",
+        grid_entity="sensor.huawei_grid",
+        invert_grid=True
     )
 
 @pytest.mark.asyncio
@@ -124,6 +126,35 @@ async def test_get_house_consumption_sdongle(huawei_battery):
 
         consumption = await huawei_battery.get_house_consumption()
         assert consumption == 1500.0 # Ska returnera i Watt
+
+@pytest.mark.asyncio
+async def test_get_house_consumption_fallback(huawei_battery):
+    """Testar att husförbrukningen räknas ut som Grid + Inverter Active Power när solen skiner."""
+    with patch("homeassistant.helpers.entity_registry.async_get"), \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+
+        # Inga EMMA/SDongle sensorer finns, bara active_power
+        mock_entry = MagicMock()
+        mock_entry.domain = "sensor"
+        mock_entry.translation_key = "active_power"
+        mock_entry.entity_id = "sensor.huawei_active_power"
+        mock_entries.return_value = [mock_entry]
+
+        def get_state_side_effect(entity_id):
+            mock_state = MagicMock()
+            if entity_id == "sensor.huawei_grid":
+                mock_state.state = "5000" # Säljer 5000W (Inverteras till -5000 Import pga inställning)
+            elif entity_id == "sensor.huawei_active_power":
+                mock_state.state = "6500" # Inverter producerar 6500W ut mot hus/nät
+            else:
+                return None
+            return mock_state
+
+        huawei_battery._hass.states.get.side_effect = get_state_side_effect
+
+        consumption = await huawei_battery.get_house_consumption()
+        # -5000W + 6500W = 1500W
+        assert consumption == 1500.0
 
 @pytest.mark.asyncio
 async def test_apply_action_charge(huawei_battery):

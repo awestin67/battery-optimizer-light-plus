@@ -54,6 +54,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         BatteryLightStatusSensor(coordinator),
         BatteryLightChargeTargetSensor(coordinator),
         BatteryLightDischargeTargetSensor(coordinator),
+        BatteryLightHouseConsumptionSensor(coordinator),
     ]
 
     if entry.data.get(CONF_BATTERY_TYPE) != BATTERY_TYPE_SONNEN:
@@ -382,6 +383,24 @@ class BatteryLightChargeTargetSensor(BatteryOptimizerSensorBase):
             kw = data.get("target_power_kw", 0.0)
             return int(round(kw * 1000))
         return 0
+
+class BatteryLightHouseConsumptionSensor(BatteryOptimizerSensorBase):
+    """Sensor som visar den uträknade husförbrukningen (Watt) som skickas till molnet."""
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self._attr_name = "Optimizer Light House Consumption"
+        self._attr_unique_id = f"{coordinator.api_key}_light_house_consumption"
+        self._attr_unit_of_measurement = "W"
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:home-lightning-bolt"
+
+    @property
+    def state(self):
+        val = getattr(self.coordinator, "current_load_w", None)
+        if val is not None:
+            return round(val, 1)
+        return None
 
 class HuaweiWrapperSensor(BatteryOptimizerSensorBase):
     """Wrapper för att visa Huawei-specifika entiteter snyggt integrerat."""

@@ -31,7 +31,9 @@ class HuaweiBattery(BatteryApi):
         device_id: str,
         soc_entity: str,
         device_status_entity: str | None = None,
-        max_discharge_entity: str | None = None
+        max_discharge_entity: str | None = None,
+        grid_entity: str | None = None,
+        invert_grid: bool = False
     ):
         """Initialize the HuaweiBattery object."""
         self._hass = hass
@@ -39,6 +41,8 @@ class HuaweiBattery(BatteryApi):
         self._soc_entity = soc_entity
         self._device_status_entity = device_status_entity
         self._max_discharge_entity = max_discharge_entity
+        self._grid_entity = grid_entity
+        self._invert_grid = invert_grid
 
     async def get_current_soc(self) -> float | None:
         """Get the battery's state of charge (SoC)."""
@@ -83,6 +87,28 @@ class HuaweiBattery(BatteryApi):
                             return float(state.state) * 1000.0
                         except ValueError:
                             pass
+
+        # Om varken EMMA eller SDongle finns, räknar vi ut det via Grid + Inverter Active Power
+        # Husförbrukning = Grid Import + Inverter Active Power (Solproduktion + Batteri Urladdning)
+        if self._grid_entity:
+            grid_state = self._hass.states.get(self._grid_entity)
+            if grid_state and grid_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                try:
+                    grid_val = float(grid_state.state)
+                    if self._invert_grid:
+                        grid_val = -grid_val
+
+                    # Hitta Inverter Active Power
+                    for entry in entries:
+                        if entry.domain == "sensor" and entry.translation_key == "active_power":
+                            inv_state = self._hass.states.get(entry.entity_id)
+                            if inv_state and inv_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                                inv_val = float(inv_state.state)
+                                # Returnera minst 0 för att undvika negativa värden pga mätfel
+                                return max(0.0, grid_val + inv_val)
+                except ValueError:
+                    pass
+
         return None
 
     async def _get_max_discharge_entity(self) -> str | None:

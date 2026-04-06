@@ -29,6 +29,7 @@ from .const import (
     CONF_MAX_DISCHARGE_ENTITY,
     CONF_SOC_SENSOR,
     CONF_GRID_SENSOR,
+    CONF_GRID_SENSOR_INVERT,
     CONF_BATTERY_POWER_SENSOR,
     CONF_VIRTUAL_LOAD_SENSOR,
 )
@@ -65,6 +66,8 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
             soc_entity=config[CONF_SOC_SENSOR],
             device_status_entity=config.get(CONF_DEVICE_STATUS_ENTITY),
             max_discharge_entity=config.get(CONF_MAX_DISCHARGE_ENTITY),
+            grid_entity=config.get(CONF_GRID_SENSOR),
+            invert_grid=config.get(CONF_GRID_SENSOR_INVERT, False),
         )
 
     if battery_type == BATTERY_TYPE_HOMEVOLT:

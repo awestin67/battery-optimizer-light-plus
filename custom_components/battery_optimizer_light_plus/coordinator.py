@@ -48,6 +48,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
         self.consumption_forecast_entity = config.get("consumption_forecast_sensor")
         self.unsub_timer = None
+        self.current_load_w = None
 
     def setup_timer(self):
         """Startar schemaläggaren.
@@ -157,6 +158,8 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             if current_load_w < 0:
                 current_load_w = 0.0
             current_consumption_kw = round(current_load_w / 1000.0, 3)
+
+        self.current_load_w = current_load_w
 
         # 5. Payload (Endast det backend behöver)
         payload = {
