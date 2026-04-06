@@ -388,6 +388,7 @@ class BatteryLightHouseConsumptionSensor(BatteryOptimizerSensorBase):
     """Sensor som visar den uträknade husförbrukningen (Watt) som skickas till molnet."""
     def __init__(self, coordinator):
         super().__init__(coordinator)
+        self.entity_id = "sensor.optimizer_light_house_consumption"
         self._attr_name = "Optimizer Light House Consumption"
         self._attr_unique_id = f"{coordinator.api_key}_light_house_consumption"
         self._attr_unit_of_measurement = "W"
