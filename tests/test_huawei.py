@@ -128,8 +128,8 @@ async def test_get_house_consumption_sdongle(huawei_battery):
         assert consumption == 1500.0 # Ska returnera i Watt
 
 @pytest.mark.asyncio
-async def test_get_house_consumption_fallback(huawei_battery):
-    """Testar att husförbrukningen räknas ut som Grid + Inverter Active Power när solen skiner."""
+async def test_get_virtual_load(huawei_battery):
+    """Testar att virtuella lasten räknas ut som Grid + Inverter Active Power när solen skiner."""
     with patch("homeassistant.helpers.entity_registry.async_get"), \
          patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
 
@@ -152,7 +152,7 @@ async def test_get_house_consumption_fallback(huawei_battery):
 
         huawei_battery._hass.states.get.side_effect = get_state_side_effect
 
-        consumption = await huawei_battery.get_house_consumption()
+        consumption = await huawei_battery.get_virtual_load()
         # -5000W + 6500W = 1500W
         assert consumption == 1500.0
 

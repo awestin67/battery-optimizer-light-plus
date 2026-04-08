@@ -94,16 +94,34 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         current_consumption_kw = None
         current_load_w = None
 
-        # --- FÖRSÖK 1: Användarens konfigurerade sensorer ---
-        virtual_load_id = self.config.get("virtual_load_sensor")
-        if virtual_load_id:
-            state = self.hass.states.get(virtual_load_id)
-            if state and state.state not in ["unknown", "unavailable"]:
+        # --- PRIO 1: Beräkning av formeln (Högsta prio via intern batterilogik) ---
+        # Huawei räknar t.ex. ut Grid + Inverter Active Power här för att inkludera solproduktion
+        if hasattr(self.battery_api, "get_virtual_load"):
+            current_load_w = await self.battery_api.get_virtual_load()
+
+        # Inbyggd genväg för Sonnen (Sonnen Husförbrukning / Consumption_W)
+        if current_load_w is None and hasattr(self.battery_api, "coordinator"):
+            data = getattr(self.battery_api.coordinator, "data", None)
+            if data and "Consumption_W" in data:
                 try:
-                    current_load_w = float(state.state)
-                except ValueError:
+                    current_load_w = float(data["Consumption_W"])
+                except (ValueError, TypeError):
                     pass
-        else:
+
+        # --- PRIO 2: Användarens konfigurerade virtuella last-sensor ---
+        if current_load_w is None:
+            virtual_load_id = self.config.get("virtual_load_sensor")
+            if virtual_load_id:
+                state = self.hass.states.get(virtual_load_id)
+                if state and state.state not in ["unknown", "unavailable"]:
+                    try:
+                        current_load_w = float(state.state)
+                    except ValueError:
+                        pass
+
+        # --- PRIO 3: Beräkning via generiska HA-sensorer (Grid + Batteri) ---
+        # Används om ingen annan metod finns. Observera att detta missar solproduktion.
+        if current_load_w is None:
             grid_id = self.config.get("grid_sensor")
             bat_id = self.config.get("battery_power_sensor")
 
@@ -131,26 +149,12 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                         except ValueError:
                             pass
 
-                # Endast om vi fick fram minst ETT giltigt värde från sensorerna
                 if g_val is not None or b_val is not None:
                     current_load_w = (g_val or 0.0) + (b_val or 0.0)
 
-        # --- FÖRSÖK 2: Hämta ren husförbrukning (House Consumption) via API/Integration ---
+        # --- PRIO 4: Fallback till API-specifika sensorer (t.ex. Huawei EMMA/SDongle) ---
         if current_load_w is None and hasattr(self.battery_api, "get_house_consumption"):
             current_load_w = await self.battery_api.get_house_consumption()
-
-        # Inbyggd genväg för Sonnen (Sonnen Husförbrukning / Consumption_W)
-        if current_load_w is None and hasattr(self.battery_api, "coordinator"):
-            data = getattr(self.battery_api.coordinator, "data", None)
-            if data and "Consumption_W" in data:
-                try:
-                    current_load_w = float(data["Consumption_W"])
-                except (ValueError, TypeError):
-                    pass
-
-        # --- FÖRSÖK 3: Fallback till PeakGuards Nettolast (Grid + Batteri) via intern API ---
-        if current_load_w is None and hasattr(self.battery_api, "get_virtual_load"):
-            current_load_w = await self.battery_api.get_virtual_load()
 
         if current_load_w is not None:
             # Ett hus kan inte ha negativ förbrukning. Negativa värden beror oftast på

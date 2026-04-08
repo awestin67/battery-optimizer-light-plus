@@ -88,8 +88,14 @@ class HuaweiBattery(BatteryApi):
                         except ValueError:
                             pass
 
-        # Om varken EMMA eller SDongle finns, räknar vi ut det via Grid + Inverter Active Power
-        # Husförbrukning = Grid Import + Inverter Active Power (Solproduktion + Batteri Urladdning)
+        return None
+
+    async def get_virtual_load(self) -> float | None:
+        """Beräknar husförbrukning via formeln: Grid Import + Inverter Active Power."""
+        from homeassistant.helpers import entity_registry as er
+        registry = er.async_get(self._hass)
+        entries = er.async_entries_for_device(registry, self._device_id)
+
         if self._grid_entity:
             grid_state = self._hass.states.get(self._grid_entity)
             if grid_state and grid_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
@@ -104,8 +110,7 @@ class HuaweiBattery(BatteryApi):
                             inv_state = self._hass.states.get(entry.entity_id)
                             if inv_state and inv_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
                                 inv_val = float(inv_state.state)
-                                # Returnera minst 0 för att undvika negativa värden pga mätfel
-                                return max(0.0, grid_val + inv_val)
+                                return grid_val + inv_val
                 except ValueError:
                     pass
 
