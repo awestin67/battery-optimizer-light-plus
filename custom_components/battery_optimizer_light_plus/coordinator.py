@@ -91,7 +91,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     pass  # Ignorera om värdet inte är ett tal
 
         # 4. Hämta aktuell förbrukning / Huslast (kW)
-        current_consumption_kw = None
+        current_consumption_kw = 0.0
         current_load_w = None
 
         # --- PRIO 1: Beräkning av formeln (Högsta prio via intern batterilogik) ---
@@ -162,6 +162,8 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             if current_load_w < 0:
                 current_load_w = 0.0
             current_consumption_kw = round(current_load_w / 1000.0, 3)
+        else:
+            _LOGGER.debug("Husförbrukning kunde inte beräknas (sensorer under uppstart?). Skickar 0.0 kW till molnet.")
 
         self.current_load_w = current_load_w
 
