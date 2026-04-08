@@ -44,6 +44,19 @@ class HuaweiBattery(BatteryApi):
         self._grid_entity = grid_entity
         self._invert_grid = invert_grid
 
+    def _get_related_devices(self) -> set[str]:
+        """Hämtar alla relaterade enhets-ID:n (Inverter, Batteri, Meter) inom samma Huawei-integration."""
+        from homeassistant.helpers import device_registry as dr
+        dr_reg = dr.async_get(self._hass)
+        related_devices = {self._device_id}
+        device = dr_reg.async_get(self._device_id)
+        if device and device.config_entries:
+            config_entry_id = next(iter(device.config_entries))
+            for dev in dr_reg.devices.values():
+                if config_entry_id in dev.config_entries:
+                    related_devices.add(dev.id)
+        return related_devices
+
     async def get_current_soc(self) -> float | None:
         """Get the battery's state of charge (SoC)."""
         soc_state = self._hass.states.get(self._soc_entity)
@@ -64,37 +77,39 @@ class HuaweiBattery(BatteryApi):
         return None
 
     async def get_house_consumption(self) -> float | None:
-        """Försöker hitta Huaweis inbyggda husförbrukningssensor automatiskt via enhetsregistret."""
+        """Försöker hitta Huaweis inbyggda husförbrukningssensor automatiskt tvärs över anläggningen."""
         from homeassistant.helpers import entity_registry as er
-        registry = er.async_get(self._hass)
-        entries = er.async_entries_for_device(registry, self._device_id)
+        er_reg = er.async_get(self._hass)
+        related_devices = self._get_related_devices()
 
-        for entry in entries:
-            if entry.domain == "sensor":
-                # EMMA-enheten rapporterar huslast i Watt
-                if entry.translation_key == "load_power":
-                    state = self._hass.states.get(entry.entity_id)
-                    if state and state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
-                        try:
-                            return float(state.state)
-                        except ValueError:
-                            pass
-                # SDongle-enheten rapporterar huslast i kiloWatt (kW)
-                elif entry.translation_key == "sdongle_load_power":
-                    state = self._hass.states.get(entry.entity_id)
-                    if state and state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
-                        try:
-                            return float(state.state) * 1000.0
-                        except ValueError:
-                            pass
+        for d_id in related_devices:
+            entries = er.async_entries_for_device(er_reg, d_id)
+            for entry in entries:
+                if entry.domain == "sensor":
+                    # EMMA-enheten rapporterar huslast i Watt
+                    if entry.translation_key == "load_power":
+                        state = self._hass.states.get(entry.entity_id)
+                        if state and state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                            try:
+                                return float(state.state)
+                            except ValueError:
+                                pass
+                    # SDongle-enheten rapporterar huslast i kiloWatt (kW)
+                    elif entry.translation_key == "sdongle_load_power":
+                        state = self._hass.states.get(entry.entity_id)
+                        if state and state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                            try:
+                                return float(state.state) * 1000.0
+                            except ValueError:
+                                pass
 
         return None
 
     async def get_virtual_load(self) -> float | None:
         """Beräknar husförbrukning via formeln: Grid Import + Inverter Active Power."""
         from homeassistant.helpers import entity_registry as er
-        registry = er.async_get(self._hass)
-        entries = er.async_entries_for_device(registry, self._device_id)
+        er_reg = er.async_get(self._hass)
+        related_devices = self._get_related_devices()
 
         if self._grid_entity:
             grid_state = self._hass.states.get(self._grid_entity)
@@ -104,13 +119,24 @@ class HuaweiBattery(BatteryApi):
                     if self._invert_grid:
                         grid_val = -grid_val
 
-                    # Hitta Inverter Active Power
-                    for entry in entries:
-                        if entry.domain == "sensor" and entry.translation_key == "active_power":
-                            inv_state = self._hass.states.get(entry.entity_id)
-                            if inv_state and inv_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
-                                inv_val = float(inv_state.state)
-                                return grid_val + inv_val
+                    # Hitta Inverter Active Power (summera över alla växelriktare i anläggningen)
+                    total_inv_val = 0.0
+                    found_inv = False
+
+                    for d_id in related_devices:
+                        entries = er.async_entries_for_device(er_reg, d_id)
+                        for entry in entries:
+                            if entry.domain == "sensor" and entry.translation_key == "active_power":
+                                inv_state = self._hass.states.get(entry.entity_id)
+                                if inv_state and inv_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                                    try:
+                                        total_inv_val += float(inv_state.state)
+                                        found_inv = True
+                                    except ValueError:
+                                        pass
+
+                    if found_inv:
+                        return grid_val + total_inv_val
                 except ValueError:
                     pass
 
@@ -122,8 +148,8 @@ class HuaweiBattery(BatteryApi):
             return self._max_discharge_entity
 
         from homeassistant.helpers import entity_registry as er
-        registry = er.async_get(self._hass)
-        entries = er.async_entries_for_device(registry, self._device_id)
+        er_reg = er.async_get(self._hass)
+        related_devices = self._get_related_devices()
 
         valid_keys = [
             "storage_maximum_discharge_power",
@@ -133,9 +159,11 @@ class HuaweiBattery(BatteryApi):
             "maximum_discharging_power"
         ]
 
-        for entry in entries:
-            if entry.domain == "number" and entry.translation_key in valid_keys:
-                return entry.entity_id
+        for d_id in related_devices:
+            entries = er.async_entries_for_device(er_reg, d_id)
+            for entry in entries:
+                if entry.domain == "number" and entry.translation_key in valid_keys:
+                    return entry.entity_id
         return None
 
     async def apply_action(self, action: str, target_kw: float = 0.0):

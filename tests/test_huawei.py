@@ -93,7 +93,8 @@ async def test_get_current_soc_invalid(huawei_battery):
 async def test_get_house_consumption(huawei_battery):
     """Testar att husförbrukningen hämtas från registret om den finns."""
     with patch("homeassistant.helpers.entity_registry.async_get"), \
-         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
 
         mock_entry = MagicMock()
         mock_entry.domain = "sensor"
@@ -112,7 +113,8 @@ async def test_get_house_consumption(huawei_battery):
 async def test_get_house_consumption_sdongle(huawei_battery):
     """Testar att husförbrukningen från SDongle konverteras från kW till W."""
     with patch("homeassistant.helpers.entity_registry.async_get"), \
-         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
 
         mock_entry = MagicMock()
         mock_entry.domain = "sensor"
@@ -131,7 +133,8 @@ async def test_get_house_consumption_sdongle(huawei_battery):
 async def test_get_virtual_load(huawei_battery):
     """Testar att virtuella lasten räknas ut som Grid + Inverter Active Power när solen skiner."""
     with patch("homeassistant.helpers.entity_registry.async_get"), \
-         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
 
         # Inga EMMA/SDongle sensorer finns, bara active_power
         mock_entry = MagicMock()
@@ -159,7 +162,8 @@ async def test_get_virtual_load(huawei_battery):
 @pytest.mark.asyncio
 async def test_apply_action_charge(huawei_battery):
     """Testar att CHARGE översätts till forcible_charge."""
-    await huawei_battery.apply_action("CHARGE", target_kw=3.5)
+    with patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
+        await huawei_battery.apply_action("CHARGE", target_kw=3.5)
 
     # 3.5 kW ska bli 3500 W
     huawei_battery._hass.services.async_call.assert_called_once_with(
@@ -171,7 +175,8 @@ async def test_apply_action_charge(huawei_battery):
 @pytest.mark.asyncio
 async def test_apply_action_discharge(huawei_battery):
     """Testar att DISCHARGE översätts till forcible_discharge."""
-    await huawei_battery.apply_action("DISCHARGE", target_kw=2.0)
+    with patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
+        await huawei_battery.apply_action("DISCHARGE", target_kw=2.0)
 
     huawei_battery._hass.services.async_call.assert_called_once_with(
         "huawei_solar", "forcible_discharge",
@@ -183,7 +188,8 @@ async def test_apply_action_discharge(huawei_battery):
 async def test_apply_action_hold(huawei_battery):
     """Testar att HOLD sätter max urladdning till 0 och stoppar forcible charge."""
     with patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get, \
-         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
         mock_registry = MagicMock()
         mock_er_get.return_value = mock_registry
 
@@ -221,7 +227,8 @@ async def test_apply_action_idle_restores_discharge(huawei_battery):
     huawei_battery._hass.data = {"battery_optimizer_light_plus": {"test_entry": mock_coord}}
 
     with patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get, \
-         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
         mock_registry = MagicMock()
         mock_er_get.return_value = mock_registry
 
@@ -255,7 +262,8 @@ async def test_apply_action_idle_restores_discharge(huawei_battery):
 @pytest.mark.asyncio
 async def test_apply_action_idle(huawei_battery):
     """Testar att IDLE släpper spärren med stop_forcible_charge."""
-    await huawei_battery.apply_action("IDLE")
+    with patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
+        await huawei_battery.apply_action("IDLE")
 
     huawei_battery._hass.services.async_call.assert_called_once_with(
         "huawei_solar", "stop_forcible_charge", {"device_id": "test_device_id"}, blocking=True
@@ -268,7 +276,8 @@ async def test_apply_action_service_not_found(huawei_battery):
         "huawei_solar", "forcible_charge"
     )
 
-    with patch("custom_components.battery_optimizer_light_plus.batteries.huawei.huawei._LOGGER") as mock_logger:
+    with patch("custom_components.battery_optimizer_light_plus.batteries.huawei.huawei._LOGGER") as mock_logger, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
         # This call should not raise an exception
         await huawei_battery.apply_action("CHARGE", target_kw=2.0)
 

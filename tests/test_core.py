@@ -1499,7 +1499,8 @@ async def test_huawei_battery_apply_action_hold():
     )
 
     with patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get, \
-         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+             patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+             patch.object(battery, "_get_related_devices", return_value={"huawei_inv_1"}):
         mock_registry = MagicMock()
         mock_er_get.return_value = mock_registry
 
@@ -1543,7 +1544,8 @@ async def test_huawei_battery_apply_action_idle():
         soc_entity="sensor.soc",
     )
 
-    await battery.apply_action("IDLE")
+    with patch.object(battery, "_get_related_devices", return_value={"huawei_inv_1"}):
+        await battery.apply_action("IDLE")
 
     mock_hass.services.async_call.assert_called_once_with(
         "huawei_solar", "stop_forcible_charge", {"device_id": "huawei_inv_1"}, blocking=True
@@ -1559,7 +1561,8 @@ async def test_end_to_end_power_conversion(mock_hass_instance):
     huawei = HuaweiBattery(mock_hass_instance, "huawei_1", "sensor.soc")
     mock_hass_instance.services.async_call.reset_mock()
 
-    await huawei.apply_action("CHARGE", target_kw=3.5)
+    with patch.object(huawei, "_get_related_devices", return_value={"huawei_1"}):
+        await huawei.apply_action("CHARGE", target_kw=3.5)
 
     huawei_call = mock_hass_instance.services.async_call.call_args_list[0]
     assert huawei_call[0][0] == "huawei_solar"
