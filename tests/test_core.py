@@ -59,6 +59,7 @@ def mock_battery():
     mock = MagicMock()
     mock.get_current_soc = AsyncMock(return_value=None)
     mock.get_virtual_load = AsyncMock(return_value=None)
+    mock.get_calculated_consumption = AsyncMock(return_value=None)
     mock.get_battery_power = AsyncMock(return_value=None)
     mock.get_grid_power = AsyncMock(return_value=None)
     mock.get_house_consumption = AsyncMock(return_value=None)

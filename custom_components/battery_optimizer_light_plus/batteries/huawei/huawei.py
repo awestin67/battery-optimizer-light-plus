@@ -105,7 +105,7 @@ class HuaweiBattery(BatteryApi):
 
         return None
 
-    async def get_virtual_load(self) -> float | None:
+    async def get_calculated_consumption(self) -> float | None:
         """Beräknar husförbrukning via formeln: Grid Import + Inverter Active Power."""
         from homeassistant.helpers import entity_registry as er
         er_reg = er.async_get(self._hass)

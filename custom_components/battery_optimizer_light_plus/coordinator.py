@@ -96,8 +96,8 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
         # --- PRIO 1: Beräkning av formeln (Högsta prio via intern batterilogik) ---
         # Huawei räknar t.ex. ut Grid + Inverter Active Power här för att inkludera solproduktion
-        if hasattr(self.battery_api, "get_virtual_load"):
-            current_load_w = await self.battery_api.get_virtual_load()
+        if hasattr(self.battery_api, "get_calculated_consumption"):
+            current_load_w = await self.battery_api.get_calculated_consumption()
 
         # Inbyggd genväg för Sonnen (Sonnen Husförbrukning / Consumption_W)
         if current_load_w is None and hasattr(self.battery_api, "coordinator"):
