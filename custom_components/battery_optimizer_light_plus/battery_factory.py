@@ -21,6 +21,7 @@ from .const import (
     BATTERY_TYPE_SONNEN,
     BATTERY_TYPE_HUAWEI,
     BATTERY_TYPE_HOMEVOLT,
+    BATTERY_TYPE_SOLIS_MODBUS,
     CONF_HOST,
     CONF_PORT,
     CONF_API_TOKEN,
@@ -81,6 +82,19 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
             battery_power_entity=config[CONF_BATTERY_POWER_SENSOR],
             load_entity=config.get(CONF_VIRTUAL_LOAD_SENSOR),
             status_entity=config.get(CONF_DEVICE_STATUS_ENTITY),
+        )
+
+    if battery_type == BATTERY_TYPE_SOLIS_MODBUS:
+        from .batteries.solis_modbus.solis_modbus import SolisModbusBattery
+
+        return SolisModbusBattery(
+            hass=hass,
+            device_id=config[CONF_BATTERY_DEVICE_ID],
+            soc_entity=config.get(CONF_SOC_SENSOR),
+            device_status_entity=config.get(CONF_DEVICE_STATUS_ENTITY),
+            max_discharge_entity=config.get(CONF_MAX_DISCHARGE_ENTITY),
+            grid_entity=config.get(CONF_GRID_SENSOR),
+            invert_grid=config.get(CONF_GRID_SENSOR_INVERT, False),
         )
 
     from .batteries.generic import GenericBattery

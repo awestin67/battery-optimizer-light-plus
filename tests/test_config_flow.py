@@ -26,6 +26,7 @@ from custom_components.battery_optimizer_light_plus.const import (
     BATTERY_TYPE_HUAWEI,
     BATTERY_TYPE_GENERIC,
     BATTERY_TYPE_HOMEVOLT,
+    BATTERY_TYPE_SOLIS_MODBUS,
     CONF_BATTERY_SENSOR_INVERT,
     CONF_GRID_SENSOR_INVERT,
 )
@@ -35,6 +36,9 @@ HUAWEI_DISCOVERY_PATH = (
 )
 HOMEVOLT_DISCOVERY_PATH = (
     "custom_components.battery_optimizer_light_plus.config_flow.async_auto_discover_homevolt_entities"
+)
+SOLIS_DISCOVERY_PATH = (
+    "custom_components.battery_optimizer_light_plus.config_flow.async_auto_discover_solis_entities"
 )
 
 @pytest.mark.asyncio
@@ -88,6 +92,25 @@ async def test_config_flow_homevolt():
         assert result2["step_id"] == "common"
         assert flow.data[CONF_BATTERY_TYPE] == BATTERY_TYPE_HOMEVOLT
         assert flow.data["soc_sensor"] == "sensor.discovered_soc", "Auto-discovery data sparades inte!"
+
+@pytest.mark.asyncio
+async def test_config_flow_solis_modbus():
+    """Testar att Solis-steget går vidare till common och sparar auto-discovery."""
+    flow = BatteryOptimizerLightConfigFlow()
+    flow.hass = MagicMock()
+
+    result = await flow.async_step_solis_modbus()
+    assert result["type"] == "form"
+    assert result["step_id"] == "solis_modbus"
+
+    with patch(SOLIS_DISCOVERY_PATH) as mock_discover:
+        mock_discover.return_value = {"soc_sensor": "sensor.solis_soc"}
+        result2 = await flow.async_step_solis_modbus({"battery_device_id": "solis_123"})
+
+        assert result2["type"] == "form"
+        assert result2["step_id"] == "common"
+        assert flow.data[CONF_BATTERY_TYPE] == BATTERY_TYPE_SOLIS_MODBUS
+        assert flow.data["soc_sensor"] == "sensor.solis_soc", "Auto-discovery data sparades inte för Solis!"
 
 @pytest.mark.asyncio
 async def test_config_flow_generic():
@@ -148,6 +171,11 @@ async def test_options_flow_huawei_and_generic():
     config_entry.data = {CONF_BATTERY_TYPE: BATTERY_TYPE_HOMEVOLT, "api_url": "http://test"}
     flow.config_entry = config_entry
     with patch(HOMEVOLT_DISCOVERY_PATH, return_value={}):
+        assert (await flow.async_step_init())["type"] == "form"
+
+    config_entry.data = {CONF_BATTERY_TYPE: BATTERY_TYPE_SOLIS_MODBUS, "api_url": "http://test"}
+    flow.config_entry = config_entry
+    with patch(SOLIS_DISCOVERY_PATH, return_value={}):
         assert (await flow.async_step_init())["type"] == "form"
 
     config_entry.data = {CONF_BATTERY_TYPE: BATTERY_TYPE_GENERIC, "api_url": "http://test"}
@@ -252,6 +280,30 @@ async def test_options_flow_homevolt_uses_auto_discovered_defaults():
         assert soc_key.default() == "sensor.smart_discovered_homevolt_soc", (
             "Auto-discovery-värdet sattes inte som default i OptionsFlow för Homevolt!"
         )
+
+@pytest.mark.asyncio
+async def test_options_flow_solis_uses_auto_discovered_defaults():
+    """Testar att OptionsFlow använder auto-discovery för att förifylla saknade fält för Solis."""
+    config_entry = MagicMock()
+    config_entry.data = {
+        CONF_BATTERY_TYPE: BATTERY_TYPE_SOLIS_MODBUS,
+        "api_url": "http://test",
+        "battery_device_id": "test_device_123"
+    }
+
+    flow = BatteryOptimizerLightOptionsFlow()
+    flow.config_entry = config_entry
+    flow.hass = MagicMock()
+
+    with patch(SOLIS_DISCOVERY_PATH) as mock_discover:
+        mock_discover.return_value = {"soc_sensor": "sensor.smart_discovered_solis_soc"}
+        result = await flow.async_step_init()
+
+        schema_keys = result["data_schema"].schema.keys()
+        soc_key = next((k for k in schema_keys if getattr(k, "schema", None) == "soc_sensor"), None)
+
+        assert soc_key is not None
+        assert soc_key.default() == "sensor.smart_discovered_solis_soc"
 
 @pytest.mark.asyncio
 async def test_config_flow_huawei_sets_invert_true():

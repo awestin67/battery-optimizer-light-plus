@@ -40,6 +40,10 @@ Styr Homevolt-batterier lokalt via Home Assistant.
 *   **Krav:** Integrationen Homevolt Local (finns att ladda ner via HACS) måste vara installerad och konfigurerad först.
 *   **Notera:** Integrationen stöder *Auto-Discovery* och hittar automatiskt dina sensorer för SoC, Batteri, Nät och Huslast vid installationen!
 
+### 🔌 Solis Modbus
+Styr Solis-batterier lokalt via Pho3niX90's Solis Modbus-integration.
+*   **Krav:** En fungerande, förkonfigurerad installation av Solis Modbus (HACS).
+
 ### ☁️ Generic / Light
 För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men sedan styra ditt batteri manuellt via egna automationsflöden.
 
@@ -56,11 +60,11 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
 
 ### Konfiguration
 1. Gå till **Inställningar** -> **Enheter & Tjänster**.
-2. Klicka på **Lägg till integration** och sök efter **Battery Optimizer Light**.
+2. Klicka på **Lägg till integration** och sök efter **Battery Optimizer Light Plus**.
 3. Följ guiden:
-    * **Steg 1:** Välj vilken typ av batteri du har (Sonnen, Huawei, Homevolt, Generic).
+    * **Steg 1:** Välj vilken typ av batteri du har (Sonnen, Huawei, Homevolt, Solis Modbus, Generic).
     * **Steg 2:** Fyll i batterispecifika uppgifter (t.ex. IP och API-token för Sonnen, eller enheter för Huawei).
-    * **Steg 3:** Fyll i din API-nyckel från Dashboarden. Om du valt Sonnen, Huawei eller Homevolt hanteras de flesta mätvärden automatiskt, men för Generic (eller för anpassade behov) kan du behöva peka ut sensorer för nätutbyte och batteri manuellt.
+    * **Steg 3:** Fyll i din API-nyckel från Dashboarden. Om du valt Sonnen, Huawei, Homevolt eller Solis hanteras de flesta mätvärden automatiskt, men för Generic (eller för anpassade behov) kan du behöva peka ut sensorer för nätutbyte och batteri manuellt.
 
 ---
 

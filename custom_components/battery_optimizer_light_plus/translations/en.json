@@ -8,6 +8,7 @@
                     "sonnen": "Sonnen",
                     "huawei": "Huawei Luna2000",
                     "homevolt": "Homevolt",
+                    "solis_modbus": "Solis Modbus",
                     "generic": "Generic / Other (No local control)"
                 }
             },
@@ -45,9 +46,19 @@
                     "battery_device_id": "Select your Homevolt device from the list."
                 }
             },
+            "solis_modbus": {
+                "title": "Configure Solis Modbus",
+                "description": "Select the device for your Solis setup.",
+                "data": {
+                    "battery_device_id": "Solis Device"
+                },
+                "data_description": {
+                    "battery_device_id": "Select your Solis inverter from the list so the integration knows where to send commands."
+                }
+            },
             "common": {
                 "title": "Common Settings",
-                "description": "Enter your API key for Battery Optimizer Light Plus. (If using Huawei or Generic, also select your sensors below).",
+                "description": "Enter your API key for Battery Optimizer Light Plus. (If using Huawei, Solis, or Generic, also select your sensors below).",
                 "data": {
                     "api_url": "API URL",
                     "api_key": "API Key (from Dashboard)",

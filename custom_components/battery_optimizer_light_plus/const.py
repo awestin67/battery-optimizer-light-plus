@@ -23,6 +23,7 @@ BATTERY_TYPE_SONNEN = "sonnen"
 BATTERY_TYPE_HUAWEI = "huawei"
 BATTERY_TYPE_GENERIC = "generic"
 BATTERY_TYPE_HOMEVOLT = "homevolt"
+BATTERY_TYPE_SOLIS_MODBUS = "solis_modbus"
 
 # Konfiguration
 CONF_API_KEY = "api_key"

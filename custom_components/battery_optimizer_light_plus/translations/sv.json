@@ -8,6 +8,7 @@
                     "sonnen": "Sonnen",
                     "huawei": "Huawei Luna2000",
                     "homevolt": "Homevolt",
+                    "solis_modbus": "Solis Modbus",
                     "generic": "Generic / Övriga (Ingen lokal styrning)"
                 }
             },
@@ -43,6 +44,16 @@
                 },
                 "data_description": {
                     "battery_device_id": "Välj din Homevolt-enhet från listan."
+                }
+            },
+            "solis_modbus": {
+                "title": "Konfigurera Solis Modbus",
+                "description": "Välj enheter och entiteter för din Solis-anläggning.",
+                "data": {
+                    "battery_device_id": "Solis-enhet"
+                },
+                "data_description": {
+                    "battery_device_id": "Välj din Solis-växelriktare i listan så integrationen vet var kommandona ska skickas."
                 }
             },
             "common": {
