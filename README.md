@@ -18,7 +18,6 @@ Systemet kombinerar **Molnintelligens** (för prisoptimering och arbitrage) med 
 * **🛡️ Smart Effektvakt (Peak Shaving):** Övervakar husets nettolast i realtid för att kapa effekttoppar lokalt.
     * *Molnstyrning:* Effektvakten kan dynamiskt pausas eller justeras från molnet.
     * *Hysteres:* Inbyggd smart logik förhindrar "fladder" när lasten pendlar runt gränsvärdet.
-* **⛄ Vinterbuffert:** Reserverar en anpassningsbar procentandel av ditt batteri som *aldrig* säljs, redo för nödbehov.
 * **🤖 Zero-Config Automation:** Integrationen lyssnar automatiskt på beslut från molnet och styr ditt batteri. Inga krångliga YAML-skript krävs!
 * **📊 Analys:** Följ dina besparingar och effekttoppar via vår snygga [Web Dashboard](https://battery-prod.awestinconsulting.se).
 
@@ -43,6 +42,8 @@ Styr Homevolt-batterier lokalt via Home Assistant.
 ### 🔌 Solis Modbus
 Styr Solis-batterier lokalt via Pho3niX90's Solis Modbus-integration.
 *   **Krav:** En fungerande, förkonfigurerad installation av Solis Modbus (HACS).
+*   **Kompatibilitet:** Byggd och optimerad primärt för **Solis S6 Hybrid** (EH-modeller).
+*   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter vid installationen. Den använder växelriktarens "Remote Control" (RC) register för tillförlitlig lokal styrning.
 
 ### ☁️ Generic / Light
 För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men sedan styra ditt batteri manuellt via egna automationsflöden.
