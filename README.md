@@ -100,6 +100,56 @@ När systemet är igång skapas en mängd sensorer för att hjälpa dig övervak
 * 🔌 **`sensor.sonnen_grid_in_out`** *(Endast Sonnen)*: Visar det faktiska nätutbytet (Grid In/Out) i realtid (W). **Plus (+)** = Importerar (köper), **Minus (-)** = Exporterar (säljer).
 * 🔋 **`sensor.*_battery_in_out`** *(Sonnen, Huawei & Homevolt)*: Batteriets effekt i realtid (W). Standard för Sonnen/Homevolt/Generic är att **Minus (-)** = Laddar. För Huawei är detta inverterat (se notis under Huawei-sektionen ovan).
 * 📊 **`sensor.*_soc`** *(Sonnen, Huawei & Homevolt)*: Batteriets nuvarande laddningsnivå (%).
+* 💰 **`sensor.optimizer_light_daily_savings`**: Dagens totala besparing (SEK) beräknad utifrån batteriets historik.
+* 📉 **`sensor.battery_optimizer_graph_data`**: Innehåller all grafdata (historik och framtida prognos) dold i sina JSON-attribut (används för ApexCharts nedan).
+
+---
+
+## 📈 ApexCharts Exempel (Batteri- & Prisprognos)
+
+Med hjälp av komponenten ApexCharts Card (installeras via HACS) kan du smidigt rita upp en graf som kombinerar både **historik** och **framtida prognos** för ditt batteri i samma vy.
+
+Skapa ett "Manuell" (Custom) kort i din Dashboard och klistra in följande kod:
+
+```yaml
+type: custom:apexcharts-card
+header:
+  show: true
+  title: 🔋 Batteri- & Prisprognos
+  show_states: false
+graph_span: 48h
+span:
+  start: day
+  offset: -12h # Justera hur långt bakåt grafen ska börja ritas från början av dagen
+now:
+  show: true
+  label: Nu
+  color: red
+series:
+  # 1. Historik (Dåtid)
+  - entity: sensor.battery_optimizer_graph_data
+    name: Historik SoC
+    type: area
+    curve: smooth
+    color: "#03a9f4"
+    data_generator: |
+      return entity.attributes.history.map((entry) => {
+        return [new Date(entry.timestamp).getTime(), entry.reported_soc];
+      });
+      
+  # 2. Prognos (Framtid)
+  - entity: sensor.battery_optimizer_graph_data
+    name: Prognos SoC
+    type: line
+    curve: smooth
+    color: "#ff9800"
+    stroke_width: 2
+    extend_to: false
+    data_generator: |
+      return entity.attributes.forecast.map((entry) => {
+        return [new Date(entry.timestamp).getTime(), entry.soc]; 
+      });
+```
 
 ---
 

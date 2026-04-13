@@ -54,6 +54,7 @@ from .const import (
     CONF_BATTERY_DEVICE_ID,
     CONF_DEVICE_STATUS_ENTITY,
     CONF_MAX_DISCHARGE_ENTITY,
+    CONF_GRAPH_HISTORY_HOURS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -281,6 +282,13 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_CONSUMPTION_FORECAST_SENSOR,
                 default=get_val(CONF_CONSUMPTION_FORECAST_SENSOR)
             ): EntitySelector(EntitySelectorConfig(domain="sensor")),
+            vol.Optional(CONF_GRAPH_HISTORY_HOURS, default=get_val(CONF_GRAPH_HISTORY_HOURS, "24")): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=["12", "24", "48", "72", "168"],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    translation_key="graph_history_hours",
+                )
+            ),
         }
 
         # Göm de flesta manuella sensorerna om man använder Sonnen!
@@ -394,6 +402,13 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             vol.Required(CONF_API_KEY, default=get_default(CONF_API_KEY)): TextSelector(),
             vol.Optional(CONF_CONSUMPTION_FORECAST_SENSOR, default=get_default(CONF_CONSUMPTION_FORECAST_SENSOR)): EntitySelector(
                 EntitySelectorConfig(domain="sensor")
+            ),
+            vol.Optional(CONF_GRAPH_HISTORY_HOURS, default=get_default(CONF_GRAPH_HISTORY_HOURS, "24")): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=["12", "24", "48", "72", "168"],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    translation_key="graph_history_hours",
+                )
             ),
         }
 

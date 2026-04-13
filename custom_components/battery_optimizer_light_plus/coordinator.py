@@ -196,6 +196,22 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                     data = await response.json()
 
+                    # --- Hämta graf-data ---
+                    try:
+                        history_hours = int(self.config.get("graph_history_hours", 24))
+                        base_api_url = self.config.get("api_url", "").rstrip("/")
+                        graph_url = f"{base_api_url}/ha_graph_data?history_hours={history_hours}"
+
+                        async with session.get(
+                            graph_url, headers={"X-API-Key": self.api_key}, timeout=aiohttp.ClientTimeout(total=30)
+                        ) as graph_response:
+                            if graph_response.status == 200:
+                                data["graph_data"] = await graph_response.json()
+                            else:
+                                _LOGGER.debug("Kunde inte hämta grafdata. Status: %s", graph_response.status)
+                    except Exception as e:
+                        _LOGGER.debug("Fel vid hämtning av grafdata: %s", e)
+
                     action = data.get("action", "IDLE")
 
                     try:

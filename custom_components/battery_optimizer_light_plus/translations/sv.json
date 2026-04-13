@@ -72,7 +72,8 @@
                     "virtual_load_sensor": "Virtuell Last Sensor (Valfritt - Ersätter Grid+Batteri beräkning)",
                     "consumption_forecast_sensor": "Förbrukningsprognos imorgon (kWh) (Valfritt)",
                     "device_status_entity": "Device Status (Entitet)",
-                    "max_discharge_entity": "Max Urladdning (Entitet)"
+                    "max_discharge_entity": "Max Urladdning (Entitet)",
+                    "graph_history_hours": "Graf-historik"
                 },
                 "data_description": {
                     "api_url": "Låt stå kvar på standardvärdet om du inte kör mot en egen test-server.",
@@ -84,7 +85,8 @@
                     "battery_sensor_invert": "Kryssa i denna om din batterisensor visar PLUS när den laddar och MINUS när den laddar ur (t.ex. standard för Huawei).",
                     "virtual_load_sensor": "Lämna tom för att låta integrationen räkna ut lasten automatiskt (Grid + Batteri).",
                     "device_status_entity": "Peka ut sensorn för status (t.ex. 'sensor.inverter_device_status') så känner PeakGuard automatiskt av fel och underhållslägen.",
-                    "max_discharge_entity": "Peka ut Number-entiteten för Maximal Urladdningseffekt. Lämna tom för automatisk sökning."
+                    "max_discharge_entity": "Peka ut Number-entiteten för Maximal Urladdningseffekt. Lämna tom för automatisk sökning.",
+                    "graph_history_hours": "Välj hur mycket historik som ska hämtas för graf-sensorn (168 = 1 vecka)."
                 }
             }
         },
@@ -117,9 +119,10 @@
                     "host": "IP-adress (Sonnen)",
                     "api_token": "API-token (Sonnen)",
                     "port": "Port (Sonnen)",
-                    "battery_device_id": "Huawei-enhet",
-                    "device_status_entity": "Device Status (Huawei)",
-                    "max_discharge_entity": "Max Urladdning (Huawei)"
+                    "battery_device_id": "Batteri-enhet",
+                    "device_status_entity": "Device Status (Entitet)",
+                    "max_discharge_entity": "Max Urladdning (Entitet)",
+                    "graph_history_hours": "Graf-historik"
                 },
                 "data_description": {
                     "api_url": "Låt stå kvar på standardvärdet om du inte kör mot en egen test-server.",
@@ -133,10 +136,22 @@
                     "host": "Skriv in IP-adressen till ditt Sonnen-batteri (t.ex. 192.168.1.50).",
                     "api_token": "Kopiera ditt Auth-Token från batteriets lokala webbsida under 'Software Integration' -> 'JSON API'.",
                     "port": "Standardport för Sonnen är 80.",
-                    "battery_device_id": "Välj ditt Huawei-batteri eller växelriktare i listan.",
+                    "battery_device_id": "Välj ditt batteri eller växelriktare i listan.",
                     "device_status_entity": "Peka ut sensorn för status (t.ex. 'sensor.inverter_device_status').",
-                    "max_discharge_entity": "Peka ut Number-entiteten för Maximal Urladdningseffekt. Lämna tom för automatisk sökning."
+                    "max_discharge_entity": "Peka ut Number-entiteten för Maximal Urladdningseffekt. Lämna tom för automatisk sökning.",
+                    "graph_history_hours": "Välj hur mycket historik som ska hämtas för graf-sensorn."
                 }
+            }
+        }
+    },
+    "selector": {
+        "graph_history_hours": {
+            "options": {
+                "12": "12h",
+                "24": "24h",
+                "48": "48h",
+                "72": "72h",
+                "168": "1 vecka (168h)"
             }
         }
     }

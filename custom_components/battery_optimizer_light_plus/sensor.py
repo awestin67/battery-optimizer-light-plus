@@ -30,6 +30,7 @@ from homeassistant.const import ( # type: ignore
 )
 from homeassistant.helpers.event import async_track_state_change_event # type: ignore
 from homeassistant.core import callback # type: ignore
+import homeassistant.util.dt as dt_util
 from .const import (
     DOMAIN,
     CONF_SOC_SENSOR,
@@ -55,6 +56,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
         BatteryLightChargeTargetSensor(coordinator),
         BatteryLightDischargeTargetSensor(coordinator),
         BatteryLightHouseConsumptionSensor(coordinator),
+        BatteryLightGraphDataSensor(coordinator),
+        BatteryLightDailySavingsSensor(coordinator),
     ]
 
     if entry.data.get(CONF_BATTERY_TYPE) != BATTERY_TYPE_SONNEN:
@@ -545,3 +548,59 @@ class BatteryLightDischargeTargetSensor(BatteryOptimizerSensorBase):
             kw = data.get("target_power_kw", 0.0)
             return int(round(kw * 1000))
         return 0
+
+class BatteryLightGraphDataSensor(CoordinatorEntity, SensorEntity):
+    """Sensor som håller grafdata (historik och prognos) från molnet för ApexCharts."""
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self._attr_name = "Battery Optimizer Graph Data"
+        self._attr_unique_id = f"{coordinator.api_key}_graph_data"
+        self._attr_icon = "mdi:chart-line"
+
+    @property
+    def state(self):
+        """Returnerar OK om vi har fått data från servern, annars Waiting for data."""
+        if self.coordinator.data and self.coordinator.data.get("graph_data"):
+            return "OK"
+        return "Waiting for data"
+
+    @property
+    def extra_state_attributes(self):
+        """Returnerar historik och prognos som JSON-attribut för HA att konsumera."""
+        graph_data = self.coordinator.data.get("graph_data", {}) if self.coordinator.data else {}
+        return {
+            "history": graph_data.get("history", []),
+            "forecast": graph_data.get("forecast", [])
+        }
+
+class BatteryLightDailySavingsSensor(BatteryOptimizerSensorBase):
+    """Sensor som beräknar och visar dagens totala besparingar baserat på historikdatan."""
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self._attr_name = "Optimizer Light Daily Savings"
+        self._attr_unique_id = f"{coordinator.api_key}_daily_savings"
+        self._attr_native_unit_of_measurement = "SEK"
+        self._attr_icon = "mdi:piggy-bank"
+        self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def state(self):
+        graph_data = (self.coordinator.data or {}).get("graph_data", {})
+        history = graph_data.get("history", [])
+
+        if not history:
+            return 0.0
+
+        total_savings = 0.0
+        today_date = dt_util.now().date()
+
+        for entry in history:
+            timestamp_str = entry.get("timestamp")
+            if timestamp_str:
+                dt_obj = dt_util.parse_datetime(timestamp_str)
+                if dt_obj and dt_util.as_local(dt_obj).date() == today_date:
+                    total_savings += float(entry.get("savings_sek", 0.0))
+
+        return round(total_savings, 2)

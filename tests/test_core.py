@@ -96,6 +96,10 @@ async def test_coordinator_handles_unavailable_soc(mock_hass_instance):
         mock_post.status = 200
         mock_post.json = AsyncMock(return_value={"action": "IDLE"})
 
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
         result = await coordinator._async_update_data()
         assert result["action"] == "IDLE"
         mock_session.post.assert_called_once()
@@ -465,6 +469,10 @@ async def test_coordinator_sends_solar_override_flag(mock_hass_instance):
         mock_post.__aenter__.return_value = mock_post
         mock_post.status = 200
         mock_post.json = AsyncMock(return_value={"status": "ok"})
+
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
 
         await coordinator._async_update_data()
 
@@ -1325,6 +1333,10 @@ async def test_coordinator_retry_success(mock_hass_instance, mock_battery):
 
         mock_session.post.side_effect = [mock_fail, mock_success]
 
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
         data = await coordinator._async_update_data()
 
         assert data["action"] == "CHARGE"
@@ -1583,3 +1595,99 @@ async def test_end_to_end_power_conversion(mock_hass_instance):
     assert homevolt_call[0][1] == "add_schedule"
     assert homevolt_call[0][2]["setpoint"] == 2200, "2.2 kW ska översättas till 2200 W för Homevolt"
     assert homevolt_call[0][2]["mode"] == "2", "DISCHARGE ska sätta mode '2' för Homevolt"
+
+@pytest.mark.asyncio
+async def test_coordinator_graph_data_fetch(mock_hass_instance, mock_battery):
+    """Testar att koordinatorn hämtar grafdata och lägger den i coordinator.data."""
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        # Mocka post-anropet (/signal)
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
+
+        # Mocka get-anropet (/ha_graph_data)
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={
+            "history": [{"timestamp": "2026-04-13T10:00:00Z", "savings_sek": 5.0}],
+            "forecast": [{"timestamp": "2026-04-13T12:00:00Z", "soc": 40.0}]
+        })
+
+        data = await coordinator._async_update_data()
+
+        # Verifiera att datan hamnade rätt
+        assert "graph_data" in data
+        assert len(data["graph_data"]["history"]) == 1
+        assert data["graph_data"]["history"][0]["savings_sek"] == 5.0
+
+def test_graph_data_sensor():
+    """Testar att graf-sensorn returnerar attributen som förväntat."""
+    from custom_components.battery_optimizer_light_plus.sensor import BatteryLightGraphDataSensor
+    coordinator = MagicMock()
+    coordinator.config = {"api_key": "test_key"}
+    coordinator.data = {
+        "graph_data": {
+            "history": [{"timestamp": "1", "val": 1}],
+            "forecast": [{"timestamp": "2", "val": 2}]
+        }
+    }
+
+    sensor = BatteryLightGraphDataSensor(coordinator)
+    assert sensor.state == "OK"
+    attrs = sensor.extra_state_attributes
+    assert len(attrs["history"]) == 1
+    assert len(attrs["forecast"]) == 1
+
+    # Test utan data
+    coordinator.data = None
+    assert sensor.state == "Waiting for data"
+    assert sensor.extra_state_attributes["history"] == []
+
+@patch("custom_components.battery_optimizer_light_plus.sensor.dt_util")
+def test_daily_savings_sensor(mock_dt_util):
+    """Testar att dagliga besparingar summeras korrekt utifrån historiken."""
+    from custom_components.battery_optimizer_light_plus.sensor import BatteryLightDailySavingsSensor
+    coordinator = MagicMock()
+    coordinator.api_key = "test_key"
+
+    today = datetime.datetime(2026, 4, 13, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    yesterday = today - datetime.timedelta(days=1)
+
+    mock_dt_util.now.return_value = today
+
+    def mock_parse(ts):
+        if not ts:
+            return None
+        try:
+            return datetime.datetime.fromisoformat(ts.replace('Z', '+00:00'))
+        except Exception:
+            return None
+
+    mock_dt_util.parse_datetime.side_effect = mock_parse
+    mock_dt_util.as_local.side_effect = lambda dt: dt
+
+    coordinator.data = {
+        "graph_data": {
+            "history": [
+                {"timestamp": yesterday.isoformat(), "savings_sek": 5.0},
+                {"timestamp": today.isoformat(), "savings_sek": 10.5},
+                {"timestamp": (today + datetime.timedelta(hours=1)).isoformat(), "savings_sek": 15.0},
+                {"timestamp": None, "savings_sek": 100.0},
+            ]
+        }
+    }
+
+    sensor = BatteryLightDailySavingsSensor(coordinator)
+    # Endast dagens poster (10.5 + 15.0) ska räknas
+    assert sensor.state == 25.5
+
+    coordinator.data = None
+    assert sensor.state == 0.0

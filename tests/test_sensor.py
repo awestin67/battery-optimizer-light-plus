@@ -42,18 +42,21 @@ from custom_components.battery_optimizer_light_plus.const import (
 async def test_sensor_setup_entry_generic():
     hass = MagicMock()
     entry = MagicMock(data={CONF_BATTERY_TYPE: BATTERY_TYPE_GENERIC})
-    hass.data = {DOMAIN: {entry.entry_id: MagicMock()}}
+    coordinator = MagicMock()
+    coordinator.api_key = "123"
+    hass.data = {DOMAIN: {entry.entry_id: coordinator}}
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
     async_add_entities.assert_called_once()
-    assert len(async_add_entities.call_args[0][0]) == 9
+    assert len(async_add_entities.call_args[0][0]) == 11
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_huawei():
     hass = MagicMock()
     entry = MagicMock(data={CONF_BATTERY_TYPE: BATTERY_TYPE_HUAWEI})
     coordinator = MagicMock()
+    coordinator.api_key = "123"
     coordinator.config = {
         "device_status_entity": "s.status",
         "battery_power_sensor": "s.bat",
@@ -63,19 +66,20 @@ async def test_sensor_setup_entry_huawei():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 12
+    assert len(async_add_entities.call_args[0][0]) == 14
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_sonnen():
     hass = MagicMock()
     entry = MagicMock(data={CONF_BATTERY_TYPE: BATTERY_TYPE_SONNEN})
     coordinator = MagicMock()
+    coordinator.api_key = "123"
     coordinator.battery_api.coordinator = MagicMock()
     hass.data = {DOMAIN: {entry.entry_id: coordinator}}
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 15
+    assert len(async_add_entities.call_args[0][0]) == 17
 
 def test_basic_sensors():
     coordinator = MagicMock()
