@@ -105,82 +105,197 @@ När systemet är igång skapas en mängd sensorer för att hjälpa dig övervak
 
 ---
 
-## 📈 ApexCharts Exempel (Batteri- & Prisprognos)
+## 📈 ApexCharts Exempel (Dashboard)
 
-Med hjälp av komponenten ApexCharts Card (installeras via HACS) kan du smidigt rita upp en graf som kombinerar både **historik** och **framtida prognos** för ditt batteri i samma vy.
+Med hjälp av komponenten ApexCharts Card (installeras via HACS) kan du bygga upp en komplett översikt för ditt batteri. Nedan finns tre exempel på grafer.
 
-Skapa ett "Manuell" (Custom) kort i din Dashboard och klistra in följande kod:
+Skapa ett "Manuell" (Custom) kort för varje kodblock nedan i din Dashboard:
+
+### 1. Pris & Beslut
 
 ```yaml
 type: custom:apexcharts-card
 header:
   show: true
-  title: 🔋 Batteri- & Prisprognos
-  show_states: false
+  title: Pris & Beslut
 graph_span: 48h
-update_interval: 5m
 span:
   start: day
-  offset: -12h # Justera hur långt bakåt grafen ska börja ritas från början av dagen
+  offset: "-24h"
 now:
   show: true
   label: Nu
-  color: red
+  color: white
+stacked: false
+apex_config:
+  plotOptions:
+    bar:
+      columnWidth: 100%
+  tooltip:
+    x:
+      format: dd MMM HH:mm
+series:
+  - entity: sensor.battery_optimizer_graph_data
+    name: CHARGE
+    type: column
+    color: "#4CAF50"
+    data_generator: |
+      const hist = entity.attributes.history.filter(x => x.action ===
+      'CHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+
+      const fore = entity.attributes.forecast.filter(x => x.action ===
+      'CHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+
+      return hist.concat(fore);
+  - entity: sensor.battery_optimizer_graph_data
+    name: DISCHARGE
+    type: column
+    color: "#F44336"
+    data_generator: |
+      const hist = entity.attributes.history.filter(x => x.action ===
+      'DISCHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+
+      const fore = entity.attributes.forecast.filter(x => x.action ===
+      'DISCHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+
+      return hist.concat(fore);
+  - entity: sensor.battery_optimizer_graph_data
+    name: HOLD
+    type: column
+    color: "#FF9800"
+    data_generator: |
+      const hist = entity.attributes.history.filter(x => x.action ===
+      'HOLD').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+
+      const fore = entity.attributes.forecast.filter(x => x.action ===
+      'HOLD').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+
+      return hist.concat(fore);
+  - entity: sensor.battery_optimizer_graph_data
+    name: IDLE
+    type: column
+    color: "#9E9E9E"
+    data_generator: |
+      const hist = entity.attributes.history.filter(x => x.action ===
+      'IDLE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+
+      const fore = entity.attributes.forecast.filter(x => x.action ===
+      'IDLE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+
+      return hist.concat(fore);
+```
+
+### 2. Batterinivå (SoC) & Effekt
+
+```yaml
+type: custom:apexcharts-card
+header:
+  show: true
+  title: Batterinivå (SoC) & Effekt
+graph_span: 48h
+span:
+  start: day
+  offset: "-24h"
+now:
+  show: true
+  label: Nu
+  color: white
 yaxis:
   - id: soc
     min: 0
     max: 100
     decimals: 0
-    apex_config:
-      title:
-        text: SoC (%)
-  - id: sek
+  - id: power
     opposite: true
-    decimals: 2
-    apex_config:
-      title:
-        text: SEK (Pris & Besparing)
+    min: 0
+    decimals: 1
 series:
-  # 1. Historik SoC (Vänster axel)
   - entity: sensor.battery_optimizer_graph_data
-    name: Historik SoC
-    type: area
-    curve: smooth
-    color: "#03a9f4"
-    opacity: 0.3
-    yaxis_id: soc
-    data_generator: |
-      if (!entity.attributes.history) return [];
-      return entity.attributes.history.map((entry) => {
-        return [new Date(entry.timestamp).getTime(), entry.reported_soc];
-      });
-      
-  # 2. Prognos SoC (Vänster axel)
-  - entity: sensor.battery_optimizer_graph_data
-    name: Prognos SoC
+    name: SoC (Historik)
     type: line
-    curve: smooth
-    color: "#03a9f4"
+    yaxis_id: soc
+    color: "#FFFFFF"
     stroke_width: 2
-    extend_to: false
-    yaxis_id: soc
     data_generator: |
-      if (!entity.attributes.forecast) return [];
-      return entity.attributes.forecast.map((entry) => {
-        return [new Date(entry.timestamp).getTime(), entry.soc]; 
-      });
-
-  # 3. Elpris Prognos (Höger axel)
+      return entity.attributes.history.map(x => [new
+      Date(x.timestamp).getTime(), x.reported_soc]);
   - entity: sensor.battery_optimizer_graph_data
-    name: Elpris Prognos
+    name: SoC (Prognos)
     type: line
-    curve: stepline
-    color: "#ff9800"
-    yaxis_id: sek
+    yaxis_id: soc
+    color: "#00BCD4"
+    stroke_width: 2
     data_generator: |
-      if (!entity.attributes.forecast) return [];
-      return entity.attributes.forecast.map((entry) => {
-        return [new Date(entry.timestamp).getTime(), entry.price_sek];
+      return entity.attributes.forecast.map(x => [new
+      Date(x.timestamp).getTime(), x.simulated_soc]);
+  - entity: sensor.battery_optimizer_graph_data
+    name: Sol (Prognos)
+    type: area
+    yaxis_id: power
+    color: "#FFD700"
+    opacity: 0.2
+    stroke_width: 1
+    data_generator: |
+      return entity.attributes.forecast.map(x => [new
+      Date(x.timestamp).getTime(), x.solar_kw]);
+  - entity: sensor.battery_optimizer_graph_data
+    name: Husförbrukning (Baslast)
+    type: line
+    yaxis_id: power
+    color: "#FF5722"
+    stroke_width: 2
+    data_generator: |
+      const hist = entity.attributes.history.filter(x => x.house_base_load_kw
+      !== undefined).map(x => [new Date(x.timestamp).getTime(),
+      x.house_base_load_kw]);
+
+      const fore = entity.attributes.forecast.filter(x => x.base_load_kw !==
+      undefined).map(x => [new Date(x.timestamp).getTime(), x.base_load_kw]);
+
+      return hist.concat(fore);
+```
+
+### 3. Besparingar senaste 24h
+
+```yaml
+type: custom:apexcharts-card
+header:
+  show: true
+  title: Besparingar senaste 24h
+graph_span: 48h
+span:
+  start: day
+  offset: "-24h"
+yaxis:
+  - id: bar
+    decimals: 2
+  - id: line
+    opposite: true
+    decimals: 1
+series:
+  - entity: sensor.battery_optimizer_graph_data
+    name: Händelse (5 min)
+    type: column
+    yaxis_id: bar
+    color_threshold:
+      - value: -100
+        color: "#D32F2F"
+      - value: 0
+        color: "#4CAF50"
+    data_generator: |
+      return entity.attributes.history.filter(x => x.savings_sek !== 0).map(x =>
+      [new Date(x.timestamp).getTime(), x.savings_sek]);
+  - entity: sensor.battery_optimizer_graph_data
+    name: Ackumulerat Totalt
+    type: line
+    yaxis_id: line
+    color: "#00BCD4"
+    stroke_width: 3
+    data_generator: |
+      let sum = 0;
+      return entity.attributes.history.map(x => {
+        sum += (x.savings_sek || 0);
+        return [new Date(x.timestamp).getTime(), sum];
       });
 ```
 
