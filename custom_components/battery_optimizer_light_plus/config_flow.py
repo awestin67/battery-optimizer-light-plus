@@ -60,8 +60,8 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 def _strip_none_values(data: dict) -> None:
-    """Ta bort alla nycklar med None-värden från data för att undvika valideringsfel i HA."""
-    keys_to_remove = [k for k, v in data.items() if v is None]
+    """Ta bort alla nycklar med None eller tomma strängar från data för att undvika valideringsfel i HA."""
+    keys_to_remove = [k for k, v in data.items() if v is None or v == ""]
     for k in keys_to_remove:
         del data[k]
 
@@ -358,6 +358,9 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             battery_type = self.config_entry.data.get(CONF_BATTERY_TYPE)
             new_data = dict(self.config_entry.data)
+
+            # Rensa bort tomma strängar från user_input (När användaren suddar fält i gränssnittet)
+            user_input = {k: v for k, v in user_input.items() if v != ""}
 
             # Fält som är frivilliga (optional) och kan tömmas av användaren i inställningarna.
             # Home Assistant utelämnar dessa helt från user_input om de rensas via gränssnittet.

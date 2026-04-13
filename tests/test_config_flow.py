@@ -465,3 +465,28 @@ async def test_options_flow_strips_none_values():
     assert "grid_sensor" not in saved_data, (
         "grid_sensor med None ska inte sparas via OptionsFlow"
     )
+
+@pytest.mark.asyncio
+async def test_options_flow_strips_empty_strings():
+    """Testar att OptionsFlow tar bort tomma strängar när man sparar (t.ex. när användaren raderar ett fält)."""
+    flow = BatteryOptimizerLightOptionsFlow()
+    flow.config_entry = MagicMock(data={
+        CONF_BATTERY_TYPE: BATTERY_TYPE_HUAWEI,
+        "virtual_load_sensor": "sensor.old_load",
+        "grid_sensor": "sensor.old_grid"
+    })
+    flow.hass = MagicMock()
+
+    result = await flow.async_step_init({
+        "api_key": "new_key",
+        "api_url": "http://test",
+        "virtual_load_sensor": "",
+        "grid_sensor": "",
+    })
+
+    assert result["type"] == "create_entry"
+    call_args = flow.hass.config_entries.async_update_entry.call_args
+    saved_data = call_args[1]["data"]
+
+    assert "virtual_load_sensor" not in saved_data, "Fält med tom sträng ska tas bort helt"
+    assert "grid_sensor" not in saved_data, "Fält med tom sträng ska tas bort helt"
