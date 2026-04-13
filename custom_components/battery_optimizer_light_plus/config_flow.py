@@ -357,7 +357,26 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
         """Manage the options."""
         if user_input is not None:
             battery_type = self.config_entry.data.get(CONF_BATTERY_TYPE)
-            new_data = {**self.config_entry.data, **user_input}
+            new_data = dict(self.config_entry.data)
+
+            # Fält som är frivilliga (optional) och kan tömmas av användaren i inställningarna.
+            # Home Assistant utelämnar dessa helt från user_input om de rensas via gränssnittet.
+            clearable_keys = [
+                CONF_CONSUMPTION_FORECAST_SENSOR,
+                CONF_GRID_SENSOR,
+                CONF_BATTERY_STATUS_SENSOR,
+                CONF_BATTERY_STATUS_KEYWORDS,
+                CONF_VIRTUAL_LOAD_SENSOR,
+                CONF_DEVICE_STATUS_ENTITY,
+                CONF_MAX_DISCHARGE_ENTITY,
+            ]
+
+            for key in clearable_keys:
+                if key in new_data and key not in user_input:
+                    new_data.pop(key)
+
+            new_data.update(user_input)
+
             if battery_type == BATTERY_TYPE_HUAWEI:
                 new_data[CONF_BATTERY_SENSOR_INVERT] = True
             elif battery_type == BATTERY_TYPE_HOMEVOLT:
