@@ -118,6 +118,7 @@ header:
   title: 🔋 Batteri- & Prisprognos
   show_states: false
 graph_span: 48h
+update_interval: 5m
 span:
   start: day
   offset: -12h # Justera hur långt bakåt grafen ska börja ritas från början av dagen
@@ -125,29 +126,61 @@ now:
   show: true
   label: Nu
   color: red
+yaxis:
+  - id: soc
+    min: 0
+    max: 100
+    decimals: 0
+    apex_config:
+      title:
+        text: SoC (%)
+  - id: sek
+    opposite: true
+    decimals: 2
+    apex_config:
+      title:
+        text: SEK (Pris & Besparing)
 series:
-  # 1. Historik (Dåtid)
+  # 1. Historik SoC (Vänster axel)
   - entity: sensor.battery_optimizer_graph_data
     name: Historik SoC
     type: area
     curve: smooth
     color: "#03a9f4"
+    opacity: 0.3
+    yaxis_id: soc
     data_generator: |
+      if (!entity.attributes.history) return [];
       return entity.attributes.history.map((entry) => {
         return [new Date(entry.timestamp).getTime(), entry.reported_soc];
       });
       
-  # 2. Prognos (Framtid)
+  # 2. Prognos SoC (Vänster axel)
   - entity: sensor.battery_optimizer_graph_data
     name: Prognos SoC
     type: line
     curve: smooth
-    color: "#ff9800"
+    color: "#03a9f4"
     stroke_width: 2
     extend_to: false
+    yaxis_id: soc
     data_generator: |
+      if (!entity.attributes.forecast) return [];
       return entity.attributes.forecast.map((entry) => {
         return [new Date(entry.timestamp).getTime(), entry.soc]; 
+      });
+
+  # 3. Elpris Prognos (Höger axel)
+  - entity: sensor.battery_optimizer_graph_data
+    name: Elpris Prognos
+    type: line
+    curve: stepline
+    color: "#ff9800"
+    yaxis_id: sek
+    data_generator: |
+      if (!entity.attributes.forecast) return [];
+      return entity.attributes.forecast.map((entry) => {
+        return [new Date(entry.timestamp).getTime(), entry.price_sek];
       });
 ```
 
