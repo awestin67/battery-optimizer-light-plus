@@ -118,7 +118,7 @@ type: custom:apexcharts-card
 header:
   show: true
   title: Pris & Beslut
-graph_span: 48h
+graph_span: 72h
 span:
   start: day
   offset: "-24h"
@@ -206,7 +206,7 @@ type: custom:apexcharts-card
 header:
   show: true
   title: Batterinivå (SoC) & Effekt
-graph_span: 48h
+graph_span: 72h
 span:
   start: day
   offset: "-24h"
