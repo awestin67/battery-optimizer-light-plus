@@ -134,12 +134,21 @@ apex_config:
   tooltip:
     x:
       format: dd MMM HH:mm
+yaxis:
+  - min: 0
+    decimals: 2
+    apex_config:
+      title:
+        text: "SEK"
 series:
   - entity: sensor.battery_optimizer_graph_data
     name: CHARGE
     type: column
+    unit: " SEK"
     color: "#4CAF50"
-    data_generator: |
+    show:
+      legend_value: false
+    data_generator: >
       const hist = entity.attributes.history.filter(x => x.action ===
       'CHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
 
@@ -150,8 +159,11 @@ series:
   - entity: sensor.battery_optimizer_graph_data
     name: DISCHARGE
     type: column
+    unit: " SEK"
     color: "#F44336"
-    data_generator: |
+    show:
+      legend_value: false
+    data_generator: >
       const hist = entity.attributes.history.filter(x => x.action ===
       'DISCHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
 
@@ -162,8 +174,11 @@ series:
   - entity: sensor.battery_optimizer_graph_data
     name: HOLD
     type: column
+    unit: " SEK"
     color: "#FF9800"
-    data_generator: |
+    show:
+      legend_value: false
+    data_generator: >
       const hist = entity.attributes.history.filter(x => x.action ===
       'HOLD').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
 
@@ -174,8 +189,11 @@ series:
   - entity: sensor.battery_optimizer_graph_data
     name: IDLE
     type: column
+    unit: " SEK"
     color: "#9E9E9E"
-    data_generator: |
+    show:
+      legend_value: false
+    data_generator: >
       const hist = entity.attributes.history.filter(x => x.action ===
       'IDLE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
 
@@ -205,13 +223,20 @@ yaxis:
     min: 0
     max: 100
     decimals: 0
+    apex_config:
+      title:
+        text: "%"
   - id: power
     opposite: true
     min: 0
     decimals: 1
+    apex_config:
+      title:
+        text: "kW"
 series:
   - entity: sensor.battery_optimizer_graph_data
     name: SoC (Historik)
+    unit: " %"
     type: line
     yaxis_id: soc
     color: "#FFFFFF"
@@ -221,6 +246,7 @@ series:
       Date(x.timestamp).getTime(), x.reported_soc]);
   - entity: sensor.battery_optimizer_graph_data
     name: SoC (Prognos)
+    unit: " %"
     type: line
     yaxis_id: soc
     color: "#00BCD4"
@@ -230,6 +256,7 @@ series:
       Date(x.timestamp).getTime(), x.simulated_soc]);
   - entity: sensor.battery_optimizer_graph_data
     name: Sol (Prognos)
+    unit: " kW"
     type: area
     yaxis_id: power
     color: "#FFD700"
@@ -240,6 +267,7 @@ series:
       Date(x.timestamp).getTime(), x.solar_kw]);
   - entity: sensor.battery_optimizer_graph_data
     name: Husförbrukning (Baslast)
+    unit: " kW"
     type: line
     yaxis_id: power
     color: "#FF5722"
@@ -269,31 +297,57 @@ span:
 yaxis:
   - id: bar
     decimals: 2
+    apex_config:
+      title:
+        text: SEK
   - id: line
     opposite: true
     decimals: 1
+    apex_config:
+      title:
+        text: Totalt (SEK)
+apex_config:
+  plotOptions:
+    bar:
+      columnWidth: "80%"
+      colors:
+        ranges:
+          - from: -100000
+            to: -0.001
+            color: "#FFC107"
+          - from: 0
+            to: 100000
+            color: "#4CAF50"
 series:
   - entity: sensor.battery_optimizer_graph_data
-    name: Händelse (5 min)
+    name: Besparing (1h)
     type: column
     yaxis_id: bar
-    color_threshold:
-      - value: -100
-        color: "#D32F2F"
-      - value: 0
-        color: "#4CAF50"
+    unit: " SEK"
     data_generator: |
-      return entity.attributes.history.filter(x => x.savings_sek !== 0).map(x =>
-      [new Date(x.timestamp).getTime(), x.savings_sek]);
+      const hourly = {};
+      const now = new Date().getTime();
+      entity.attributes.history.forEach(x => {
+        const ts = new Date(x.timestamp).getTime();
+        if (ts > now || typeof x.savings_sek !== 'number') return;
+        const d = new Date(ts);
+        d.setMinutes(0, 0, 0);
+        const key = d.getTime();
+        hourly[key] = (hourly[key] || 0) + x.savings_sek;
+      });
+      return Object.entries(hourly).map(([ts, val]) => [Number(ts), val]).filter(([ts, val]) => Math.abs(val) > 0.01);
   - entity: sensor.battery_optimizer_graph_data
     name: Ackumulerat Totalt
+    unit: " SEK"
     type: line
     yaxis_id: line
     color: "#00BCD4"
     stroke_width: 3
+    extend_to: false
     data_generator: |
       let sum = 0;
-      return entity.attributes.history.map(x => {
+      const now = new Date().getTime();
+      return entity.attributes.history.filter(x => new Date(x.timestamp).getTime() <= now && typeof x.savings_sek === 'number').map(x => {
         sum += (x.savings_sek || 0);
         return [new Date(x.timestamp).getTime(), sum];
       });
