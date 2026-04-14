@@ -565,20 +565,6 @@ class BatteryLightGraphDataSensor(CoordinatorEntity, SensorEntity):
             return "OK"
         return "Waiting for data"
 
-    @property
-    def extra_state_attributes(self):
-        """Returnerar historik och prognos som JSON-attribut för HA att konsumera."""
-        graph_data = self.coordinator.data.get("graph_data", {}) if self.coordinator.data else {}
-        return {
-            "history": graph_data.get("history", []),
-            "forecast": graph_data.get("forecast", [])
-        }
-
-    @property
-    def unrecorded_attributes(self) -> frozenset:
-        """Säg åt Home Assistant att INTE spara listorna i databasen för att slippa 16KB-varningen."""
-        return frozenset({"history", "forecast"})
-
 class BatteryLightDailySavingsSensor(BatteryOptimizerSensorBase):
     """Sensor som beräknar och visar dagens totala besparingar baserat på historikdatan."""
 

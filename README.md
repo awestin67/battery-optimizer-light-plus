@@ -148,14 +148,13 @@ series:
     color: "#4CAF50"
     show:
       legend_value: false
-    data_generator: >
-      const hist = entity.attributes.history.filter(x => x.action ===
-      'CHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
-
-      const fore = entity.attributes.forecast.filter(x => x.action ===
-      'CHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
-
-      return hist.concat(fore);
+    data_generator: |
+      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+        const api = Object.values(d)[0] || {};
+        const hist = (api.history || []).filter(x => x.action === 'CHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+        const fore = (api.forecast || []).filter(x => x.action === 'CHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+        return hist.concat(fore);
+      });
   - entity: sensor.battery_optimizer_graph_data
     name: DISCHARGE
     type: column
@@ -163,14 +162,13 @@ series:
     color: "#F44336"
     show:
       legend_value: false
-    data_generator: >
-      const hist = entity.attributes.history.filter(x => x.action ===
-      'DISCHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
-
-      const fore = entity.attributes.forecast.filter(x => x.action ===
-      'DISCHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
-
-      return hist.concat(fore);
+    data_generator: |
+      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+        const api = Object.values(d)[0] || {};
+        const hist = (api.history || []).filter(x => x.action === 'DISCHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+        const fore = (api.forecast || []).filter(x => x.action === 'DISCHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+        return hist.concat(fore);
+      });
   - entity: sensor.battery_optimizer_graph_data
     name: HOLD
     type: column
@@ -178,14 +176,13 @@ series:
     color: "#FF9800"
     show:
       legend_value: false
-    data_generator: >
-      const hist = entity.attributes.history.filter(x => x.action ===
-      'HOLD').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
-
-      const fore = entity.attributes.forecast.filter(x => x.action ===
-      'HOLD').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
-
-      return hist.concat(fore);
+    data_generator: |
+      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+        const api = Object.values(d)[0] || {};
+        const hist = (api.history || []).filter(x => x.action === 'HOLD').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+        const fore = (api.forecast || []).filter(x => x.action === 'HOLD').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+        return hist.concat(fore);
+      });
   - entity: sensor.battery_optimizer_graph_data
     name: IDLE
     type: column
@@ -193,14 +190,13 @@ series:
     color: "#9E9E9E"
     show:
       legend_value: false
-    data_generator: >
-      const hist = entity.attributes.history.filter(x => x.action ===
-      'IDLE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
-
-      const fore = entity.attributes.forecast.filter(x => x.action ===
-      'IDLE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
-
-      return hist.concat(fore);
+    data_generator: |
+      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+        const api = Object.values(d)[0] || {};
+        const hist = (api.history || []).filter(x => x.action === 'IDLE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+        const fore = (api.forecast || []).filter(x => x.action === 'IDLE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
+        return hist.concat(fore);
+      });
 ```
 
 ### 2. Batterinivå (SoC) & Effekt
@@ -243,8 +239,11 @@ series:
     stroke_width: 2
     extend_to: false
     data_generator: |
-      const now = new Date().getTime();
-      return entity.attributes.history.filter(x => new Date(x.timestamp).getTime() <= now).map(x => [new Date(x.timestamp).getTime(), x.reported_soc]);
+      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+        const api = Object.values(d)[0] || {};
+        const now = new Date().getTime();
+        return (api.history || []).filter(x => new Date(x.timestamp).getTime() <= now).map(x => [new Date(x.timestamp).getTime(), x.reported_soc]);
+      });
   - entity: sensor.battery_optimizer_graph_data
     name: SoC (Prognos)
     unit: " %"
@@ -253,8 +252,10 @@ series:
     color: "#00BCD4"
     stroke_width: 2
     data_generator: |
-      return entity.attributes.forecast.map(x => [new
-      Date(x.timestamp).getTime(), x.simulated_soc]);
+      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+        const api = Object.values(d)[0] || {};
+        return (api.forecast || []).map(x => [new Date(x.timestamp).getTime(), x.simulated_soc]);
+      });
   - entity: sensor.battery_optimizer_graph_data
     name: Sol (Prognos)
     unit: " kW"
@@ -264,8 +265,10 @@ series:
     opacity: 0.2
     stroke_width: 1
     data_generator: |
-      return entity.attributes.forecast.map(x => [new
-      Date(x.timestamp).getTime(), x.solar_kw]);
+      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+        const api = Object.values(d)[0] || {};
+        return (api.forecast || []).map(x => [new Date(x.timestamp).getTime(), x.solar_kw]);
+      });
   - entity: sensor.battery_optimizer_graph_data
     name: Husförbrukning (Baslast)
     unit: " kW"
@@ -274,14 +277,12 @@ series:
     color: "#FF5722"
     stroke_width: 2
     data_generator: |
-      const hist = entity.attributes.history.filter(x => x.house_base_load_kw
-      !== undefined).map(x => [new Date(x.timestamp).getTime(),
-      x.house_base_load_kw]);
-
-      const fore = entity.attributes.forecast.filter(x => x.base_load_kw !==
-      undefined).map(x => [new Date(x.timestamp).getTime(), x.base_load_kw]);
-
-      return hist.concat(fore);
+      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+        const api = Object.values(d)[0] || {};
+        const hist = (api.history || []).filter(x => x.house_base_load_kw !== undefined).map(x => [new Date(x.timestamp).getTime(), x.house_base_load_kw]);
+        const fore = (api.forecast || []).filter(x => x.base_load_kw !== undefined).map(x => [new Date(x.timestamp).getTime(), x.base_load_kw]);
+        return hist.concat(fore);
+      });
 ```
 
 ### 3. Besparingar senaste 24h
@@ -326,17 +327,20 @@ series:
     yaxis_id: bar
     unit: " SEK"
     data_generator: |
-      const hourly = {};
-      const now = new Date().getTime();
-      entity.attributes.history.forEach(x => {
-        const ts = new Date(x.timestamp).getTime();
-        if (ts > now || typeof x.savings_sek !== 'number') return;
-        const d = new Date(ts);
-        d.setMinutes(0, 0, 0);
-        const key = d.getTime();
-        hourly[key] = (hourly[key] || 0) + x.savings_sek;
+      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+        const api = Object.values(d)[0] || {};
+        const hourly = {};
+        const now = new Date().getTime();
+        (api.history || []).forEach(x => {
+          const ts = new Date(x.timestamp).getTime();
+          if (ts > now || typeof x.savings_sek !== 'number') return;
+          const dt = new Date(ts);
+          dt.setMinutes(0, 0, 0);
+          const key = dt.getTime();
+          hourly[key] = (hourly[key] || 0) + x.savings_sek;
+        });
+        return Object.entries(hourly).map(([ts, val]) => [Number(ts), val]).filter(([ts, val]) => Math.abs(val) > 0.01);
       });
-      return Object.entries(hourly).map(([ts, val]) => [Number(ts), val]).filter(([ts, val]) => Math.abs(val) > 0.01);
   - entity: sensor.battery_optimizer_graph_data
     name: Ackumulerat Totalt
     unit: " SEK"
@@ -346,11 +350,14 @@ series:
     stroke_width: 3
     extend_to: false
     data_generator: |
-      let sum = 0;
-      const now = new Date().getTime();
-      return entity.attributes.history.filter(x => new Date(x.timestamp).getTime() <= now && typeof x.savings_sek === 'number').map(x => {
-        sum += (x.savings_sek || 0);
-        return [new Date(x.timestamp).getTime(), sum];
+      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+        const api = Object.values(d)[0] || {};
+        let sum = 0;
+        const now = new Date().getTime();
+        return (api.history || []).filter(x => new Date(x.timestamp).getTime() <= now && typeof x.savings_sek === 'number').map(x => {
+          sum += (x.savings_sek || 0);
+          return [new Date(x.timestamp).getTime(), sum];
+        });
       });
 ```
 

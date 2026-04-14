@@ -21,6 +21,11 @@ from homeassistant.core import HomeAssistant, ServiceCall, CoreState # type: ign
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN # type: ignore
 from homeassistant.helpers.event import async_track_state_change_event # type: ignore
 from homeassistant.helpers.aiohttp_client import async_get_clientsession # type: ignore
+try:
+    from homeassistant.components.http import HomeAssistantView # type: ignore
+except ImportError:
+    class HomeAssistantView:
+        """Fallback för testmiljöer som saknar den fullständiga http-komponenten."""
 from homeassistant.loader import async_get_integration # type: ignore
 from .coordinator import BatteryOptimizerLightCoordinator
 from .const import (
@@ -72,6 +77,11 @@ async def async_setup_entry(hass: HomeAssistant, entry):
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
+
+    # Skapa och registrera den interna API-länken för grafdatan
+    if "battery_optimizer_graph_view" not in hass.data[DOMAIN]:
+        hass.http.register_view(BatteryOptimizerGraphView(hass))
+        hass.data[DOMAIN]["battery_optimizer_graph_view"] = True
 
     # Initiera PeakGuard och injicera den valda batteri-logiken
     peak_guard = PeakGuard(hass, config, coordinator, coordinator.battery_api)
@@ -819,3 +829,21 @@ async def async_unload_entry(hass, entry):
         if hasattr(coordinator, "unsub_timer") and callable(coordinator.unsub_timer):
             coordinator.unsub_timer()
     return unload_ok
+
+class BatteryOptimizerGraphView(HomeAssistantView):
+    """Exponerar grafdata via ett internt API för att slippa 16KB-gränsen på sensorattribut."""
+    url = "/api/battery_optimizer_graph_data"
+    name = "api:battery_optimizer_graph_data"
+    requires_auth = False
+
+    def __init__(self, hass: HomeAssistant):
+        self.hass = hass
+
+    async def get(self, request):
+        result = {}
+        domain_data = self.hass.data.get(DOMAIN, {})
+        for coordinator in domain_data.values():
+            if hasattr(coordinator, "api_key") and hasattr(coordinator, "data"):
+                graph_data = coordinator.data.get("graph_data", {}) if coordinator.data else {}
+                result[coordinator.api_key] = graph_data
+        return self.json(result)

@@ -1642,14 +1642,10 @@ def test_graph_data_sensor():
 
     sensor = BatteryLightGraphDataSensor(coordinator)
     assert sensor.state == "OK"
-    attrs = sensor.extra_state_attributes
-    assert len(attrs["history"]) == 1
-    assert len(attrs["forecast"]) == 1
 
     # Test utan data
     coordinator.data = None
     assert sensor.state == "Waiting for data"
-    assert sensor.extra_state_attributes["history"] == []
 
 @patch("custom_components.battery_optimizer_light_plus.sensor.dt_util")
 def test_daily_savings_sensor(mock_dt_util):
