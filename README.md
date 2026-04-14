@@ -118,10 +118,10 @@ type: custom:apexcharts-card
 header:
   show: true
   title: Pris & Beslut
-graph_span: 72h
+graph_span: 2d # Anpassa: 2d för 24h historik, 3d för 48h, 4d för 72h
 span:
   start: day
-  offset: "-24h"
+  offset: "-24" # Anpassa: -24 för 24h, -48 för 48h, -72 för 72h
 now:
   show: true
   label: Nu
@@ -206,10 +206,10 @@ type: custom:apexcharts-card
 header:
   show: true
   title: Batterinivå (SoC) & Effekt
-graph_span: 72h
+graph_span: 2d # Anpassa: 2d för 24h historik, 3d för 48h, 4d för 72h
 span:
   start: day
-  offset: "-24h"
+  offset: "-24" # Anpassa: -24 för 24h, -48 för 48h, -72 för 72h
 now:
   show: true
   label: Nu
@@ -238,6 +238,8 @@ series:
     color: "#FFFFFF"
     stroke_width: 2
     extend_to: false
+    show:
+      legend_value: false
     data_generator: |
       return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
@@ -251,6 +253,8 @@ series:
     yaxis_id: soc
     color: "#00BCD4"
     stroke_width: 2
+    show:
+      legend_value: false
     data_generator: |
       return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
@@ -264,6 +268,8 @@ series:
     color: "#FFD700"
     opacity: 0.2
     stroke_width: 1
+    show:
+      legend_value: false
     data_generator: |
       return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
@@ -276,6 +282,8 @@ series:
     yaxis_id: power
     color: "#FF5722"
     stroke_width: 2
+    show:
+      legend_value: false
     data_generator: |
       return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
@@ -292,10 +300,10 @@ type: custom:apexcharts-card
 header:
   show: true
   title: Besparingar senaste 24h
-graph_span: 48h
+graph_span: 1d # Anpassa: 1d för 24h historik, 2d för 48h, 3d för 72h
 span:
   start: day
-  offset: "-24h"
+  offset: "-24" # Anpassa: -24 för 24h, -48 för 48h, -72 för 72h
 yaxis:
   - id: bar
     decimals: 2
@@ -326,6 +334,8 @@ series:
     type: column
     yaxis_id: bar
     unit: " SEK"
+    show:
+      legend_value: false
     data_generator: |
       return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
@@ -349,6 +359,8 @@ series:
     color: "#00BCD4"
     stroke_width: 3
     extend_to: false
+    show:
+      legend_value: false
     data_generator: |
       return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
