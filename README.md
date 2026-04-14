@@ -241,9 +241,10 @@ series:
     yaxis_id: soc
     color: "#FFFFFF"
     stroke_width: 2
+    extend_to: false
     data_generator: |
-      return entity.attributes.history.map(x => [new
-      Date(x.timestamp).getTime(), x.reported_soc]);
+      const now = new Date().getTime();
+      return entity.attributes.history.filter(x => new Date(x.timestamp).getTime() <= now).map(x => [new Date(x.timestamp).getTime(), x.reported_soc]);
   - entity: sensor.battery_optimizer_graph_data
     name: SoC (Prognos)
     unit: " %"
