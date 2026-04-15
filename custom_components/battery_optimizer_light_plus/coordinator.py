@@ -240,6 +240,8 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                             should_fetch_ai = True
 
                     default_ai_text = "Ingen AI-sammanfattning tillgänglig ännu."
+                    fallback_ai_text = self.data.get("ai_summary", default_ai_text) if self.data else default_ai_text
+
                     if should_fetch_ai:
                         try:
                             base_api_url = self.config.get("api_url", "").rstrip("/")
@@ -254,12 +256,12 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                                     data["ai_summary"] = ai_data.get("ai_summary", default_ai_text)
                                     self._last_ai_fetch_day = now.date()
                                 else:
-                                    data["ai_summary"] = self.data.get("ai_summary", default_ai_text)
+                                    data["ai_summary"] = fallback_ai_text
                         except Exception as e:
                             _LOGGER.debug(f"Kunde inte hämta AI-sammanfattning: {e}")
-                            data["ai_summary"] = self.data.get("ai_summary", default_ai_text)
+                            data["ai_summary"] = fallback_ai_text
                     else:
-                        data["ai_summary"] = self.data.get("ai_summary", default_ai_text)
+                        data["ai_summary"] = fallback_ai_text
 
                     return data
 
