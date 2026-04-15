@@ -602,6 +602,7 @@ class BatteryLightAISummarySensor(BatteryOptimizerSensorBase):
 
     def __init__(self, coordinator):
         super().__init__(coordinator)
+        self.entity_id = "sensor.optimizer_light_ai_summary"
         self._attr_unique_id = f"{coordinator.api_key}_ai_summary"
         self._attr_name = "Optimizer Light AI Summary"
         self._attr_icon = "mdi:robot-outline"
