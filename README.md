@@ -331,12 +331,6 @@ yaxis:
     apex_config:
       title:
         text: SEK
-  - id: line
-    opposite: true
-    decimals: 1
-    apex_config:
-      title:
-        text: Totalt (SEK)
 apex_config:
   plotOptions:
     bar:
@@ -353,7 +347,6 @@ series:
   - entity: sensor.battery_optimizer_graph_data
     name: Besparing (1h)
     type: column
-    yaxis_id: bar
     unit: " SEK"
     data_generator: >
       return fetch('/api/battery_optimizer_graph_data').then(r =>
@@ -375,7 +368,6 @@ series:
     name: Ackumulerat Totalt
     unit: " SEK"
     type: line
-    yaxis_id: line
     color: "#00BCD4"
     stroke_width: 3
     extend_to: false
@@ -385,10 +377,20 @@ series:
         const api = Object.values(d)[0] || {};
         let sum = 0;
         const now = new Date().getTime();
-        return (api.history || []).filter(x => new Date(x.timestamp).getTime() <= now && typeof x.savings_sek === 'number').map(x => {
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        start.setDate(start.getDate() - 1);
+        const startTime = start.getTime();
+        const filtered = (api.history || []).filter(x => {
+          const ts = new Date(x.timestamp).getTime();
+          return ts >= startTime && ts <= now && typeof x.savings_sek === 'number';
+        });
+        const data = filtered.map(x => {
           sum += (x.savings_sek || 0);
           return [new Date(x.timestamp).getTime(), sum];
         });
+        data.unshift([startTime, 0]); // Garanterar att linjen börjar exakt på 0 vid t=0
+        return data;
       });
 ```
 
