@@ -28,7 +28,8 @@ from custom_components.battery_optimizer_light_plus.sensor import (
     BatteryLightVirtualLoadSensor,
     HuaweiWrapperSensor,
     SonnenInternalSensor,
-    SonnenVirtualLoadSensor
+    SonnenVirtualLoadSensor,
+    BatteryLightAISummarySensor
 )
 from custom_components.battery_optimizer_light_plus.const import (
     DOMAIN,
@@ -49,7 +50,7 @@ async def test_sensor_setup_entry_generic():
 
     await async_setup_entry(hass, entry, async_add_entities)
     async_add_entities.assert_called_once()
-    assert len(async_add_entities.call_args[0][0]) == 11
+    assert len(async_add_entities.call_args[0][0]) == 12
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_huawei():
@@ -66,7 +67,7 @@ async def test_sensor_setup_entry_huawei():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 14
+    assert len(async_add_entities.call_args[0][0]) == 15
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_sonnen():
@@ -79,7 +80,7 @@ async def test_sensor_setup_entry_sonnen():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 17
+    assert len(async_add_entities.call_args[0][0]) == 18
 
 def test_basic_sensors():
     coordinator = MagicMock()
@@ -226,3 +227,25 @@ def test_battery_light_virtual_load_sensor_extra():
 
     coordinator.hass.states.get.return_value = None
     assert sensor.state == 0.0
+
+def test_ai_summary_sensor():
+    """Testar att AI-sensorn hanterar 255-teckensgränsen genom att spara texten i attribut."""
+    coordinator = MagicMock(api_key="123")
+    coordinator.data = {
+        "ai_summary": "Detta är en jättelång text som förklarar exakt vad batteriet har gjort under dagen..."
+    }
+
+    sensor = BatteryLightAISummarySensor(coordinator)
+
+    # Statusen ska bara vara kort
+    assert sensor.state == "Tillgänglig"
+
+    # Texten ligger skyddad i ett attribut
+    attrs = sensor.extra_state_attributes
+    assert "summary_text" in attrs
+    assert "jättelång text" in attrs["summary_text"]
+
+    # Testa när data saknas
+    coordinator.data = None
+    assert sensor.state == "Väntar på data"
+    assert sensor.extra_state_attributes == {}

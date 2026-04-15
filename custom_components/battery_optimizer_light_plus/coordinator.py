@@ -20,6 +20,7 @@ import aiohttp
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_change
+import homeassistant.util.dt as dt_util
 from .battery_factory import create_battery_api
 
 _LOGGER = logging.getLogger(__name__)
@@ -225,6 +226,40 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     # Låt batterihanteraren verkställa beslutet, om inte PeakGuard har tagit över lokalt
                     if not is_solar_override and not (hasattr(self, "peak_guard") and self.peak_guard.is_active):
                         await self.battery_api.apply_action(action, target_kw)
+
+                    # --- Hämta AI Sammanfattning (Endast vid uppstart och 04:15) ---
+                    now = dt_util.now()
+                    should_fetch_ai = False
+
+                    if not self.data or "ai_summary" not in self.data:
+                        should_fetch_ai = True
+                    # Vi pollar var 5:e minut, så vi kollar om vi befinner oss runt 04:15
+                    elif now.hour == 4 and 15 <= now.minute < 20:
+                        last_fetch = getattr(self, "_last_ai_fetch_day", None)
+                        if last_fetch != now.date():
+                            should_fetch_ai = True
+
+                    default_ai_text = "Ingen AI-sammanfattning tillgänglig ännu."
+                    if should_fetch_ai:
+                        try:
+                            base_api_url = self.config.get("api_url", "").rstrip("/")
+                            ai_url = f"{base_api_url}/ha_ai_summary"
+                            async with session.get(
+                                ai_url,
+                                headers={"x-api-key": self.api_key},
+                                timeout=10
+                            ) as ai_resp:
+                                if ai_resp.status == 200:
+                                    ai_data = await ai_resp.json()
+                                    data["ai_summary"] = ai_data.get("ai_summary", default_ai_text)
+                                    self._last_ai_fetch_day = now.date()
+                                else:
+                                    data["ai_summary"] = self.data.get("ai_summary", default_ai_text)
+                        except Exception as e:
+                            _LOGGER.debug(f"Kunde inte hämta AI-sammanfattning: {e}")
+                            data["ai_summary"] = self.data.get("ai_summary", default_ai_text)
+                    else:
+                        data["ai_summary"] = self.data.get("ai_summary", default_ai_text)
 
                     return data
 

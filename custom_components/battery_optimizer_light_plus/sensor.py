@@ -58,6 +58,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         BatteryLightHouseConsumptionSensor(coordinator),
         BatteryLightGraphDataSensor(coordinator),
         BatteryLightDailySavingsSensor(coordinator),
+        BatteryLightAISummarySensor(coordinator),
     ]
 
     if entry.data.get(CONF_BATTERY_TYPE) != BATTERY_TYPE_SONNEN:
@@ -595,3 +596,28 @@ class BatteryLightDailySavingsSensor(BatteryOptimizerSensorBase):
                     total_savings += float(entry.get("savings_sek", 0.0))
 
         return round(total_savings, 2)
+
+class BatteryLightAISummarySensor(BatteryOptimizerSensorBase):
+    """Sensor som visar den dagliga AI-sammanfattningen."""
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.api_key}_ai_summary"
+        self._attr_name = "Optimizer Light AI Summary"
+        self._attr_icon = "mdi:robot-outline"
+
+    @property
+    def state(self):
+        """Returnerar en kort status pga 255-teckensgränsen i Home Assistant."""
+        if self.coordinator.data and self.coordinator.data.get("ai_summary"):
+            return "Tillgänglig"
+        return "Väntar på data"
+
+    @property
+    def extra_state_attributes(self):
+        """Själva sammanfattningen sparas som ett attribut så den inte klipps av."""
+        if self.coordinator.data:
+            return {
+                "summary_text": self.coordinator.data.get("ai_summary", "Ingen AI-sammanfattning tillgänglig ännu.")
+            }
+        return {}

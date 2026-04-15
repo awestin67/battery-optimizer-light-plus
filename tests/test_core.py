@@ -1687,3 +1687,64 @@ def test_daily_savings_sensor(mock_dt_util):
 
     coordinator.data = None
     assert sensor.state == 0.0
+
+@pytest.mark.asyncio
+async def test_coordinator_fetches_ai_summary_at_0415(mock_hass_instance, mock_battery):
+    """Krav: Coordinator ska hämta AI-sammanfattningen kl 04:15."""
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    # Sätt befintlig data så att den inte hämtar på grund av "första uppstart"
+    coordinator.data = {"action": "IDLE", "ai_summary": "Gammal text"}
+    coordinator._last_ai_fetch_day = datetime.date(2026, 4, 14)  # Igår
+
+    patch_session = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    patch_now = "custom_components.battery_optimizer_light_plus.coordinator.dt_util.now"
+
+    with patch(patch_session) as mock_get_session, patch(patch_now) as mock_now:
+        # Fejka klockan till 04:16 idag
+        fake_now = datetime.datetime(2026, 4, 15, 4, 16, 0, tzinfo=datetime.timezone.utc)
+        mock_now.return_value = fake_now
+
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        # Mocka POST-anropet (/signal)
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
+
+        # Mocka GET-anropen för grafer
+        mock_graph_resp = MagicMock()
+        mock_graph_resp.__aenter__.return_value = mock_graph_resp
+        mock_graph_resp.status = 200
+        mock_graph_resp.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        # Mocka GET-anropet för AI-sammanfattningen
+        mock_ai_resp = MagicMock()
+        mock_ai_resp.__aenter__.return_value = mock_ai_resp
+        mock_ai_resp.status = 200
+        mock_ai_resp.json = AsyncMock(return_value={"ai_summary": "Ny AI-text från 04:15"})
+
+        # Styr vilket svar som ges beroende på vilken URL som anropas
+        def get_side_effect(url, *args, **kwargs):
+            if "ha_graph_data" in url:
+                return mock_graph_resp
+            elif "ha_ai_summary" in url:
+                return mock_ai_resp
+            return mock_graph_resp
+
+        mock_session.get.side_effect = get_side_effect
+
+        data = await coordinator._async_update_data()
+
+        # Verifiera att datan uppdaterades
+        assert data["ai_summary"] == "Ny AI-text från 04:15"
+        assert coordinator._last_ai_fetch_day == fake_now.date()
+
+        # Verifiera att GET anropades exakt två gånger (en för graph_data, en för ai_summary)
+        calls = mock_session.get.call_args_list
+        assert len(calls) == 2
+        assert "ha_graph_data" in calls[0][0][0]
+        assert "ha_ai_summary" in calls[1][0][0]

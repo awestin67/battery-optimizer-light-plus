@@ -101,7 +101,23 @@ När systemet är igång skapas en mängd sensorer för att hjälpa dig övervak
 * 🔋 **`sensor.*_battery_in_out`** *(Sonnen, Huawei & Homevolt)*: Batteriets effekt i realtid (W). Standard för Sonnen/Homevolt/Generic är att **Minus (-)** = Laddar. För Huawei är detta inverterat (se notis under Huawei-sektionen ovan).
 * 📊 **`sensor.*_soc`** *(Sonnen, Huawei & Homevolt)*: Batteriets nuvarande laddningsnivå (%).
 * 💰 **`sensor.optimizer_light_daily_savings`**: Dagens totala besparing (SEK) beräknad utifrån batteriets historik.
+* 🤖 **`sensor.optimizer_light_ai_summary`**: Daglig AI-genererad sammanfattning av batteriets prestanda. Hela texten sparas i sensorns attribut.
 * 📉 **`sensor.battery_optimizer_graph_data`**: Innehåller all grafdata (historik och framtida prognos) dold i sina JSON-attribut (används för ApexCharts nedan).
+
+---
+
+## 🤖 Visa AI-Sammanfattningen i Dashboarden
+
+Eftersom Home Assistant har en gräns på 255 tecken för vanliga sensorstatusar lagras den fullständiga AI-genererade texten säkert i sensorns *attribut*. För att läsa sammanfattningen bekvämt i din Dashboard rekommenderas att du använder ett inbyggt **Markdown-kort**.
+
+Skapa ett nytt manuellt kort i din Dashboard och klistra in följande kod:
+
+```yaml
+type: markdown
+title: 🤖 AI Sammanfattning
+content: >
+  {{ state_attr('sensor.optimizer_light_ai_summary', 'summary_text') }}
+```
 
 ---
 
