@@ -118,7 +118,7 @@ type: custom:apexcharts-card
 header:
   show: true
   title: Pris & Beslut
-graph_span: 2d
+graph_span: 3d    # Works well with history = 48h
 span:
   start: day
   offset: "-24h"
@@ -211,7 +211,7 @@ type: custom:apexcharts-card
 header:
   show: true
   title: Batterinivå (SoC) & Effekt
-graph_span: 2d
+graph_span: 3d    # Works well with history = 48h
 span:
   start: day
   offset: "-24h"
@@ -233,7 +233,7 @@ yaxis:
     decimals: 1
     apex_config:
       title:
-        text: "kW"
+        text: kW
 series:
   - entity: sensor.battery_optimizer_graph_data
     name: SoC (Historik)
@@ -321,7 +321,7 @@ type: custom:apexcharts-card
 header:
   show: true
   title: Besparingar senaste 24h
-graph_span: 1d
+graph_span: 2d    # Works well with history = 48h
 span:
   start: day
   offset: "-24h"
