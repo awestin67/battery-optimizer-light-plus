@@ -118,10 +118,10 @@ type: custom:apexcharts-card
 header:
   show: true
   title: Pris & Beslut
-graph_span: 2d # Anpassa: 2d för 24h historik, 3d för 48h, 4d för 72h
+graph_span: 2d
 span:
   start: day
-  offset: "-24" # Anpassa: -24 för 24h, -48 för 48h, -72 för 72h
+  offset: "-24h"
 now:
   show: true
   label: Nu
@@ -139,7 +139,7 @@ yaxis:
     decimals: 2
     apex_config:
       title:
-        text: "SEK"
+        text: SEK
 series:
   - entity: sensor.battery_optimizer_graph_data
     name: CHARGE
@@ -148,8 +148,9 @@ series:
     color: "#4CAF50"
     show:
       legend_value: false
-    data_generator: |
-      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+    data_generator: >
+      return fetch('/api/battery_optimizer_graph_data').then(r =>
+      r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const hist = (api.history || []).filter(x => x.action === 'CHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
         const fore = (api.forecast || []).filter(x => x.action === 'CHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
@@ -162,8 +163,9 @@ series:
     color: "#F44336"
     show:
       legend_value: false
-    data_generator: |
-      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+    data_generator: >
+      return fetch('/api/battery_optimizer_graph_data').then(r =>
+      r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const hist = (api.history || []).filter(x => x.action === 'DISCHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
         const fore = (api.forecast || []).filter(x => x.action === 'DISCHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
@@ -176,8 +178,9 @@ series:
     color: "#FF9800"
     show:
       legend_value: false
-    data_generator: |
-      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+    data_generator: >
+      return fetch('/api/battery_optimizer_graph_data').then(r =>
+      r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const hist = (api.history || []).filter(x => x.action === 'HOLD').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
         const fore = (api.forecast || []).filter(x => x.action === 'HOLD').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
@@ -190,13 +193,15 @@ series:
     color: "#9E9E9E"
     show:
       legend_value: false
-    data_generator: |
-      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+    data_generator: >
+      return fetch('/api/battery_optimizer_graph_data').then(r =>
+      r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const hist = (api.history || []).filter(x => x.action === 'IDLE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
         const fore = (api.forecast || []).filter(x => x.action === 'IDLE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
         return hist.concat(fore);
       });
+
 ```
 
 ### 2. Batterinivå (SoC) & Effekt
@@ -206,10 +211,10 @@ type: custom:apexcharts-card
 header:
   show: true
   title: Batterinivå (SoC) & Effekt
-graph_span: 2d # Anpassa: 2d för 24h historik, 3d för 48h, 4d för 72h
+graph_span: 2d
 span:
   start: day
-  offset: "-24" # Anpassa: -24 för 24h, -48 för 48h, -72 för 72h
+  offset: "-24h"
 now:
   show: true
   label: Nu
@@ -240,8 +245,9 @@ series:
     extend_to: false
     show:
       legend_value: false
-    data_generator: |
-      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+    data_generator: >
+      return fetch('/api/battery_optimizer_graph_data').then(r =>
+      r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const now = new Date().getTime();
         return (api.history || []).filter(x => new Date(x.timestamp).getTime() <= now).map(x => [new Date(x.timestamp).getTime(), x.reported_soc]);
@@ -253,12 +259,19 @@ series:
     yaxis_id: soc
     color: "#00BCD4"
     stroke_width: 2
+    extend_to: false
     show:
       legend_value: false
-    data_generator: |
-      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+    data_generator: >
+      return fetch('/api/battery_optimizer_graph_data').then(r =>
+      r.json()).then(d => {
         const api = Object.values(d)[0] || {};
-        return (api.forecast || []).map(x => [new Date(x.timestamp).getTime(), x.simulated_soc]);
+        const fore = (api.forecast || []).map(x => [new Date(x.timestamp).getTime(), x.simulated_soc]);
+        const hist = api.history || [];
+        if (hist.length > 0 && fore.length > 0) {
+          fore.unshift([new Date(hist[hist.length - 1].timestamp).getTime(), hist[hist.length - 1].reported_soc]);
+        }
+        return fore;
       });
   - entity: sensor.battery_optimizer_graph_data
     name: Sol (Prognos)
@@ -268,12 +281,18 @@ series:
     color: "#FFD700"
     opacity: 0.2
     stroke_width: 1
+    extend_to: false
     show:
       legend_value: false
-    data_generator: |
-      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+    data_generator: >
+      return fetch('/api/battery_optimizer_graph_data').then(r =>
+      r.json()).then(d => {
         const api = Object.values(d)[0] || {};
-        return (api.forecast || []).map(x => [new Date(x.timestamp).getTime(), x.solar_kw]);
+        const fore = (api.forecast || []).map(x => [new Date(x.timestamp).getTime(), x.solar_kw]);
+        if (fore.length > 0) {
+          fore.unshift([new Date().getTime(), fore[0][1]]);
+        }
+        return fore;
       });
   - entity: sensor.battery_optimizer_graph_data
     name: Husförbrukning (Baslast)
@@ -282,10 +301,12 @@ series:
     yaxis_id: power
     color: "#FF5722"
     stroke_width: 2
+    extend_to: false
     show:
       legend_value: false
-    data_generator: |
-      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+    data_generator: >
+      return fetch('/api/battery_optimizer_graph_data').then(r =>
+      r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const hist = (api.history || []).filter(x => x.house_base_load_kw !== undefined).map(x => [new Date(x.timestamp).getTime(), x.house_base_load_kw]);
         const fore = (api.forecast || []).filter(x => x.base_load_kw !== undefined).map(x => [new Date(x.timestamp).getTime(), x.base_load_kw]);
@@ -300,10 +321,10 @@ type: custom:apexcharts-card
 header:
   show: true
   title: Besparingar senaste 24h
-graph_span: 1d # Anpassa: 1d för 24h historik, 2d för 48h, 3d för 72h
+graph_span: 1d
 span:
   start: day
-  offset: "-24" # Anpassa: -24 för 24h, -48 för 48h, -72 för 72h
+  offset: "-24h"
 yaxis:
   - id: bar
     decimals: 2
@@ -319,7 +340,7 @@ yaxis:
 apex_config:
   plotOptions:
     bar:
-      columnWidth: "80%"
+      columnWidth: 80%
       colors:
         ranges:
           - from: -100000
@@ -334,10 +355,9 @@ series:
     type: column
     yaxis_id: bar
     unit: " SEK"
-    show:
-      legend_value: false
-    data_generator: |
-      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+    data_generator: >
+      return fetch('/api/battery_optimizer_graph_data').then(r =>
+      r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const hourly = {};
         const now = new Date().getTime();
@@ -359,10 +379,9 @@ series:
     color: "#00BCD4"
     stroke_width: 3
     extend_to: false
-    show:
-      legend_value: false
-    data_generator: |
-      return fetch('/api/battery_optimizer_graph_data').then(r => r.json()).then(d => {
+    data_generator: >
+      return fetch('/api/battery_optimizer_graph_data').then(r =>
+      r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         let sum = 0;
         const now = new Date().getTime();
