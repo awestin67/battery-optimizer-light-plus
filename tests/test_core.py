@@ -1748,3 +1748,121 @@ async def test_coordinator_fetches_ai_summary_at_0415(mock_hass_instance, mock_b
         assert len(calls) == 2
         assert "ha_graph_data" in calls[0][0][0]
         assert "ha_ai_summary" in calls[1][0][0]
+
+@pytest.mark.asyncio
+async def test_coordinator_retries_ai_summary_within_window(mock_hass_instance, mock_battery):
+    """Krav: Om AI-texten dröjer ska vi fortsätta försöka fram till 06:00."""
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    # Vi har standardtexten, och datumet är fortfarande igår
+    coordinator.data = {"action": "IDLE", "ai_summary": "Ingen AI-sammanfattning tillgänglig ännu."}
+    coordinator._last_ai_fetch_day = datetime.date(2026, 4, 14)
+
+    patch_session = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    patch_now = "custom_components.battery_optimizer_light_plus.coordinator.dt_util.now"
+
+    with patch(patch_session) as mock_get_session, patch(patch_now) as mock_now:
+        # Nu är klockan 05:45 (Inom retry-fönstret)
+        fake_now = datetime.datetime(2026, 4, 15, 5, 45, 0, tzinfo=datetime.timezone.utc)
+        mock_now.return_value = fake_now
+
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
+
+        mock_graph_resp = MagicMock()
+        mock_graph_resp.__aenter__.return_value = mock_graph_resp
+        mock_graph_resp.status = 200
+        mock_graph_resp.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        # Nu lyckas AI:n leverera texten
+        mock_ai_resp = MagicMock()
+        mock_ai_resp.__aenter__.return_value = mock_ai_resp
+        mock_ai_resp.status = 200
+        mock_ai_resp.json = AsyncMock(return_value={"ai_summary": "Nu kom texten fram!"})
+
+        def get_side_effect(url, *args, **kwargs):
+            if "ha_graph_data" in url:
+                return mock_graph_resp
+            elif "ha_ai_summary" in url:
+                return mock_ai_resp
+            return mock_graph_resp
+
+        mock_session.get.side_effect = get_side_effect
+
+        data = await coordinator._async_update_data()
+
+        assert data["ai_summary"] == "Nu kom texten fram!"
+        assert coordinator._last_ai_fetch_day == fake_now.date()
+
+@pytest.mark.asyncio
+async def test_coordinator_ai_summary_same_as_yesterday(mock_hass_instance, mock_battery):
+    """Krav: Om AI-texten är exakt samma som igår, ska vi fortsätta försöka (datumet sparas inte)."""
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    # Vi har en gammal text från igår
+    old_text = "Sammanfattning för igår: Allt var bra."
+    coordinator.data = {"action": "IDLE", "ai_summary": old_text}
+    yesterday = datetime.date(2026, 4, 14)
+    coordinator._last_ai_fetch_day = yesterday
+
+    patch_session = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    patch_now = "custom_components.battery_optimizer_light_plus.coordinator.dt_util.now"
+
+    with patch(patch_session) as mock_get_session, patch(patch_now) as mock_now:
+        # Klockan är 04:16
+        fake_now = datetime.datetime(2026, 4, 15, 4, 16, 0, tzinfo=datetime.timezone.utc)
+        mock_now.return_value = fake_now
+
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
+
+        mock_graph_resp = MagicMock()
+        mock_graph_resp.__aenter__.return_value = mock_graph_resp
+        mock_graph_resp.status = 200
+        mock_graph_resp.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        # Backend skickar samma text som vi redan hade
+        mock_ai_resp = MagicMock()
+        mock_ai_resp.__aenter__.return_value = mock_ai_resp
+        mock_ai_resp.status = 200
+        mock_ai_resp.json = AsyncMock(return_value={"ai_summary": old_text})
+
+        def get_side_effect(url, *args, **kwargs):
+            if "ha_graph_data" in url:
+                return mock_graph_resp
+            elif "ha_ai_summary" in url:
+                return mock_ai_resp
+            return mock_graph_resp
+
+        mock_session.get.side_effect = get_side_effect
+
+        data = await coordinator._async_update_data()
+
+        # Texten är den samma, MEN datumet ska INTE ha uppdaterats till idag!
+        assert data["ai_summary"] == old_text
+        assert getattr(coordinator, "_last_ai_fetch_day", None) == yesterday
+
+        # Om backend i nästa cykel istället skickar en ny text
+        new_text = "Sammanfattning för idag: Nya händelser."
+        mock_ai_resp.json = AsyncMock(return_value={"ai_summary": new_text})
+
+        # Sätt ny data till coordinatorn så att fallback ai text blir rätt för nästa cykel
+        coordinator.data = data
+
+        data2 = await coordinator._async_update_data()
+
+        # Nu ska datumet ha uppdaterats eftersom texten skilde sig från fallbacken!
+        assert data2["ai_summary"] == new_text
+        assert coordinator._last_ai_fetch_day == fake_now.date()

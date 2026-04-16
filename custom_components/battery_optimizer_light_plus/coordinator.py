@@ -231,16 +231,17 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     now = dt_util.now()
                     should_fetch_ai = False
 
+                    default_ai_text = "Ingen AI-sammanfattning tillgänglig ännu."
+                    fallback_ai_text = self.data.get("ai_summary", default_ai_text) if self.data else default_ai_text
+
+                    # 1. Hämta alltid vid första uppstart
                     if not self.data or "ai_summary" not in self.data:
                         should_fetch_ai = True
-                    # Vi pollar var 5:e minut, så vi kollar om vi befinner oss runt 04:15
-                    elif now.hour == 4 and 15 <= now.minute < 20:
+                    # 2. Hämta under fönstret 04:15 - 05:59 om vi inte redan lyckats idag
+                    elif (now.hour == 4 and now.minute >= 15) or now.hour == 5:
                         last_fetch = getattr(self, "_last_ai_fetch_day", None)
                         if last_fetch != now.date():
                             should_fetch_ai = True
-
-                    default_ai_text = "Ingen AI-sammanfattning tillgänglig ännu."
-                    fallback_ai_text = self.data.get("ai_summary", default_ai_text) if self.data else default_ai_text
 
                     if should_fetch_ai:
                         try:
@@ -253,8 +254,16 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                             ) as ai_resp:
                                 if ai_resp.status == 200:
                                     ai_data = await ai_resp.json()
-                                    data["ai_summary"] = ai_data.get("ai_summary", default_ai_text)
-                                    self._last_ai_fetch_day = now.date()
+                                    fetched_summary = ai_data.get("ai_summary", default_ai_text)
+                                    data["ai_summary"] = fetched_summary
+
+                                    # Spara bara datumet som "klar för idag" om vi fick en NY riktig text
+                                    if fetched_summary != default_ai_text:
+                                        # Om vi redan hade en text, och den inkommande är exakt likadan, väntar vi
+                                        if fallback_ai_text != default_ai_text and fetched_summary == fallback_ai_text:
+                                            pass
+                                        else:
+                                            self._last_ai_fetch_day = now.date()
                                 else:
                                     data["ai_summary"] = fallback_ai_text
                         except Exception as e:
