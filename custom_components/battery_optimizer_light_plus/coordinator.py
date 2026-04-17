@@ -71,11 +71,37 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         # 1. Hämta SOC
         soc = await self.battery_api.get_current_soc()
 
+        hardware_min_soc = 0.0
+        # Hämta reservkapacitet om batteriet stöder det (tex Sonnen EM_USOC)
+        if hasattr(self.battery_api, "get_min_soc"):
+            min_val = await self.battery_api.get_min_soc()
+            if min_val is not None:
+                hardware_min_soc = min_val
+
+        if (
+            hardware_min_soc == 0.0
+            and hasattr(self.battery_api, "coordinator")
+            and getattr(self.battery_api.coordinator, "data", None)
+        ):
+            em_usoc = self.battery_api.coordinator.data.get("EM_USOC")
+            if em_usoc is not None:
+                try:
+                    hardware_min_soc = float(em_usoc)
+                except (ValueError, TypeError):
+                    pass
+
         if soc is None:
             # Om vi inte kan läsa SoC vid uppstart, sätter vi den till 0.0 temporärt
             # så att vi ändå kan hämta ett beslut från molnet och släppa manuellt läge.
             _LOGGER.warning("Could not retrieve SoC from battery. Using 0.0 temporarily to fetch cloud action.")
             soc = 0.0
+
+        # Skala SoC så att molnet ser det tillgängliga fönstret (t.ex. 5-100%) som 0-100%.
+        # Detta döljer hårdvarureserven helt för molnet.
+        reported_soc = 0.0
+        if hardware_min_soc < 100.0:
+            reported_soc = max(0.0, (soc - hardware_min_soc) / (100.0 - hardware_min_soc) * 100.0)
+        reported_soc = round(reported_soc, 1)
 
         is_solar_override = False
         if hasattr(self, "peak_guard") and self.peak_guard:
@@ -171,7 +197,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         # 5. Payload (Endast det backend behöver)
         payload = {
             "api_key": self.api_key,
-            "soc": soc,
+            "soc": reported_soc,
             "is_solar_override": is_solar_override,
             "consumption_forecast_kwh": consumption_forecast,
             "ha_version": self.version,
@@ -225,6 +251,14 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                     # Låt batterihanteraren verkställa beslutet, om inte PeakGuard har tagit över lokalt
                     if not is_solar_override and not (hasattr(self, "peak_guard") and self.peak_guard.is_active):
+                        # Spärra manuell urladdning om vi har nått hårdvarureserven (t.ex. Sonnen Backup)
+                        if action == "DISCHARGE" and soc <= hardware_min_soc:
+                            _LOGGER.info(
+                                f"Batteriets SoC ({soc}%) har nått hårdvarureserven "
+                                f"({hardware_min_soc}%). Avbryter urladdning."
+                            )
+                            action = "IDLE"
+
                         await self.battery_api.apply_action(action, target_kw)
 
                     # --- Hämta AI Sammanfattning (Endast vid uppstart och 04:15) ---

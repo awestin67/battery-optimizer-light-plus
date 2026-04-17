@@ -121,6 +121,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 coordinator, sonnen_coord, "SystemStatus", "Sonnen System Status",
                 None, None, EntityCategory.DIAGNOSTIC
             ),
+            SonnenInternalSensor(
+                coordinator, sonnen_coord, "EM_USOC", "Sonnen Backup Reserv",
+                PERCENTAGE, SensorDeviceClass.BATTERY, EntityCategory.DIAGNOSTIC
+            ),
             SonnenVirtualLoadSensor(coordinator, sonnen_coord),
         ])
 

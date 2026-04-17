@@ -39,12 +39,25 @@ class SonnenAPI:
         }
 
     async def async_get_status(self):
-        """Hämtar status."""
+        """Hämtar status och konfiguration."""
         url = f"{self._base_url}{API_STATUS}"
+        config_url = f"{self._base_url}{API_CONFIG}"
         try:
             async with self._session.get(url, headers=self._headers) as response:
                 response.raise_for_status()
-                return await response.json()
+                status_data = await response.json()
+
+            # Hämta även konfiguration för att få EM_USOC (Backup-reserv)
+            try:
+                async with self._session.get(config_url, headers=self._headers) as conf_response:
+                    if conf_response.status == 200:
+                        conf_data = await conf_response.json()
+                        if "EM_USOC" in conf_data:
+                            status_data["EM_USOC"] = conf_data["EM_USOC"]
+            except Exception as conf_e:
+                _LOGGER.debug("Kunde inte hämta konfiguration (EM_USOC) från Sonnen: %s", conf_e)
+
+            return status_data
         except Exception as e:
             _LOGGER.debug("Kunde inte hämta data från Sonnen: %s", e)
             raise

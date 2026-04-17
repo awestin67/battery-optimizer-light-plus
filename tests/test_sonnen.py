@@ -202,6 +202,7 @@ async def test_sonnen_api_methods():
 
     # aiohttp:s raise_for_status är synkron, så vi mockar den specifikt
     mock_response.raise_for_status = MagicMock()
+    mock_response.status = 200
 
     # Konfigurera mock_session att returnera mock_response när den anropas med 'async with'
     mock_session.get.return_value.__aenter__.return_value = mock_response
@@ -213,11 +214,16 @@ async def test_sonnen_api_methods():
     expected_headers = {"Auth-Token": "my-secret-token", "Content-Type": "application/json"}
 
     # 1. Test get_status
-    mock_response.json.return_value = {"USOC": 50}
+    mock_response.json.side_effect = [{"USOC": 50}, {"EM_USOC": 5}]
     status = await api.async_get_status()
-    assert status == {"USOC": 50}
-    mock_session.get.assert_called_once_with(
+    assert status == {"USOC": 50, "EM_USOC": 5}
+
+    assert mock_session.get.call_count == 2
+    mock_session.get.assert_any_call(
         "http://192.168.1.50:80/api/v2/status", headers=expected_headers
+    )
+    mock_session.get.assert_any_call(
+        "http://192.168.1.50:80/api/v2/configurations", headers=expected_headers
     )
 
     # 2. Test set_operating_mode

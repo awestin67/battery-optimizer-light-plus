@@ -65,6 +65,7 @@ def mock_battery():
     mock.get_house_consumption = AsyncMock(return_value=None)
     mock.get_status_text = AsyncMock(return_value=None)
     mock.apply_action = AsyncMock()
+    mock.get_min_soc = AsyncMock(return_value=None)
     return mock
 
 @pytest.mark.asyncio
@@ -485,6 +486,59 @@ async def test_coordinator_sends_solar_override_flag(mock_hass_instance):
         assert payload["soc"] == 50.0
         assert payload["ha_version"] == "1.2.3"
         assert payload["current_consumption_kw"] == 4.5
+
+@pytest.mark.asyncio
+async def test_coordinator_respects_hardware_reserve(mock_hass_instance, mock_battery):
+    """Krav: Coordinator ska skala SoC för molnet och avbryta DISCHARGE lokalt om SoC <= reserv."""
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
+
+    # Ta bort metoden från mocken just här så att testet beter sig exakt som ett Sonnen-batteri
+    del mock_battery.get_min_soc
+
+    coordinator.battery_api = mock_battery
+    # Sätt fysisk SoC till 14.5%
+    mock_battery.get_current_soc.return_value = 14.5
+
+    # Mocka fram en EM_USOC (Backup-reserv) på 5%
+    mock_battery.coordinator = MagicMock()
+    mock_battery.coordinator.data = {"EM_USOC": "5"}
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        # Backend skickar DISCHARGE
+        mock_post.json = AsyncMock(return_value={"action": "DISCHARGE", "target_power_kw": 2.0})
+
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        await coordinator._async_update_data()
+
+        # Verifiera att molnet fick den SKALADE SoC:n
+        # (14.5 - 5) / (100 - 5) * 100 = 9.5 / 95 * 100 = 10.0%
+        payload = mock_session.post.call_args[1]["json"]
+        assert payload["soc"] == 10.0
+        assert "hardware_reserve_soc" not in payload
+
+        # Verifiera att DISCHARGE går igenom eftersom 14.5 > 5.0
+        mock_battery.apply_action.assert_called_with("DISCHARGE", 2.0)
+
+        # --- Test 2: Nå botten (SoC = 5.0%) ---
+        mock_battery.get_current_soc.return_value = 5.0
+        mock_battery.apply_action.reset_mock()
+
+        await coordinator._async_update_data()
+
+        payload2 = mock_session.post.call_args[1]["json"]
+        assert payload2["soc"] == 0.0  # Skalad SoC ska bli 0.0%
+
+        # Verifiera att action blev IDLE istället för DISCHARGE eftersom vi nått reserven
+        mock_battery.apply_action.assert_called_with("IDLE", 2.0)
 
 @pytest.mark.asyncio
 async def test_peak_guard_calculates_load_with_inverted_grid(mock_hass_instance, mock_battery):
