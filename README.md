@@ -28,6 +28,7 @@ Systemet kombinerar **Molnintelligens** (för prisoptimering och arbitrage) med 
 ### ☀️ Sonnen
 Kräver ett Sonnen-batteri med **API v2** aktiverat.
 *   **Auth-Token:** Du behöver ditt Auth-Token för lokal styrning. Logga in på ditt batteri (`http://<IP-ADRESS>/dash/login`) som *User*, välj **Software integration**, slå på **JSON API** (Read & Write) och kopiera ditt Auth-Token.
+*   **Backup Reserv (EM_USOC):** Om du använder Sonnens backup-funktion (reservström) läser integrationen automatiskt av din reserverade nivå (t.ex. 5%). Denna reserv döljs lokalt så att molnet ser ditt tillgängliga fönster som 0-100%. **Viktigt:** Du måste dra av denna procentandel från din *totala batterikapacitet* när du konfigurerar ditt batteri i molnportalen (t.ex. 22 kWh - 5% = 20.9 kWh) för att AI:n ska räkna rätt på tillgänglig energi.
 
 ### 🌑 Huawei Luna2000
 Styr Huawei-batterier via den officiella Home Assistant-integrationen.
@@ -100,7 +101,8 @@ När systemet är igång skapas en mängd sensorer för att hjälpa dig övervak
 * 🔌 **`sensor.sonnen_grid_in_out`** *(Endast Sonnen)*: Visar det faktiska nätutbytet (Grid In/Out) i realtid (W). **Plus (+)** = Importerar (köper), **Minus (-)** = Exporterar (säljer).
 * 🔋 **`sensor.*_battery_in_out`** *(Sonnen, Huawei & Homevolt)*: Batteriets effekt i realtid (W). Standard för Sonnen/Homevolt/Generic är att **Minus (-)** = Laddar. För Huawei är detta inverterat (se notis under Huawei-sektionen ovan).
 * 📊 **`sensor.*_soc`** *(Sonnen, Huawei & Homevolt)*: Batteriets nuvarande laddningsnivå (%).
-* 💰 **`sensor.optimizer_light_daily_savings`**: Dagens totala besparing (SEK) beräknad utifrån batteriets historik.
+* 🛡️ **`sensor.*_sonnen_backup_reserv`** *(Endast Sonnen)*: Visar den inställda hårdvarureserven för strömavbrott (%). Sensorn är tillagd så du enkelt kan verifiera vilken reservnivå molnet och effektvakten tar hänsyn till i sina beräkningar.
+* � **`sensor.optimizer_light_daily_savings`**: Dagens totala besparing (SEK) beräknad utifrån batteriets historik.
 * 🤖 **`sensor.optimizer_light_ai_summary`**: Daglig AI-genererad sammanfattning av batteriets prestanda. Hela texten sparas i sensorns attribut.
 * 📉 **`sensor.battery_optimizer_graph_data`**: Innehåller all grafdata (historik och framtida prognos) dold i sina JSON-attribut (används för ApexCharts nedan).
 
