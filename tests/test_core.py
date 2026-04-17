@@ -1801,8 +1801,8 @@ async def test_coordinator_retries_ai_summary_within_window(mock_hass_instance, 
         assert coordinator._last_ai_fetch_day == fake_now.date()
 
 @pytest.mark.asyncio
-async def test_coordinator_ai_summary_same_as_yesterday(mock_hass_instance, mock_battery):
-    """Krav: Om AI-texten är exakt samma som igår, ska vi fortsätta försöka (datumet sparas inte)."""
+async def test_coordinator_ai_summary_fetches_once_per_day(mock_hass_instance, mock_battery):
+    """Krav: API-anropet lyckades, så hämtdatumet sparas för idag även om texten är oförändrad."""
     coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
     coordinator.battery_api = mock_battery
     mock_battery.get_current_soc.return_value = 50.0
@@ -1850,19 +1850,17 @@ async def test_coordinator_ai_summary_same_as_yesterday(mock_hass_instance, mock
 
         data = await coordinator._async_update_data()
 
-        # Texten är den samma, MEN datumet ska INTE ha uppdaterats till idag!
+        # Datumet uppdateras till idag vid lyckat anrop, även om texten är oförändrad
         assert data["ai_summary"] == old_text
-        assert getattr(coordinator, "_last_ai_fetch_day", None) == yesterday
+        assert getattr(coordinator, "_last_ai_fetch_day", None) == fake_now.date()
 
-        # Om backend i nästa cykel istället skickar en ny text
+        # I nästa cykel (inom samma dag) försöker vi INTE hämta igen
         new_text = "Sammanfattning för idag: Nya händelser."
         mock_ai_resp.json = AsyncMock(return_value={"ai_summary": new_text})
 
-        # Sätt ny data till coordinatorn så att fallback ai text blir rätt för nästa cykel
         coordinator.data = data
-
         data2 = await coordinator._async_update_data()
 
-        # Nu ska datumet ha uppdaterats eftersom texten skilde sig från fallbacken!
-        assert data2["ai_summary"] == new_text
+        # Eftersom datumet uppdaterades tidigare, ska den inte hämta den nya texten nu
+        assert data2["ai_summary"] == old_text
         assert coordinator._last_ai_fetch_day == fake_now.date()
