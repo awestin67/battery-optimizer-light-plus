@@ -68,148 +68,148 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         """Körs var 5:e minut."""
-        # 1. Hämta SOC
-        soc = await self.battery_api.get_current_soc()
-
-        hardware_min_soc = 0.0
-        # Hämta reservkapacitet om batteriet stöder det (tex Sonnen EM_USOC)
-        if hasattr(self.battery_api, "get_min_soc"):
-            min_val = await self.battery_api.get_min_soc()
-            if min_val is not None:
-                hardware_min_soc = min_val
-
-        if (
-            hardware_min_soc == 0.0
-            and hasattr(self.battery_api, "coordinator")
-            and getattr(self.battery_api.coordinator, "data", None)
-        ):
-            em_usoc = self.battery_api.coordinator.data.get("EM_USOC")
-            if em_usoc is not None:
-                try:
-                    hardware_min_soc = float(em_usoc)
-                except (ValueError, TypeError):
-                    pass
-
-        if soc is None:
-            # Om vi inte kan läsa SoC vid uppstart, sätter vi den till 0.0 temporärt
-            # så att vi ändå kan hämta ett beslut från molnet och släppa manuellt läge.
-            _LOGGER.warning("Could not retrieve SoC from battery. Using 0.0 temporarily to fetch cloud action.")
-            soc = 0.0
-
-        # Skala SoC så att molnet ser det tillgängliga fönstret (t.ex. 5-100%) som 0-100%.
-        # Detta döljer hårdvarureserven helt för molnet.
-        reported_soc = 0.0
-        if hardware_min_soc < 100.0:
-            reported_soc = max(0.0, (soc - hardware_min_soc) / (100.0 - hardware_min_soc) * 100.0)
-        reported_soc = round(reported_soc, 1)
-
-        is_solar_override = False
-        if hasattr(self, "peak_guard") and self.peak_guard:
-            is_solar_override = self.peak_guard.is_solar_override
-
-        # 3. Hämta förbrukningsprognos (Valfritt)
-        consumption_forecast = None
-        if self.consumption_forecast_entity:
-            forecast_state = self.hass.states.get(self.consumption_forecast_entity)
-            if forecast_state and forecast_state.state not in ["unknown", "unavailable"]:
-                try:
-                    consumption_forecast = float(forecast_state.state)
-                except ValueError:
-                    pass  # Ignorera om värdet inte är ett tal
-
-        # 4. Hämta aktuell förbrukning / Huslast (kW)
-        current_consumption_kw = 0.0
-        current_load_w = None
-
-        # --- PRIO 1: Beräkning av formeln (Högsta prio via intern batterilogik) ---
-        # Huawei räknar t.ex. ut Grid + Inverter Active Power här för att inkludera solproduktion
-        if hasattr(self.battery_api, "get_calculated_consumption"):
-            current_load_w = await self.battery_api.get_calculated_consumption()
-
-        # Inbyggd genväg för Sonnen (Sonnen Husförbrukning / Consumption_W)
-        if current_load_w is None and hasattr(self.battery_api, "coordinator"):
-            data = getattr(self.battery_api.coordinator, "data", None)
-            if data and "Consumption_W" in data:
-                try:
-                    current_load_w = float(data["Consumption_W"])
-                except (ValueError, TypeError):
-                    pass
-
-        # --- PRIO 2: Användarens konfigurerade virtuella last-sensor ---
-        if current_load_w is None:
-            virtual_load_id = self.config.get("virtual_load_sensor")
-            if virtual_load_id:
-                state = self.hass.states.get(virtual_load_id)
-                if state and state.state not in ["unknown", "unavailable"]:
-                    try:
-                        current_load_w = float(state.state)
-                    except ValueError:
-                        pass
-
-        # --- PRIO 3: Beräkning via generiska HA-sensorer (Grid + Batteri) ---
-        # Används om ingen annan metod finns. Observera att detta missar solproduktion.
-        if current_load_w is None:
-            grid_id = self.config.get("grid_sensor")
-            bat_id = self.config.get("battery_power_sensor")
-
-            if grid_id or bat_id:
-                g_val = None
-                b_val = None
-
-                if grid_id:
-                    grid_state = self.hass.states.get(grid_id)
-                    if grid_state and grid_state.state not in ["unknown", "unavailable"]:
-                        try:
-                            g_val = float(grid_state.state)
-                            if self.config.get("grid_sensor_invert", False):
-                                g_val = -g_val
-                        except ValueError:
-                            pass
-
-                if bat_id:
-                    bat_state = self.hass.states.get(bat_id)
-                    if bat_state and bat_state.state not in ["unknown", "unavailable"]:
-                        try:
-                            b_val = float(bat_state.state)
-                            if self.config.get("battery_sensor_invert", False):
-                                b_val = -b_val
-                        except ValueError:
-                            pass
-
-                if g_val is not None or b_val is not None:
-                    current_load_w = (g_val or 0.0) + (b_val or 0.0)
-
-        # --- PRIO 4: Fallback till API-specifika sensorer (t.ex. Huawei EMMA/SDongle) ---
-        if current_load_w is None and hasattr(self.battery_api, "get_house_consumption"):
-            current_load_w = await self.battery_api.get_house_consumption()
-
-        if current_load_w is not None:
-            # Ett hus kan inte ha negativ förbrukning. Negativa värden beror oftast på
-            # mätfel eller fördröjningar mellan sensorernas uppdateringar.
-            if current_load_w < 0:
-                current_load_w = 0.0
-            current_consumption_kw = round(current_load_w / 1000.0, 3)
-        else:
-            _LOGGER.debug("Husförbrukning kunde inte beräknas (sensorer under uppstart?). Skickar 0.0 kW till molnet.")
-
-        self.current_load_w = current_load_w
-
-        # 5. Payload (Endast det backend behöver)
-        payload = {
-            "api_key": self.api_key,
-            "soc": reported_soc,
-            "is_solar_override": is_solar_override,
-            "consumption_forecast_kwh": consumption_forecast,
-            "ha_version": self.version,
-            "current_consumption_kw": current_consumption_kw
-        }
-
-        _LOGGER.debug(f"Light-Request: {payload}")
-
-        # Retry-mekanism (3 försök)
         session = async_get_clientsession(self.hass)
+
         for attempt in range(3):
             try:
+                # 1. Hämta SOC
+                soc = await self.battery_api.get_current_soc()
+
+                hardware_min_soc = 0.0
+                # Hämta reservkapacitet om batteriet stöder det (tex Sonnen EM_USOC)
+                if hasattr(self.battery_api, "get_min_soc"):
+                    min_val = await self.battery_api.get_min_soc()
+                    if min_val is not None:
+                        hardware_min_soc = min_val
+
+                if (
+                    hardware_min_soc == 0.0
+                    and hasattr(self.battery_api, "coordinator")
+                    and getattr(self.battery_api.coordinator, "data", None)
+                ):
+                    em_usoc = self.battery_api.coordinator.data.get("EM_USOC")
+                    if em_usoc is not None:
+                        try:
+                            hardware_min_soc = float(em_usoc)
+                        except (ValueError, TypeError):
+                            pass
+
+                if soc is None:
+                    raise ValueError("Batteriets SoC kunde inte läsas av. Sensorn kanske startar upp?")
+
+                # Skala SoC så att molnet ser det tillgängliga fönstret (t.ex. 5-100%) som 0-100%.
+                # Detta döljer hårdvarureserven helt för molnet.
+                reported_soc = 0.0
+                if hardware_min_soc < 100.0:
+                    reported_soc = max(0.0, (soc - hardware_min_soc) / (100.0 - hardware_min_soc) * 100.0)
+                reported_soc = round(reported_soc, 1)
+
+                is_solar_override = False
+                if hasattr(self, "peak_guard") and self.peak_guard:
+                    is_solar_override = self.peak_guard.is_solar_override
+
+                # 3. Hämta förbrukningsprognos (Valfritt)
+                consumption_forecast = None
+                if self.consumption_forecast_entity:
+                    forecast_state = self.hass.states.get(self.consumption_forecast_entity)
+                    if forecast_state and forecast_state.state not in ["unknown", "unavailable"]:
+                        try:
+                            consumption_forecast = float(forecast_state.state)
+                        except ValueError:
+                            pass  # Ignorera om värdet inte är ett tal
+
+                # 4. Hämta aktuell förbrukning / Huslast (kW)
+                current_consumption_kw = 0.0
+                current_load_w = None
+
+                # --- PRIO 1: Beräkning av formeln (Högsta prio via intern batterilogik) ---
+                # Huawei räknar t.ex. ut Grid + Inverter Active Power här för att inkludera solproduktion
+                if hasattr(self.battery_api, "get_calculated_consumption"):
+                    current_load_w = await self.battery_api.get_calculated_consumption()
+
+                # Inbyggd genväg för Sonnen (Sonnen Husförbrukning / Consumption_W)
+                if current_load_w is None and hasattr(self.battery_api, "coordinator"):
+                    data = getattr(self.battery_api.coordinator, "data", None)
+                    if data and "Consumption_W" in data:
+                        try:
+                            current_load_w = float(data["Consumption_W"])
+                        except (ValueError, TypeError):
+                            pass
+
+                # --- PRIO 2: Användarens konfigurerade virtuella last-sensor ---
+                if current_load_w is None:
+                    virtual_load_id = self.config.get("virtual_load_sensor")
+                    if virtual_load_id:
+                        state = self.hass.states.get(virtual_load_id)
+                        if state and state.state not in ["unknown", "unavailable"]:
+                            try:
+                                current_load_w = float(state.state)
+                            except ValueError:
+                                pass
+
+                # --- PRIO 3: Beräkning via generiska HA-sensorer (Grid + Batteri) ---
+                # Används om ingen annan metod finns. Observera att detta missar solproduktion.
+                if current_load_w is None:
+                    grid_id = self.config.get("grid_sensor")
+                    bat_id = self.config.get("battery_power_sensor")
+
+                    if grid_id or bat_id:
+                        g_val = None
+                        b_val = None
+
+                        if grid_id:
+                            grid_state = self.hass.states.get(grid_id)
+                            if grid_state and grid_state.state not in ["unknown", "unavailable"]:
+                                try:
+                                    g_val = float(grid_state.state)
+                                    if self.config.get("grid_sensor_invert", False):
+                                        g_val = -g_val
+                                except ValueError:
+                                    pass
+
+                        if bat_id:
+                            bat_state = self.hass.states.get(bat_id)
+                            if bat_state and bat_state.state not in ["unknown", "unavailable"]:
+                                try:
+                                    b_val = float(bat_state.state)
+                                    if self.config.get("battery_sensor_invert", False):
+                                        b_val = -b_val
+                                except ValueError:
+                                    pass
+
+                        if g_val is not None or b_val is not None:
+                            current_load_w = (g_val or 0.0) + (b_val or 0.0)
+
+                # --- PRIO 4: Fallback till API-specifika sensorer (t.ex. Huawei EMMA/SDongle) ---
+                if current_load_w is None and hasattr(self.battery_api, "get_house_consumption"):
+                    current_load_w = await self.battery_api.get_house_consumption()
+
+                if current_load_w is not None:
+                    # Ett hus kan inte ha negativ förbrukning. Negativa värden beror oftast på
+                    # mätfel eller fördröjningar mellan sensorernas uppdateringar.
+                    if current_load_w < 0:
+                        current_load_w = 0.0
+                    current_consumption_kw = round(current_load_w / 1000.0, 3)
+                else:
+                    _LOGGER.debug(
+                        "Husförbrukning kunde inte beräknas (sensorer under uppstart?). "
+                        "Skickar 0.0 kW till molnet."
+                    )
+
+                self.current_load_w = current_load_w
+
+                # 5. Payload (Endast det backend behöver)
+                payload = {
+                    "api_key": self.api_key,
+                    "soc": reported_soc,
+                    "is_solar_override": is_solar_override,
+                    "consumption_forecast_kwh": consumption_forecast,
+                    "ha_version": self.version,
+                    "current_consumption_kw": current_consumption_kw
+                }
+
+                _LOGGER.debug(f"Light-Request: {payload}")
+
                 async with session.post(
                     self.api_url, json=payload, timeout=aiohttp.ClientTimeout(total=30)
                 ) as response:
@@ -315,7 +315,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                 if attempt < 2:
                     _LOGGER.warning(
-                        "Connection attempt %d failed with %s: %s. Retrying in 5s...",
+                        "Update attempt %d failed with %s: %s. Retrying in 5s...",
                         attempt + 1,
                         type(err).__name__,
                         error_detail,
@@ -329,5 +329,5 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     except Exception as fallback_err:
                         _LOGGER.error(f"Failed to set battery to IDLE on connection error: {fallback_err}")
                     raise UpdateFailed(
-                        f"Connection error after 3 attempts: {type(err).__name__}: {error_detail}"
+                        f"Update error after 3 attempts: {type(err).__name__}: {error_detail}"
                     ) from err

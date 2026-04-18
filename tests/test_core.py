@@ -69,44 +69,34 @@ def mock_battery():
     return mock
 
 @pytest.mark.asyncio
-async def test_coordinator_handles_unavailable_soc(mock_hass_instance):
+async def test_coordinator_handles_unavailable_soc(mock_hass_instance, mock_battery):
     """
-    Krav: Om SoC är otillgänglig (t.ex. vid uppstart) ska koordinatorn
-    sätta SoC till 0.0 och ändå anropa API:et.
+    Krav: Om SoC är otillgänglig ska koordinatorn kasta ett fel och göra retries,
+    och till slut släppa till IDLE och kasta UpdateFailed, för att inte
+    förstöra molnets historik med falska nollor.
     """
     coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
-    coordinator.data = {"action": "OLD_DATA"}  # Set some old data
+    coordinator.battery_api = mock_battery
 
-    # Mocka get_current_soc att returnera None och virtuella lasten att returnera 3000W
-    def mock_get_state(entity_id):
-        mock_state = MagicMock()
-        if entity_id == "sensor.soc":
-            mock_state.state = "unavailable"
-        elif entity_id == "sensor.husets_netto_last_virtuell":
-            mock_state.state = "3000"
-        else:
-            mock_state.state = "unavailable"
-        return mock_state
-    mock_hass_instance.states.get.side_effect = mock_get_state
+    # Mocka get_current_soc att returnera None
+    mock_battery.get_current_soc.return_value = None
 
     patch_session = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
-    with patch(patch_session) as mock_get_session:
+    patch_sleep = "custom_components.battery_optimizer_light_plus.coordinator.asyncio.sleep"
+    with patch(patch_session) as mock_get_session, patch(patch_sleep) as mock_sleep:
         mock_session = MagicMock()
         mock_get_session.return_value = mock_session
-        mock_post = mock_session.post.return_value.__aenter__.return_value
-        mock_post.status = 200
-        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
 
-        mock_get = mock_session.get.return_value.__aenter__.return_value
-        mock_get.status = 200
-        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+        with pytest.raises(UpdateFailed) as excinfo:
+            await coordinator._async_update_data()
 
-        result = await coordinator._async_update_data()
-        assert result["action"] == "IDLE"
-        mock_session.post.assert_called_once()
-        payload = mock_session.post.call_args[1]["json"]
-        assert payload["soc"] == 0.0
-        assert payload["current_consumption_kw"] == 3.0
+        # Ska ha försökt vänta 2 gånger (5s)
+        assert mock_sleep.call_count == 2
+        # Ska ha satt batteriet i IDLE
+        mock_battery.apply_action.assert_called_with("IDLE")
+        # Ska inte ha postat något till molnet
+        mock_session.post.assert_not_called()
+        assert "SoC" in str(excinfo.value)
 
 @pytest.mark.asyncio
 async def test_peak_guard_triggers_discharge(mock_hass_instance, mock_battery):
@@ -1423,7 +1413,7 @@ async def test_coordinator_total_failure(mock_hass_instance, mock_battery):
 
         assert mock_session.post.call_count == 3
         assert mock_sleep.call_count == 2
-        assert "Connection error after 3 attempts" in str(excinfo.value)
+        assert "Update error after 3 attempts" in str(excinfo.value)
         mock_battery.apply_action.assert_called_with("IDLE")
 
 @pytest.mark.asyncio
