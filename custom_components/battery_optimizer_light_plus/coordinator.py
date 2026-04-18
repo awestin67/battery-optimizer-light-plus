@@ -293,9 +293,12 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                                     ai_data = await ai_resp.json()
                                     fetched_summary = ai_data.get("ai_summary", default_ai_text)
                                     data["ai_summary"] = fetched_summary
-                                    # Markera som hämtad för idag om API-anropet lyckades,
-                                    # oavsett om innehållet ändrades eller var standardtexten.
-                                    self._last_ai_fetch_day = now.date()
+
+                                    # Markera endast som hämtad för idag om texten faktiskt har
+                                    # ändrats från vår tidigare cachade version (och inte är default).
+                                    # Om backend är långsam och ger gårdagens text kl 04:15 fortsätter vi försöka.
+                                    if fetched_summary != default_ai_text and fetched_summary != fallback_ai_text:
+                                        self._last_ai_fetch_day = now.date()
                                 else:
                                     data["ai_summary"] = fallback_ai_text
                         except Exception as e:

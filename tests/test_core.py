@@ -1848,8 +1848,8 @@ async def test_coordinator_retries_ai_summary_within_window(mock_hass_instance, 
         assert coordinator._last_ai_fetch_day == fake_now.date()
 
 @pytest.mark.asyncio
-async def test_coordinator_ai_summary_fetches_once_per_day(mock_hass_instance, mock_battery):
-    """Krav: API-anropet lyckades, så hämtdatumet sparas för idag även om texten är oförändrad."""
+async def test_coordinator_ai_summary_waits_for_new_text(mock_hass_instance, mock_battery):
+    """Krav: Om API-anropet returnerar samma text som igår, ska vi fortsätta försöka (inom fönstret)."""
     coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
     coordinator.battery_api = mock_battery
     mock_battery.get_current_soc.return_value = 50.0
@@ -1880,7 +1880,7 @@ async def test_coordinator_ai_summary_fetches_once_per_day(mock_hass_instance, m
         mock_graph_resp.status = 200
         mock_graph_resp.json = AsyncMock(return_value={"history": [], "forecast": []})
 
-        # Backend skickar samma text som vi redan hade
+        # Backend skickar samma text som vi redan hade (t.ex. har inte hunnit generera ny)
         mock_ai_resp = MagicMock()
         mock_ai_resp.__aenter__.return_value = mock_ai_resp
         mock_ai_resp.status = 200
@@ -1897,17 +1897,17 @@ async def test_coordinator_ai_summary_fetches_once_per_day(mock_hass_instance, m
 
         data = await coordinator._async_update_data()
 
-        # Datumet uppdateras till idag vid lyckat anrop, även om texten är oförändrad
+        # Texten är den samma, så vi sparar INTE datumet som "klar för idag"
         assert data["ai_summary"] == old_text
-        assert getattr(coordinator, "_last_ai_fetch_day", None) == fake_now.date()
+        assert getattr(coordinator, "_last_ai_fetch_day", None) == yesterday
 
-        # I nästa cykel (inom samma dag) försöker vi INTE hämta igen
+        # I nästa cykel (fortfarande inom samma fönster) gör backend klart texten
         new_text = "Sammanfattning för idag: Nya händelser."
         mock_ai_resp.json = AsyncMock(return_value={"ai_summary": new_text})
 
         coordinator.data = data
         data2 = await coordinator._async_update_data()
 
-        # Eftersom datumet uppdaterades tidigare, ska den inte hämta den nya texten nu
-        assert data2["ai_summary"] == old_text
+        # Nu ska datumet ha uppdaterats eftersom texten skilde sig från gårdagens
+        assert data2["ai_summary"] == new_text
         assert coordinator._last_ai_fetch_day == fake_now.date()
