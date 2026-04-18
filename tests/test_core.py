@@ -1678,6 +1678,7 @@ def test_graph_data_sensor():
     coordinator = MagicMock()
     coordinator.config = {"api_key": "test_key"}
     coordinator.data = {
+        "last_update_time": "2026-04-18T07:12:00+00:00",
         "graph_data": {
             "history": [{"timestamp": "1", "val": 1}],
             "forecast": [{"timestamp": "2", "val": 2}]
@@ -1686,10 +1687,12 @@ def test_graph_data_sensor():
 
     sensor = BatteryLightGraphDataSensor(coordinator)
     assert sensor.state == "OK"
+    assert sensor.extra_state_attributes["last_update_time"] == "2026-04-18T07:12:00+00:00"
 
     # Test utan data
     coordinator.data = None
     assert sensor.state == "Waiting for data"
+    assert sensor.extra_state_attributes == {}
 
 @patch("custom_components.battery_optimizer_light_plus.sensor.dt_util")
 def test_daily_savings_sensor(mock_dt_util):

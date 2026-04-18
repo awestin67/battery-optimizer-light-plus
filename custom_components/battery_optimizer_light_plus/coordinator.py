@@ -224,6 +224,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     data = await response.json()
 
                     # --- Hämta graf-data ---
+                    fallback_graph_data = self.data.get("graph_data", {}) if self.data else {}
                     try:
                         history_hours = int(self.config.get("graph_history_hours", 24))
                         base_api_url = self.config.get("api_url", "").rstrip("/")
@@ -236,8 +237,10 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                                 data["graph_data"] = await graph_response.json()
                             else:
                                 _LOGGER.debug("Kunde inte hämta grafdata. Status: %s", graph_response.status)
+                                data["graph_data"] = fallback_graph_data
                     except Exception as e:
                         _LOGGER.debug("Fel vid hämtning av grafdata: %s", e)
+                        data["graph_data"] = fallback_graph_data
 
                     action = data.get("action", "IDLE")
 
@@ -301,6 +304,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     else:
                         data["ai_summary"] = fallback_ai_text
 
+                    data["last_update_time"] = now.isoformat()
                     return data
 
             except Exception as err:

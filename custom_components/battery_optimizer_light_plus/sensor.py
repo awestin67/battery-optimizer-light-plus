@@ -570,6 +570,19 @@ class BatteryLightGraphDataSensor(CoordinatorEntity, SensorEntity):
             return "OK"
         return "Waiting for data"
 
+    @property
+    def extra_state_attributes(self):
+        """
+        Tvingar fram ett state-change-event i Home Assistant genom att returnera
+        en tidsstämpel som uppdateras vid varje lyckad hämtning. Detta triggar
+        ApexCharts att faktiskt hämta den nya datan från vårt interna API.
+        """
+        if self.coordinator.data:
+            return {
+                "last_update_time": self.coordinator.data.get("last_update_time")
+            }
+        return {}
+
 class BatteryLightDailySavingsSensor(BatteryOptimizerSensorBase):
     """Sensor som beräknar och visar dagens totala besparingar baserat på historikdatan."""
 
