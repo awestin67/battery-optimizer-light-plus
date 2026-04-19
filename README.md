@@ -268,7 +268,11 @@ series:
       r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const now = new Date().getTime();
-        return (api.history || []).filter(x => new Date(x.timestamp).getTime() <= now).map(x => [new Date(x.timestamp).getTime(), x.reported_soc]);
+        return (api.history || []).filter(x => new Date(x.timestamp).getTime() <= now).map(x => {
+          let soc = x.reported_soc;
+          if (soc > 90 && x.reason && x.reason.includes('Tomt')) soc = 0;
+          return [new Date(x.timestamp).getTime(), soc];
+        });
       });
   - entity: sensor.battery_optimizer_graph_data
     name: SoC (Prognos)

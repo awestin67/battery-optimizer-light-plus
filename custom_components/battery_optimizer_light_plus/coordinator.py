@@ -104,6 +104,17 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     reported_soc = max(0.0, (soc - hardware_min_soc) / (100.0 - hardware_min_soc) * 100.0)
                 reported_soc = round(reported_soc, 1)
 
+                # --- SENSOR GLITCH FILTER ---
+                # Förhindrar orimliga spikar (t.ex. när Sonnen går ner i sleep mode på 0% och rapporterar 100%)
+                if hasattr(self, "_last_valid_soc") and self._last_valid_soc is not None:
+                    if reported_soc - self._last_valid_soc > 30.0:
+                        _LOGGER.warning(
+                            f"Ignorerar orimligt SoC-hopp från {self._last_valid_soc}% till {reported_soc}%. "
+                            "Förmodligen ett sensor-glitch från batteriet."
+                        )
+                        reported_soc = self._last_valid_soc
+                self._last_valid_soc = reported_soc
+
                 is_solar_override = False
                 if hasattr(self, "peak_guard") and self.peak_guard:
                     is_solar_override = self.peak_guard.is_solar_override
