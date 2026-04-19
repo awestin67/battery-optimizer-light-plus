@@ -1736,8 +1736,8 @@ def test_daily_savings_sensor(mock_dt_util):
     assert sensor.state == 0.0
 
 @pytest.mark.asyncio
-async def test_coordinator_fetches_ai_summary_at_0415(mock_hass_instance, mock_battery):
-    """Krav: Coordinator ska hämta AI-sammanfattningen kl 04:15."""
+async def test_coordinator_fetches_ai_summary_after_0600(mock_hass_instance, mock_battery):
+    """Krav: Coordinator ska hämta AI-sammanfattningen kl 06:00 lokal tid."""
     coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
     coordinator.battery_api = mock_battery
     mock_battery.get_current_soc.return_value = 50.0
@@ -1750,8 +1750,8 @@ async def test_coordinator_fetches_ai_summary_at_0415(mock_hass_instance, mock_b
     patch_now = "custom_components.battery_optimizer_light_plus.coordinator.dt_util.now"
 
     with patch(patch_session) as mock_get_session, patch(patch_now) as mock_now:
-        # Fejka klockan till 04:16 idag
-        fake_now = datetime.datetime(2026, 4, 15, 4, 16, 0, tzinfo=datetime.timezone.utc)
+        # Fejka klockan till 06:15 idag
+        fake_now = datetime.datetime(2026, 4, 15, 6, 15, 0, tzinfo=datetime.timezone.utc)
         mock_now.return_value = fake_now
 
         mock_session = MagicMock()
@@ -1772,7 +1772,7 @@ async def test_coordinator_fetches_ai_summary_at_0415(mock_hass_instance, mock_b
         mock_ai_resp = MagicMock()
         mock_ai_resp.__aenter__.return_value = mock_ai_resp
         mock_ai_resp.status = 200
-        mock_ai_resp.json = AsyncMock(return_value={"ai_summary": "Ny AI-text från 04:15"})
+        mock_ai_resp.json = AsyncMock(return_value={"ai_summary": "Ny AI-text från 06:15"})
 
         # Styr vilket svar som ges beroende på vilken URL som anropas
         def get_side_effect(url, *args, **kwargs):
@@ -1787,7 +1787,7 @@ async def test_coordinator_fetches_ai_summary_at_0415(mock_hass_instance, mock_b
         data = await coordinator._async_update_data()
 
         # Verifiera att datan uppdaterades
-        assert data["ai_summary"] == "Ny AI-text från 04:15"
+        assert data["ai_summary"] == "Ny AI-text från 06:15"
         assert coordinator._last_ai_fetch_day == fake_now.date()
 
         # Verifiera att GET anropades exakt två gånger (en för graph_data, en för ai_summary)
@@ -1798,7 +1798,7 @@ async def test_coordinator_fetches_ai_summary_at_0415(mock_hass_instance, mock_b
 
 @pytest.mark.asyncio
 async def test_coordinator_retries_ai_summary_within_window(mock_hass_instance, mock_battery):
-    """Krav: Om AI-texten dröjer ska vi fortsätta försöka fram till 06:00."""
+    """Krav: Om AI-texten dröjer ska vi fortsätta försöka tills vi får den (öppet fönster)."""
     coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
     coordinator.battery_api = mock_battery
     mock_battery.get_current_soc.return_value = 50.0
@@ -1811,8 +1811,8 @@ async def test_coordinator_retries_ai_summary_within_window(mock_hass_instance, 
     patch_now = "custom_components.battery_optimizer_light_plus.coordinator.dt_util.now"
 
     with patch(patch_session) as mock_get_session, patch(patch_now) as mock_now:
-        # Nu är klockan 05:45 (Inom retry-fönstret)
-        fake_now = datetime.datetime(2026, 4, 15, 5, 45, 0, tzinfo=datetime.timezone.utc)
+        # Nu är klockan 06:45 (Inom retry-fönstret)
+        fake_now = datetime.datetime(2026, 4, 15, 6, 45, 0, tzinfo=datetime.timezone.utc)
         mock_now.return_value = fake_now
 
         mock_session = MagicMock()
@@ -1864,8 +1864,8 @@ async def test_coordinator_ai_summary_waits_for_new_text(mock_hass_instance, moc
     patch_now = "custom_components.battery_optimizer_light_plus.coordinator.dt_util.now"
 
     with patch(patch_session) as mock_get_session, patch(patch_now) as mock_now:
-        # Klockan är 04:16
-        fake_now = datetime.datetime(2026, 4, 15, 4, 16, 0, tzinfo=datetime.timezone.utc)
+        # Klockan är 06:16
+        fake_now = datetime.datetime(2026, 4, 15, 6, 16, 0, tzinfo=datetime.timezone.utc)
         mock_now.return_value = fake_now
 
         mock_session = MagicMock()

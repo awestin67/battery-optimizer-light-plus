@@ -285,8 +285,8 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     # 1. Hämta alltid vid första uppstart
                     if not self.data or "ai_summary" not in self.data:
                         should_fetch_ai = True
-                    # 2. Hämta under fönstret 04:15 - 05:59 om vi inte redan lyckats idag
-                    elif (now.hour == 4 and now.minute >= 15) or now.hour == 5:
+                    # 2. Hämta under dagen om vi inte redan fått en ny text idag (börjar kolla kl 06:00 lokal tid)
+                    elif now.hour >= 6:
                         last_fetch = getattr(self, "_last_ai_fetch_day", None)
                         if last_fetch != now.date():
                             should_fetch_ai = True
@@ -307,9 +307,11 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                                     # Markera endast som hämtad för idag om texten faktiskt har
                                     # ändrats från vår tidigare cachade version (och inte är default).
-                                    # Om backend är långsam och ger gårdagens text kl 04:15 fortsätter vi försöka.
+                                    # Vi sätter dessutom bara flaggan om klockan passerat 06:00 för att inte
+                                    # luras av nattliga omstarter (där vi råkar hämta gårdagens text efter midnatt).
                                     if fetched_summary != default_ai_text and fetched_summary != fallback_ai_text:
-                                        self._last_ai_fetch_day = now.date()
+                                        if now.hour >= 6:
+                                            self._last_ai_fetch_day = now.date()
                                 else:
                                     data["ai_summary"] = fallback_ai_text
                         except Exception as e:
