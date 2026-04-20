@@ -20,6 +20,8 @@ Systemet kombinerar **Molnintelligens** (för prisoptimering och arbitrage) med 
     * *Hysteres:* Inbyggd smart logik förhindrar "fladder" när lasten pendlar runt gränsvärdet.
 * **🤖 Zero-Config Automation:** Integrationen lyssnar automatiskt på beslut från molnet och styr ditt batteri. Inga krångliga YAML-skript krävs!
 * **📊 Analys:** Följ dina besparingar och effekttoppar via vår snygga [Web Dashboard](https://battery-prod.awestinconsulting.se).
+* **🚗 Smart Elbilsstöd:** Peka ut en sensor från din laddbox i Home Assistant så informeras molnet automatiskt när bilen laddas, vilket förbättrar AI-beslut kring urladdning! 
+  *(Integrationen känner automatiskt igen tillstånden `on`, `true`, `1`, `charging` samt numeriska effektvärden `> 0` W).*
 
 ---
 
@@ -67,6 +69,7 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
     * **Steg 1:** Välj vilken typ av batteri du har (Sonnen, Huawei, Homevolt, Solis Modbus, Generic).
     * **Steg 2:** Fyll i batterispecifika uppgifter (t.ex. IP och API-token för Sonnen, eller enheter för Huawei).
     * **Steg 3:** Fyll i din API-nyckel från Dashboarden. Om du valt Sonnen, Huawei, Homevolt eller Solis hanteras de flesta mätvärden automatiskt, men för Generic (eller för anpassade behov) kan du behöva peka ut sensorer för nätutbyte och batteri manuellt.
+    * **Steg 4 (Valfritt):** Peka ut din **Elbilsladdning Sensor** för att aktivera det smarta elbilsstödet, samt eventuell **Förbrukningsprognos**.
 
 ---
 

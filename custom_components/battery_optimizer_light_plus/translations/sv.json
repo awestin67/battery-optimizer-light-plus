@@ -71,7 +71,7 @@
                     "battery_status_keywords": "Nyckelord för underhåll (t.ex. Battery-Care, Service)",
                     "virtual_load_sensor": "Virtuell Last Sensor (Valfritt - Ersätter Grid+Batteri beräkning)",
                     "consumption_forecast_sensor": "Förbrukningsprognos imorgon (kWh) (Valfritt)",
-                    "ev_charging_sensor": "Elbilsladdning Sensor (På/Av eller W) (Valfritt)",
+                    "ev_charging_sensor": "Elbilsladdning Sensor (Valfritt)",
                     "device_status_entity": "Device Status (Entitet)",
                     "max_discharge_entity": "Max Urladdning (Entitet)",
                     "graph_history_hours": "Graf-historik"

@@ -71,7 +71,7 @@
                     "battery_status_keywords": "Maintenance Keywords (e.g. Battery-Care, Service)",
                     "virtual_load_sensor": "Virtual Load Sensor (Optional - Overrides calc)",
                     "consumption_forecast_sensor": "Consumption Forecast Tomorrow (kWh) (Optional)",
-                    "ev_charging_sensor": "EV Charging Sensor (On/Off or W) (Optional)",
+                    "ev_charging_sensor": "EV Charging Sensor (Optional)",
                     "device_status_entity": "Device Status (Entity)",
                     "max_discharge_entity": "Max Discharge (Entity)",
                     "graph_history_hours": "Graph History"
