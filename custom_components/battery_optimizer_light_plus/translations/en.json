@@ -71,6 +71,7 @@
                     "battery_status_keywords": "Maintenance Keywords (e.g. Battery-Care, Service)",
                     "virtual_load_sensor": "Virtual Load Sensor (Optional - Overrides calc)",
                     "consumption_forecast_sensor": "Consumption Forecast Tomorrow (kWh) (Optional)",
+                    "ev_charging_sensor": "EV Charging Sensor (On/Off or W) (Optional)",
                     "device_status_entity": "Device Status (Entity)",
                     "max_discharge_entity": "Max Discharge (Entity)",
                     "graph_history_hours": "Graph History"
@@ -84,6 +85,7 @@
                     "battery_power_sensor": "The sensor for the battery's power (Negative = charging, Positive = discharging).",
                     "battery_sensor_invert": "Check this if your battery sensor shows a POSITIVE value when charging and NEGATIVE when discharging (e.g., standard for Huawei).",
                     "virtual_load_sensor": "Leave empty to let the integration calculate the load automatically (Grid + Battery).",
+                    "ev_charging_sensor": "Select a sensor (e.g., from your EV charger) that indicates if the EV is currently charging.",
                     "device_status_entity": "Select the status sensor (e.g., 'sensor.inverter_device_status') to allow PeakGuard to automatically detect errors and maintenance modes.",
                     "max_discharge_entity": "Select the Number entity for Maximum Discharging Power. Leave empty for auto-discovery.",
                     "graph_history_hours": "Select the amount of history to fetch for the graph data sensor (168 = 1 week)."
@@ -116,6 +118,7 @@
                     "battery_status_keywords": "Maintenance Keywords (comma-separated)",
                     "virtual_load_sensor": "Virtual Load Sensor",
                     "consumption_forecast_sensor": "Consumption Forecast (kWh)",
+                    "ev_charging_sensor": "EV Charging Sensor",
                     "host": "IP Address (Sonnen)",
                     "api_token": "API Token (Sonnen)",
                     "port": "Port (Sonnen)",
@@ -133,6 +136,7 @@
                     "battery_power_sensor": "The sensor for the battery's power (Negative = charging, Positive = discharging).",
                     "battery_sensor_invert": "Check this if your battery sensor shows a POSITIVE value when charging and NEGATIVE when discharging (e.g., standard for Huawei).",
                     "virtual_load_sensor": "Leave empty to let the integration calculate the load automatically (Grid + Battery).",
+                    "ev_charging_sensor": "Select a sensor (e.g., from your EV charger) that indicates if the EV is currently charging.",
                     "host": "Enter the IP address of your Sonnen battery (e.g. 192.168.1.50).",
                     "api_token": "Copy your Auth-Token from the battery's local web page under 'Software Integration' -> 'JSON API'.",
                     "port": "Default port for Sonnen is 80.",

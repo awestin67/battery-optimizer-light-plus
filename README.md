@@ -296,6 +296,24 @@ series:
         return fore;
       });
   - entity: sensor.battery_optimizer_graph_data
+    name: Sol (Historik)
+    unit: " kW"
+    type: area
+    yaxis_id: power
+    color: "#FFD700"
+    opacity: 0.2
+    stroke_width: 1
+    extend_to: false
+    show:
+      legend_value: false
+    data_generator: >
+      return fetch('/api/battery_optimizer_graph_data').then(r =>
+      r.json()).then(d => {
+        const api = Object.values(d)[0] || {};
+        const now = new Date().getTime();
+        return (api.history || []).filter(x => x.current_solar_kw !== undefined && new Date(x.timestamp).getTime() <= now).map(x => [new Date(x.timestamp).getTime(), x.current_solar_kw]);
+      });
+  - entity: sensor.battery_optimizer_graph_data
     name: Sol (Prognos)
     unit: " kW"
     type: area
@@ -311,8 +329,9 @@ series:
       r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const fore = (api.forecast || []).map(x => [new Date(x.timestamp).getTime(), x.solar_kw]);
-        if (fore.length > 0) {
-          fore.unshift([new Date().getTime(), fore[0][1]]);
+        const hist = (api.history || []).filter(x => x.current_solar_kw !== undefined);
+        if (hist.length > 0 && fore.length > 0) {
+          fore.unshift([new Date(hist[hist.length - 1].timestamp).getTime(), hist[hist.length - 1].current_solar_kw]);
         }
         return fore;
       });

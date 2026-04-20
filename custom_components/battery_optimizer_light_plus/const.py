@@ -53,6 +53,7 @@ CONF_BATTERY_STATUS_SENSOR = "battery_status_sensor" # Sensor för driftstatus (
 CONF_BATTERY_STATUS_KEYWORDS = "battery_status_keywords" # Nyckelord för underhållsläge
 CONF_VIRTUAL_LOAD_SENSOR = "virtual_load_sensor" # Virtuell last (Husets netto utan batteri)
 CONF_CONSUMPTION_FORECAST_SENSOR = "consumption_forecast_sensor" # Prognos för morgondagens förbrukning (kWh)
+CONF_EV_CHARGING_SENSOR = "ev_charging_sensor" # Sensor för elbilsladdning
 CONF_GRAPH_HISTORY_HOURS = "graph_history_hours"
 
 DEFAULT_API_URL = "https://battery-light-production.up.railway.app"

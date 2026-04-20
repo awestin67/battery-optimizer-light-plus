@@ -1911,3 +1911,37 @@ async def test_coordinator_ai_summary_waits_for_new_text(mock_hass_instance, moc
         # Nu ska datumet ha uppdaterats eftersom texten skilde sig från gårdagens
         assert data2["ai_summary"] == new_text
         assert coordinator._last_ai_fetch_day == fake_now.date()
+
+@pytest.mark.asyncio
+async def test_coordinator_sends_ev_charging_flag(mock_hass_instance, mock_battery):
+    """Krav: Coordinator ska skicka med is_ev_charging flaggan till backend om elbilsladdning pågår."""
+    config = MOCK_CONFIG.copy()
+    config["ev_charging_sensor"] = "binary_sensor.ev_charging"
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config, version="1.2.3")
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    def mock_get_state(entity_id):
+        mock_state = MagicMock()
+        if entity_id == "binary_sensor.ev_charging":
+            mock_state.state = "on"
+        return mock_state
+    mock_hass_instance.states.get.side_effect = mock_get_state
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
+
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        await coordinator._async_update_data()
+
+        payload = mock_session.post.call_args[1]["json"]
+        assert payload["is_ev_charging"] is True

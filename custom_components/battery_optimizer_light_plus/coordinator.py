@@ -119,6 +119,23 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                 if hasattr(self, "peak_guard") and self.peak_guard:
                     is_solar_override = self.peak_guard.is_solar_override
 
+                # --- EV CHARGING SENSOR ---
+                is_ev_charging = False
+                ev_charging_entity = self.config.get("ev_charging_sensor")
+                if ev_charging_entity:
+                    ev_state = self.hass.states.get(ev_charging_entity)
+                    if ev_state and ev_state.state not in ["unknown", "unavailable"]:
+                        val = ev_state.state.lower()
+                        # Hantera Binary Sensor, specifik status eller numeriskt effektvärde (>0W)
+                        if val in ["on", "true", "charging", "1"]:
+                            is_ev_charging = True
+                        else:
+                            try:
+                                if float(val) > 0:
+                                    is_ev_charging = True
+                            except ValueError:
+                                pass
+
                 # 3. Hämta förbrukningsprognos (Valfritt)
                 consumption_forecast = None
                 if self.consumption_forecast_entity:
@@ -214,6 +231,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     "api_key": self.api_key,
                     "soc": reported_soc,
                     "is_solar_override": is_solar_override,
+                    "is_ev_charging": is_ev_charging,
                     "consumption_forecast_kwh": consumption_forecast,
                     "ha_version": self.version,
                     "current_consumption_kw": current_consumption_kw

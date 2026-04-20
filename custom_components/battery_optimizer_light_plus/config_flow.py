@@ -46,6 +46,7 @@ from .const import (
     CONF_BATTERY_STATUS_KEYWORDS,
     CONF_VIRTUAL_LOAD_SENSOR,
     CONF_CONSUMPTION_FORECAST_SENSOR,
+    CONF_EV_CHARGING_SENSOR,
     DEFAULT_BATTERY_STATUS_KEYWORDS,
     CONF_HOST,
     CONF_API_TOKEN,
@@ -288,6 +289,9 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _opt(
                 CONF_CONSUMPTION_FORECAST_SENSOR, get_val(CONF_CONSUMPTION_FORECAST_SENSOR)
             ): EntitySelector(EntitySelectorConfig(domain="sensor")),
+            _opt(
+                CONF_EV_CHARGING_SENSOR, get_val(CONF_EV_CHARGING_SENSOR)
+            ): EntitySelector(EntitySelectorConfig()),
             vol.Optional(CONF_GRAPH_HISTORY_HOURS, default=get_val(CONF_GRAPH_HISTORY_HOURS, "24")): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=["12", "24", "48", "72", "168"],
@@ -370,6 +374,7 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             # Home Assistant utelämnar dessa helt från user_input om de rensas via gränssnittet.
             clearable_keys = [
                 CONF_CONSUMPTION_FORECAST_SENSOR,
+                CONF_EV_CHARGING_SENSOR,
                 CONF_GRID_SENSOR,
                 CONF_BATTERY_STATUS_SENSOR,
                 CONF_BATTERY_STATUS_KEYWORDS,
@@ -428,6 +433,9 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             vol.Required(CONF_API_KEY, default=get_default(CONF_API_KEY)): TextSelector(),
             _opt(CONF_CONSUMPTION_FORECAST_SENSOR, get_default(CONF_CONSUMPTION_FORECAST_SENSOR)): EntitySelector(
                 EntitySelectorConfig(domain="sensor")
+            ),
+            _opt(CONF_EV_CHARGING_SENSOR, get_default(CONF_EV_CHARGING_SENSOR)): EntitySelector(
+                EntitySelectorConfig()
             ),
             vol.Optional(CONF_GRAPH_HISTORY_HOURS, default=get_default(CONF_GRAPH_HISTORY_HOURS, "24")): selector.SelectSelector(
                 selector.SelectSelectorConfig(
