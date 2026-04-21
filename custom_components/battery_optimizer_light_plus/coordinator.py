@@ -127,7 +127,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     if ev_state and ev_state.state not in ["unknown", "unavailable"]:
                         val = ev_state.state.lower()
                         # Hantera Binary Sensor, specifik status eller numeriskt effektvärde (>0W)
-                        if val in ["on", "true", "charging", "1"]:
+                        if val in ["on", "true", "charging", "1", "på", "charge", "sant"]:
                             is_ev_charging = True
                         else:
                             try:

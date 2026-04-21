@@ -18,10 +18,10 @@ Systemet kombinerar **Molnintelligens** (för prisoptimering och arbitrage) med 
 * **🛡️ Smart Effektvakt (Peak Shaving):** Övervakar husets nettolast i realtid för att kapa effekttoppar lokalt.
     * *Molnstyrning:* Effektvakten kan dynamiskt pausas eller justeras från molnet.
     * *Hysteres:* Inbyggd smart logik förhindrar "fladder" när lasten pendlar runt gränsvärdet.
-* **🤖 Zero-Config Automation:** Integrationen lyssnar automatiskt på beslut från molnet och styr ditt batteri. Inga krångliga YAML-skript krävs!
+* **🤖 Zero-Config Automation:** Integrationen lyssnar automatiskt på beslut från molnet och styr ditt batteri. Inga krångliga YAML-skript eller automationer krävs!
 * **📊 Analys:** Följ dina besparingar och effekttoppar via vår snygga [Web Dashboard](https://battery-prod.awestinconsulting.se).
 * **🚗 Smart Elbilsstöd:** Peka ut en sensor från din laddbox i Home Assistant så informeras molnet automatiskt när bilen laddas, vilket förbättrar AI-beslut kring urladdning! 
-  *(Integrationen känner automatiskt igen tillstånden `on`, `true`, `1`, `charging` samt numeriska effektvärden `> 0` W).*
+  *(Integrationen känner automatiskt igen tillstånden `on`, `true`, `1`, `charging`, `på`, `charge`, `sant` samt numeriska effektvärden `> 0` W).*
 
 ---
 
