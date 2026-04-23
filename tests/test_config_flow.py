@@ -490,3 +490,44 @@ async def test_options_flow_strips_empty_strings():
 
     assert "virtual_load_sensor" not in saved_data, "Fält med tom sträng ska tas bort helt"
     assert "grid_sensor" not in saved_data, "Fält med tom sträng ska tas bort helt"
+
+@pytest.mark.asyncio
+async def test_config_flow_enable_solar_override():
+    """Testar att enable_solar_override sparas korrekt vid installation."""
+    flow = BatteryOptimizerLightConfigFlow()
+    flow.hass = MagicMock()
+
+    await flow.async_step_generic()
+
+    # Fall 1: Användaren aktiverar funktionen (True)
+    result_true = await flow.async_step_common({
+        "api_key": "123",
+        "api_url": "http://test",
+        "enable_solar_override": True
+    })
+    assert result_true["type"] == "create_entry"
+    assert result_true["data"]["enable_solar_override"] is True
+
+    # Fall 2: Användaren avaktiverar funktionen (False)
+    flow2 = BatteryOptimizerLightConfigFlow()
+    flow2.hass = MagicMock()
+    await flow2.async_step_generic()
+    result_false = await flow2.async_step_common({
+        "api_key": "123",
+        "api_url": "http://test",
+        "enable_solar_override": False
+    })
+    assert result_false["type"] == "create_entry"
+    assert result_false["data"]["enable_solar_override"] is False
+
+@pytest.mark.asyncio
+async def test_options_flow_enable_solar_override():
+    """Testar att enable_solar_override kan uppdateras via inställningsmenyn."""
+    flow = BatteryOptimizerLightOptionsFlow()
+    flow.config_entry = MagicMock(data={CONF_BATTERY_TYPE: BATTERY_TYPE_GENERIC, "enable_solar_override": False})
+    flow.hass = MagicMock()
+
+    await flow.async_step_init({"api_key": "new_key", "api_url": "http://test", "enable_solar_override": True})
+
+    saved_data = flow.hass.config_entries.async_update_entry.call_args[1]["data"]
+    assert saved_data["enable_solar_override"] is True
