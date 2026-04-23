@@ -378,7 +378,7 @@ yaxis:
 apex_config:
   plotOptions:
     bar:
-      columnWidth: 80%
+      columnWidth: 100%
       colors:
         ranges:
           - from: -100000
@@ -406,7 +406,15 @@ series:
           const key = dt.getTime();
           hourly[key] = (hourly[key] || 0) + x.savings_sek;
         });
-        return Object.entries(hourly).map(([ts, val]) => [Number(ts), val]).filter(([ts, val]) => Math.abs(val) > 0.01);
+        const expandedData = [];
+        Object.entries(hourly).forEach(([ts, val]) => {
+          if (Math.abs(val) > 0.01) {
+            for (let i = 0; i < 11; i++) {
+              expandedData.push([Number(ts) + i * 5 * 60 * 1000, val]);
+            }
+          }
+        });
+        return expandedData.sort((a, b) => a[0] - b[0]);
       });
   - entity: sensor.battery_optimizer_graph_data
     name: Ackumulerat Totalt
