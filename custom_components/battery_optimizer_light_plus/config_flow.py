@@ -292,6 +292,7 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _opt(
                 CONF_EV_CHARGING_SENSOR, get_val(CONF_EV_CHARGING_SENSOR)
             ): EntitySelector(EntitySelectorConfig()),
+            vol.Optional("enable_solar_override", default=get_val("enable_solar_override", False)): bool,
             vol.Optional(CONF_GRAPH_HISTORY_HOURS, default=get_val(CONF_GRAPH_HISTORY_HOURS, "24")): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=["12", "24", "48", "72", "168"],
@@ -437,6 +438,7 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             _opt(CONF_EV_CHARGING_SENSOR, get_default(CONF_EV_CHARGING_SENSOR)): EntitySelector(
                 EntitySelectorConfig()
             ),
+            vol.Optional("enable_solar_override", default=get_default("enable_solar_override", False)): bool,
             vol.Optional(CONF_GRAPH_HISTORY_HOURS, default=get_default(CONF_GRAPH_HISTORY_HOURS, "24")): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=["12", "24", "48", "72", "168"],

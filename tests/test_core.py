@@ -39,6 +39,7 @@ MOCK_CONFIG = {
     "grid_sensor": "sensor.grid",
     "battery_power_sensor": "sensor.bat_power",
     "virtual_load_sensor": "sensor.husets_netto_last_virtuell",
+    "enable_solar_override": True,
 }
 
 @pytest.fixture
@@ -1096,6 +1097,45 @@ async def test_peak_guard_handles_high_export_as_solar_override(mock_hass_instan
     assert guard.is_active is False
     # Verifiera att Solar Override ÄR aktiv (tillåt laddning)
     assert guard.is_solar_override is True
+
+@pytest.mark.asyncio
+async def test_peak_guard_solar_override_disabled_in_config(mock_hass_instance, mock_battery):
+    """Krav: Om enable_solar_override är False i config ska Solar Override aldrig triggas."""
+    config = MOCK_CONFIG.copy()
+    config["enable_solar_override"] = False
+
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
+
+    guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+
+    limit_state = MagicMock()
+    limit_state.state = "5.0"
+    load_state = MagicMock()
+    load_state.state = "-6000"
+    soc_state = MagicMock()
+    soc_state.state = "50"
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        return None
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+    # Timern ska inte ha startat och flaggan ska vara False
+    assert guard.is_solar_override is False
+    assert guard._solar_override_trigger_start is None
 
 @pytest.mark.asyncio
 async def test_peak_guard_prevents_solar_override_during_buffer_fill_lag(mock_hass_instance, mock_battery):

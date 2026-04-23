@@ -74,6 +74,7 @@
                     "ev_charging_sensor": "EV Charging Sensor (Optional)",
                     "device_status_entity": "Device Status (Entity)",
                     "max_discharge_entity": "Max Discharge (Entity)",
+                    "enable_solar_override": "Enable Solar Override (Pauses discharge on high solar export)",
                     "graph_history_hours": "Graph History"
                 },
                 "data_description": {
@@ -88,6 +89,7 @@
                     "ev_charging_sensor": "Select a sensor (e.g., from your EV charger) that indicates if the EV is currently charging.",
                     "device_status_entity": "Select the status sensor (e.g., 'sensor.inverter_device_status') to allow PeakGuard to automatically detect errors and maintenance modes.",
                     "max_discharge_entity": "Select the Number entity for Maximum Discharging Power. Leave empty for auto-discovery.",
+                    "enable_solar_override": "Check this to automatically pause PeakGuard and cloud discharging when exporting a large amount of solar power.",
                     "graph_history_hours": "Select the amount of history to fetch for the graph data sensor (168 = 1 week)."
                 }
             }
@@ -125,6 +127,7 @@
                     "battery_device_id": "Battery Device",
                     "device_status_entity": "Device Status (Entity)",
                     "max_discharge_entity": "Max Discharge (Entity)",
+                    "enable_solar_override": "Enable Solar Override",
                     "graph_history_hours": "Graph History"
                 },
                 "data_description": {
@@ -143,6 +146,7 @@
                     "battery_device_id": "Select your battery or inverter from the list.",
                     "device_status_entity": "Select the status sensor (e.g., 'sensor.inverter_device_status').",
                     "max_discharge_entity": "Select the Number entity for Maximum Discharging Power. Leave empty for auto-discovery.",
+                    "enable_solar_override": "Check this to automatically pause PeakGuard and cloud discharging when exporting a large amount of solar power.",
                     "graph_history_hours": "Select the amount of history to fetch for the graph data sensor."
                 }
             }

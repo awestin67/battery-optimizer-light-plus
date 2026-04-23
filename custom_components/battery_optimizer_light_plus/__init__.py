@@ -436,6 +436,8 @@ class PeakGuard:
                 if bat_val is not None and abs(bat_val) > 100:
                     bat_is_moving = True
 
+            enable_solar_override = self.config.get("enable_solar_override", False)
+
             # Avbryt bara om:
             # 1. Ingen peak är aktiv.
             # 2. Ingen Solar Override är aktiv (vi måste kunna stänga av den).
@@ -448,7 +450,7 @@ class PeakGuard:
                 and not self._is_solar_override
                 and self._solar_override_trigger_start is None
                 and current_load < wake_up_threshold
-                and current_load > -200
+                and (current_load > -200 or not enable_solar_override)
                 and cloud_action != "CHARGE"
                 and not (cloud_action == "HOLD" and bat_is_moving)
             ):
@@ -575,7 +577,11 @@ class PeakGuard:
                 # Beräkna önskat läge baserat på last (oberoende av moln-status)
                 wants_override = self._is_solar_override
 
-                if current_load < SOLAR_TRIGGER_W and not is_importing and not is_discharging:
+                if not enable_solar_override:
+                    wants_override = False
+                    self._solar_override_trigger_start = None
+                    self._solar_override_clear_start = None
+                elif current_load < SOLAR_TRIGGER_W and not is_importing and not is_discharging:
                     self._solar_override_clear_start = None
                     if not self._is_solar_override:
                         # Starta timer för att kräva att värdet hålls i 30 sekunder (filtrerar bort sensor-lag)
