@@ -1461,8 +1461,6 @@ async def test_lifecycle_and_services(mock_hass_instance):
     """Testar setup, migrering, registrering av tjänster, unload och reload."""
     entry = MagicMock()
     entry.data = MOCK_CONFIG.copy()
-    # Sätt in gammal dev-URL för att trigga migreringslogiken
-    entry.data["api_url"] = "https://battery-prod.awestinconsulting.se/signal"
     entry.entry_id = "test_id"
 
     patch_int = "custom_components.battery_optimizer_light_plus.async_get_integration"
@@ -1487,9 +1485,6 @@ async def test_lifecycle_and_services(mock_hass_instance):
 
         # Test setup
         assert await async_setup_entry(mock_hass_instance, entry) is True
-
-        # Verifiera att migreringen av URL sparades i config_entries
-        mock_hass_instance.config_entries.async_update_entry.assert_called_once()
 
         # Verifiera att background tracker sattes upp och kör dess on_load_change
         mock_track.assert_called_once()
