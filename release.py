@@ -640,13 +640,13 @@ def main():
     run_tests()
     run_lint()
     check_license_headers()
+    sort_manifest_keys(MANIFEST_PATH)
+    run_hassfest_local()
 
     current_ver = get_current_version(MANIFEST_PATH)
     new_ver = current_ver
 
     if action_choice == '2':
-        sort_manifest_keys(MANIFEST_PATH)
-        run_hassfest_local()
         run_hacs_validation_local()
         check_images()
         check_for_updates()
