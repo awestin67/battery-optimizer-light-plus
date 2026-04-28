@@ -1496,20 +1496,8 @@ async def test_lifecycle_and_services(mock_hass_instance):
         mock_guard.update.assert_called()
 
         # Verifiera tjänster (services)
-        assert mock_hass_instance.services.async_register.call_count == 5
+        assert mock_hass_instance.services.async_register.call_count == 1
         services = {call[0][1]: call[0][2] for call in mock_hass_instance.services.async_register.call_args_list}
-
-        await services["force_charge"](MagicMock(data={"power": 1000}))
-        mock_coord.battery_api.apply_action.assert_called_with("CHARGE", 1.0)
-
-        await services["force_discharge"](MagicMock(data={"power": 1500}))
-        mock_coord.battery_api.apply_action.assert_called_with("DISCHARGE", 1.5)
-
-        await services["hold"](MagicMock(data={}))
-        mock_coord.battery_api.apply_action.assert_called_with("HOLD")
-
-        await services["auto"](MagicMock(data={}))
-        mock_coord.battery_api.apply_action.assert_called_with("IDLE")
 
         await services["run_peak_guard"](MagicMock(data={"virtual_load_entity": "v", "limit_entity": "l"}))
         mock_guard.update.assert_called_with("v", "l")

@@ -142,26 +142,6 @@ async def async_setup_entry(hass: HomeAssistant, entry):
 
     hass.services.async_register(DOMAIN, "run_peak_guard", handle_run_peak_guard)
 
-    # --- REGISTRERA GLOBALA TJÄNSTER FÖR ANVÄNDAREN ---
-    async def handle_force_charge(call: ServiceCall):
-        power = float(call.data.get("power", 0))
-        await coordinator.battery_api.apply_action("CHARGE", power / 1000.0)
-
-    async def handle_force_discharge(call: ServiceCall):
-        power = float(call.data.get("power", 0))
-        await coordinator.battery_api.apply_action("DISCHARGE", power / 1000.0)
-
-    async def handle_hold(call: ServiceCall):
-        await coordinator.battery_api.apply_action("HOLD")
-
-    async def handle_auto(call: ServiceCall):
-        await coordinator.battery_api.apply_action("IDLE")
-
-    hass.services.async_register(DOMAIN, "force_charge", handle_force_charge)
-    hass.services.async_register(DOMAIN, "force_discharge", handle_force_discharge)
-    hass.services.async_register(DOMAIN, "hold", handle_hold)
-    hass.services.async_register(DOMAIN, "auto", handle_auto)
-
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "binary_sensor", "switch"])
     entry.async_on_unload(entry.add_update_listener(update_listener))
 

@@ -78,16 +78,6 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
 ### Automatisk Styrning (Zero-Config)
 Integrationen är skapad för att fungera direkt ur lådan. Den lyssnar automatiskt på beslut från molnet och styr ditt batteri utan att du behöver bygga några egna skript eller automationer!
 
-### Manuell Styrning (För avancerade användare)
-Om du föredrar att bygga egna automationsflöden i Home Assistant eller Node-RED, kan du stänga av den automatiska styrningen via integrationens inställningar (Konfigurera -> Avmarkera *Enable automatic control*).
-
-Följande tjänster finns då tillgängliga för dig att anropa (ersätter gamla `rest_commands`):
-
-*   `battery_optimizer_light_plus.force_charge`: Tvingar batteriet att ladda med en specifik effekt (W).
-*   `battery_optimizer_light_plus.force_discharge`: Tvingar batteriet att ladda ur med en specifik effekt (W).
-*   `battery_optimizer_light_plus.hold`: Sätter batteriet i vänteläge/paus.
-*   `battery_optimizer_light_plus.auto`: Återställer batteriet till automatiskt driftläge.
-
 ---
 
 ## ℹ️ Sensorer & Övervakning
