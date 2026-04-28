@@ -281,6 +281,10 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     except (ValueError, TypeError):
                         target_kw = 0.0
 
+                    # --- NYTT: Spara molnets ursprungliga intention ---
+                    data["cloud_action"] = action
+                    data["cloud_target_power_kw"] = target_kw
+
                     # Låt batterihanteraren verkställa beslutet, om inte PeakGuard har tagit över lokalt
                     if not is_solar_override and not (hasattr(self, "peak_guard") and self.peak_guard.is_active):
                         # Spärra manuell urladdning om vi har nått hårdvarureserven (t.ex. Sonnen Backup)

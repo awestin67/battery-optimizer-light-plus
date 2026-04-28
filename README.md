@@ -49,7 +49,7 @@ Styr Solis-batterier lokalt via Pho3niX90's Solis Modbus-integration.
 *   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter vid installationen. Den använder växelriktarens "Remote Control" (RC) register för tillförlitlig lokal styrning.
 
 ### ☁️ Generic / Light
-För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men sedan styra ditt batteri manuellt via egna automationsflöden.
+För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men sedan styra ditt batteri manuellt via egna automationsflöden. [Se exempel på automation här nere](#-automationer-för-generic--övriga-batterier).
 
 ---
 
@@ -105,7 +105,7 @@ När systemet är igång skapas en mängd sensorer för att hjälpa dig övervak
 * 🔋 **`sensor.*_battery_in_out`** *(Sonnen, Huawei & Homevolt)*: Batteriets effekt i realtid (W). Standard för Sonnen/Homevolt/Generic är att **Minus (-)** = Laddar. För Huawei är detta inverterat (se notis under Huawei-sektionen ovan).
 * 📊 **`sensor.*_soc`** *(Sonnen, Huawei & Homevolt)*: Batteriets nuvarande laddningsnivå (%).
 * 🛡️ **`sensor.*_sonnen_backup_reserv`** *(Endast Sonnen)*: Visar den inställda hårdvarureserven för strömavbrott (%). Sensorn är tillagd så du enkelt kan verifiera vilken reservnivå molnet och effektvakten tar hänsyn till i sina beräkningar.
-* � **`sensor.optimizer_light_daily_savings`**: Dagens totala besparing (SEK) beräknad utifrån batteriets historik.
+* 💰 **`sensor.optimizer_light_daily_savings`**: Dagens totala besparing (SEK) beräknad utifrån batteriets historik.
 * 🤖 **`sensor.optimizer_light_ai_summary`**: Daglig AI-genererad sammanfattning av batteriets prestanda. Hela texten sparas i sensorns attribut.
 * 📉 **`sensor.battery_optimizer_graph_data`**: Innehåller all grafdata (historik och framtida prognos) dold i sina JSON-attribut (används för ApexCharts nedan).
 
@@ -460,3 +460,137 @@ logger:
 ```
 
 Gå sedan till **Inställningar** -> **System** -> **Loggar** i Home Assistant för att se detaljerade händelser, felmeddelanden och nätverkstrafik (sök t.ex. på `Light-Request` för att se payloaden som skickas).
+
+## 🤖 Automationer för Generic / Övriga batterier
+
+Om du har valt **Generic / Light** vid installationen styrs inte din växelriktare automatiskt av integrationen. Istället lyssnar integrationen på molnet och exponerar optimeringsbesluten via sensorer. 
+
+För att faktiskt styra ditt batteri behöver du bygga en egen automation i Home Assistant (t.ex. i `automations.yaml`) som lyssnar på dessa sensorer och skickar rätt kommandon till just din växelriktare.
+
+Kopiera nedanstående exempel och anpassa `action` (t.ex. `script.din_inverter_charge`) så att de matchar de tjänster och skript du använder för din specifika anläggning.
+
+### Exempel: Huvudstyrenhet (Utför Beslut)
+Lyssnar på ändringar från molnets besluts-sensor (`sensor.optimizer_light_action`) och styr batteriet. Notera att värdena för laddning och urladdning redan är konverterade till Watt (W) av integrationen.
+
+```yaml
+alias: 🔋 Battery Optimizer Light - Manuell Styrning (Generic)
+description: Styr batteriet via egna skript baserat på optimerarens beslut.
+mode: single
+triggers:
+  - trigger: state
+    entity_id: sensor.optimizer_light_action
+conditions:
+  - condition: not
+    conditions:
+      - condition: state
+        entity_id: sensor.optimizer_light_action
+        state:
+          - unknown
+          - unavailable
+actions:
+  - variables:
+      current_action: "{{ states('sensor.optimizer_light_action') }}"
+      charge_target: "{{ states('sensor.optimizer_light_charge_target') | int(0) }}"
+      discharge_target: "{{ states('sensor.optimizer_light_discharge_target') | int(0) }}"
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ current_action == 'CHARGE' }}"
+        sequence:
+          - action: script.din_inverter_charge # BYT UT MOT DITT EGET SKRIPT/TJÄNST
+            data:
+              power: "{{ charge_target }}"
+      - conditions:
+          - condition: template
+            value_template: "{{ current_action == 'DISCHARGE' }}"
+        sequence:
+          - action: script.din_inverter_discharge # BYT UT MOT DITT EGET SKRIPT/TJÄNST
+            data:
+              power: "{{ discharge_target }}"
+      - conditions:
+          - condition: template
+            value_template: "{{ current_action == 'HOLD' }}"
+        sequence:
+          - action: script.din_inverter_hold # BYT UT MOT DITT EGET SKRIPT/TJÄNST
+            data: {}
+      - conditions:
+          - condition: template
+            value_template: "{{ current_action == 'IDLE' }}"
+        sequence:
+          - action: script.din_inverter_auto # BYT UT MOT DITT EGET SKRIPT/TJÄNST
+            data: {}
+    default:
+      - action: script.din_inverter_auto # BYT UT MOT DITT EGET SKRIPT/TJÄNST
+        data: {}
+```
+
+### Exempel: Tillhörande Skript (scripts.yaml)
+Eftersom alla växelriktare styrs olika (Fronius, Sungrow, GoodWe etc.) måste du anpassa innehållet i dessa skript så att de gör exakt det som krävs för din anläggning. Ofta handlar det om att sätta ett `number`-värde för effekten och ändra ett driftläge via en `select`-entitet eller via ett Modbus-kommando. 
+
+Se till att skript-ID:na (`din_inverter_auto` osv) matchar de du anropar i automationen ovan. Här är ett konkret exempel på hur skripten i din `scripts.yaml` kan se ut:
+
+```yaml
+din_inverter_auto:
+  alias: "Batteri: Autoläge"
+  sequence:
+    # Exempel: Byt ut mot din egen entitet för att återgå till självkonsumtion (Auto)
+    - action: select.select_option
+      target:
+        entity_id: select.inverter_mode
+      data:
+        option: "Auto"
+
+din_inverter_charge:
+  alias: "Batteri: Tvinga Laddning"
+  fields:
+    power:
+      description: Effekt i Watt
+      default: 0
+  sequence:
+    # Exempel: 1. Sätt växelriktaren i manuellt laddningsläge
+    - action: select.select_option
+      target:
+        entity_id: select.inverter_mode
+      data:
+        option: "Manual Charge"
+    # Exempel: 2. Bestäm effekten i Watt (skickas in automatiskt via automationen)
+    - action: number.set_value
+      target:
+        entity_id: number.inverter_charge_power
+      data:
+        value: "{{ power }}"
+
+din_inverter_discharge:
+  alias: "Batteri: Tvinga Urladdning"
+  fields:
+    power:
+      description: Effekt i Watt
+      default: 0
+  sequence:
+    - action: select.select_option
+      target:
+        entity_id: select.inverter_mode
+      data:
+        option: "Manual Discharge"
+    - action: number.set_value
+      target:
+        entity_id: number.inverter_discharge_power
+      data:
+        value: "{{ power }}"
+
+din_inverter_hold:
+  alias: "Batteri: Pausa (Hold)"
+  sequence:
+    # Ofta pausas ett batteri genom att man aktiverar ett manuellt läge, men sätter maxeffekten till 0 W
+    - action: select.select_option
+      target:
+        entity_id: select.inverter_mode
+      data:
+        option: "Manual Discharge"
+    - action: number.set_value
+      target:
+        entity_id: number.inverter_discharge_power
+      data:
+        value: 0
+
+```

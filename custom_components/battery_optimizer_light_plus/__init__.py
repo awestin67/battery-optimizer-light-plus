@@ -215,6 +215,19 @@ class PeakGuard:
             self._last_sent_command = None
             self.coordinator.async_update_listeners()
 
+    def _set_local_action(self, action: str, target_kw: float):
+        """Uppdaterar coordinatorns data lokalt (triggar sensorer för Generic-batterier)."""
+        if self.coordinator.data:
+            updated = False
+            if self.coordinator.data.get("action") != action:
+                self.coordinator.data["action"] = action
+                updated = True
+            if self.coordinator.data.get("target_power_kw") != target_kw:
+                self.coordinator.data["target_power_kw"] = target_kw
+                updated = True
+            if updated:
+                self.coordinator.async_update_listeners()
+
     async def update(self, virtual_load_id, limit_id):
         if self._is_updating:
             return
@@ -397,8 +410,11 @@ class PeakGuard:
 
             # Hämta moln-action tidigt för att se om vi behöver övervaka laddning
             cloud_action = "HOLD"
-            if self.coordinator.data and "action" in self.coordinator.data:
-                cloud_action = str(self.coordinator.data.get("action")).upper()
+            if self.coordinator.data:
+                if "cloud_action" in self.coordinator.data:
+                    cloud_action = str(self.coordinator.data.get("cloud_action")).upper()
+                elif "action" in self.coordinator.data:
+                    cloud_action = str(self.coordinator.data.get("action")).upper()
 
             # Kontrollera om batteriet rör på sig (för att kunna tvinga stopp vid HOLD)
             bat_is_moving = False
@@ -503,6 +519,7 @@ class PeakGuard:
                 power_to_discharge = min(max(0, need), max_inverter)
 
                 if power_to_discharge > 100:  # Skicka bara kommando om det finns ett verkligt behov
+                    self._set_local_action("DISCHARGE", power_to_discharge / 1000.0)
                     await self.battery.apply_action("DISCHARGE", power_to_discharge / 1000.0)
                     self._last_sent_command = "PEAK"
 
@@ -663,8 +680,11 @@ class PeakGuard:
                 if cloud_action == "CHARGE":
                     # Kontrollera att laddning inte överskrider gränsvärdet
                     target_kw = 0.0
-                    if self.coordinator.data and "target_power_kw" in self.coordinator.data:
-                        target_kw = float(self.coordinator.data.get("target_power_kw", 0.0))
+                    if self.coordinator.data:
+                        if "cloud_target_power_kw" in self.coordinator.data:
+                            target_kw = float(self.coordinator.data.get("cloud_target_power_kw", 0.0))
+                        elif "target_power_kw" in self.coordinator.data:
+                            target_kw = float(self.coordinator.data.get("target_power_kw", 0.0))
 
                     target_w = target_kw * 1000.0
                     # Marginal på 200W för att vara säker
@@ -679,13 +699,29 @@ class PeakGuard:
                             f"⚠️ CHARGE THROTTLED! Cloud: {target_w} W. Available: {available_w:.0f} W. "
                             f"Limit: {limit_w} W. Setting: {throttled_w} W."
                         )
+                        self._set_local_action("CHARGE", throttled_w / 1000.0)
                         await self.battery.apply_action("CHARGE", throttled_w / 1000.0)
                         self._last_sent_command = "CHARGE"
+                    else:
+                        self._set_local_action("CHARGE", target_kw)
+                        if self._last_sent_command != "CHARGE_UNTHROTTLED":
+                            await self.battery.apply_action("CHARGE", target_kw)
+                            self._last_sent_command = "CHARGE_UNTHROTTLED"
 
                 elif cloud_action == "DISCHARGE":
-                    pass # Låt molnet bestämma
+                    target_kw = 0.0
+                    if self.coordinator.data:
+                        if "cloud_target_power_kw" in self.coordinator.data:
+                            target_kw = float(self.coordinator.data.get("cloud_target_power_kw", 0.0))
+                        elif "target_power_kw" in self.coordinator.data:
+                            target_kw = float(self.coordinator.data.get("target_power_kw", 0.0))
+                    self._set_local_action("DISCHARGE", target_kw)
+                    if self._last_sent_command != "DISCHARGE":
+                        await self.battery.apply_action("DISCHARGE", target_kw)
+                        self._last_sent_command = "DISCHARGE"
 
                 elif cloud_action == "HOLD":
+                    self._set_local_action("HOLD", 0.0)
                     bat_power = None
 
                     # --- FÖRSÖK 1: Användarens konfigurerade HA-sensorer ---
@@ -723,6 +759,7 @@ class PeakGuard:
                         self._hold_command_sent = False
 
                 elif cloud_action == "IDLE":
+                    self._set_local_action("IDLE", 0.0)
                     if self._last_sent_command != "IDLE":
                         _LOGGER.info(
                             "⚙️ Executing IDLE (Auto) command to battery. "

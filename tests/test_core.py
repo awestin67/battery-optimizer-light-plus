@@ -866,6 +866,8 @@ async def test_peak_guard_stops_at_zero_soc(mock_hass_instance, mock_battery):
     """Krav: PeakGuard ska sluta urladda när SoC når 0%."""
     coordinator = MagicMock()
     coordinator.data = {
+        "cloud_action": "HOLD",
+        "cloud_target_power_kw": 0.0,
         "action": "HOLD",
         "is_active": True,
         "is_peak_shaving_active": True,
@@ -1997,3 +1999,45 @@ async def test_coordinator_ev_charging_states(mock_hass_instance, mock_battery, 
 
         payload = mock_session.post.call_args[1]["json"]
         assert payload["is_ev_charging"] is expected_result
+
+@pytest.mark.asyncio
+async def test_peak_guard_updates_coordinator_data_for_generic(mock_hass_instance, mock_battery):
+    """Krav: PeakGuard ska skriva över coordinatorns action och target_power så att
+    Generic-användares sensorer uppdateras."""
+    coordinator = MagicMock()
+    coordinator.data = {
+        "cloud_action": "HOLD",
+        "cloud_target_power_kw": 0.0,
+        "action": "HOLD",
+        "target_power_kw": 0.0,
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
+    coordinator.async_update_listeners = MagicMock()
+
+    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
+
+    limit_state = MagicMock()
+    limit_state.state = "5.0"
+    load_state = MagicMock()
+    load_state.state = "7000" # 2kW över gränsen
+    soc_state = MagicMock()
+    soc_state.state = "50"
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        return None
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+    # Verifiera att datan har ändrats lokalt och eventet har avfyrats
+    assert coordinator.data["action"] == "DISCHARGE"
+    assert coordinator.data["target_power_kw"] == 2.0
+    coordinator.async_update_listeners.assert_called()
