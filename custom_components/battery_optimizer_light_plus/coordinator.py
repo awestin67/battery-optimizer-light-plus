@@ -75,7 +75,11 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                 # 1. Hämta SOC
                 soc = await self.battery_api.get_current_soc()
 
-                hardware_min_soc = 0.0
+                try:
+                    hardware_min_soc = float(self.config.get("min_soc", 0.0))
+                except (ValueError, TypeError):
+                    hardware_min_soc = 0.0
+
                 # Hämta reservkapacitet om batteriet stöder det (tex Sonnen EM_USOC)
                 if hasattr(self.battery_api, "get_min_soc"):
                     min_val = await self.battery_api.get_min_soc()

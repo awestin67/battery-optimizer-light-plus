@@ -532,6 +532,36 @@ async def test_coordinator_respects_hardware_reserve(mock_hass_instance, mock_ba
         mock_battery.apply_action.assert_called_with("IDLE", 2.0)
 
 @pytest.mark.asyncio
+async def test_coordinator_respects_generic_min_soc(mock_hass_instance, mock_battery):
+    """Krav: Coordinator ska skala SoC för Generic om min_soc är angivet i config."""
+    config = MOCK_CONFIG.copy()
+    config["min_soc"] = 20.0
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config)
+
+    del mock_battery.get_min_soc # Simulera Generic (har ej get_min_soc)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 60.0 # 60% fysisk
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
+
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        await coordinator._async_update_data()
+
+        # (60 - 20) / (100 - 20) * 100 = 40 / 80 * 100 = 50.0%
+        payload = mock_session.post.call_args[1]["json"]
+        assert payload["soc"] == 50.0
+
+@pytest.mark.asyncio
 async def test_peak_guard_calculates_load_with_inverted_grid(mock_hass_instance, mock_battery):
     """Krav: Om grid_sensor_invert är True ska grid-värdet negeras vid beräkning."""
     # Konfiguration med inverterad grid sensor och INGEN virtuell sensor

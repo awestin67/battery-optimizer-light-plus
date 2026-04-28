@@ -47,6 +47,7 @@ from .const import (
     CONF_VIRTUAL_LOAD_SENSOR,
     CONF_CONSUMPTION_FORECAST_SENSOR,
     CONF_EV_CHARGING_SENSOR,
+    CONF_MIN_SOC,
     DEFAULT_BATTERY_STATUS_KEYWORDS,
     CONF_HOST,
     CONF_API_TOKEN,
@@ -335,6 +336,14 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_VIRTUAL_LOAD_SENSOR, get_val(CONF_VIRTUAL_LOAD_SENSOR)
                 )] = EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power"))
 
+                schema_dict[vol.Optional(
+                    CONF_MIN_SOC, default=get_val(CONF_MIN_SOC, 0.0)
+                )] = selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0, max=100, step=1, mode=selector.NumberSelectorMode.BOX, unit_of_measurement="%"
+                    )
+                )
+
             if battery_type in [BATTERY_TYPE_HUAWEI, BATTERY_TYPE_SOLIS_MODBUS]:
                 schema_dict.update({
                     _opt(
@@ -505,6 +514,9 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
                 _opt(CONF_BATTERY_STATUS_SENSOR, get_default(CONF_BATTERY_STATUS_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor")),
                 _opt(CONF_BATTERY_STATUS_KEYWORDS, get_default(CONF_BATTERY_STATUS_KEYWORDS, DEFAULT_BATTERY_STATUS_KEYWORDS)): TextSelector(TextSelectorConfig(multiline=True)),
                 _opt(CONF_VIRTUAL_LOAD_SENSOR, get_default(CONF_VIRTUAL_LOAD_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                vol.Optional(CONF_MIN_SOC, default=get_default(CONF_MIN_SOC, 0.0)): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=0, max=100, step=1, mode=selector.NumberSelectorMode.BOX, unit_of_measurement="%")
+                ),
             })
 
         return self.async_show_form(step_id="init", data_schema=vol.Schema(schema_fields))
