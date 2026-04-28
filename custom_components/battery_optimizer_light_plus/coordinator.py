@@ -47,7 +47,6 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         if "development" in self.api_url:
             _LOGGER.warning("⚠️ VARNING: Integrationen körs mot DEVELOPMENT-backend: %s", self.api_url)
 
-        self.consumption_forecast_entity = config.get("consumption_forecast_sensor")
         self.unsub_timer = None
         self.current_load_w = None
 
@@ -140,17 +139,6 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                             except ValueError:
                                 pass
 
-                # 3. Hämta förbrukningsprognos (Valfritt)
-                consumption_forecast = None
-                if self.consumption_forecast_entity:
-                    forecast_state = self.hass.states.get(self.consumption_forecast_entity)
-                    if forecast_state and forecast_state.state not in ["unknown", "unavailable"]:
-                        try:
-                            consumption_forecast = float(forecast_state.state)
-                        except ValueError:
-                            pass  # Ignorera om värdet inte är ett tal
-
-                # 4. Hämta aktuell förbrukning / Huslast (kW)
                 current_consumption_kw = 0.0
                 current_load_w = None
 
@@ -236,7 +224,6 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     "soc": reported_soc,
                     "is_solar_override": is_solar_override,
                     "is_ev_charging": is_ev_charging,
-                    "consumption_forecast_kwh": consumption_forecast,
                     "ha_version": self.version,
                     "current_consumption_kw": current_consumption_kw
                 }

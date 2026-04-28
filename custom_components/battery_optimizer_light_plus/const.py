@@ -49,7 +49,6 @@ CONF_BATTERY_SENSOR_INVERT = "battery_sensor_invert" # Om batteriet visar positi
 CONF_BATTERY_STATUS_SENSOR = "battery_status_sensor" # Sensor för driftstatus (t.ex. Operating Mode)
 CONF_BATTERY_STATUS_KEYWORDS = "battery_status_keywords" # Nyckelord för underhållsläge
 CONF_VIRTUAL_LOAD_SENSOR = "virtual_load_sensor" # Virtuell last (Husets netto utan batteri)
-CONF_CONSUMPTION_FORECAST_SENSOR = "consumption_forecast_sensor" # Prognos för morgondagens förbrukning (kWh)
 CONF_EV_CHARGING_SENSOR = "ev_charging_sensor" # Sensor för elbilsladdning
 CONF_MIN_SOC = "min_soc" # Backup-reserv för Generic-batterier
 CONF_GRAPH_HISTORY_HOURS = "graph_history_hours"
