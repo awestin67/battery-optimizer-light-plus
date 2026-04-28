@@ -85,8 +85,8 @@ Integrationen är skapad för att fungera direkt ur lådan. Den lyssnar automati
 När systemet är igång skapas en mängd sensorer för att hjälpa dig övervaka optimeringen:
 
 * ⚡ **`sensor.optimizer_light_action`**: Aktuellt molnbeslut (`CHARGE`, `DISCHARGE`, `HOLD`, `IDLE`).
-* 🎯 **`sensor.optimizer_light_charge_target`**: Önskad laddningseffekt i Watt.
-* 🎯 **`sensor.optimizer_light_discharge_target`**: Önskad urladdningseffekt i Watt.
+* 🎯 **`sensor.optimizer_light_charge_target`**: Önskad laddningseffekt i Watt (alltid ett positivt absolutbelopp).
+* 🎯 **`sensor.optimizer_light_discharge_target`**: Önskad urladdningseffekt i Watt (alltid ett positivt absolutbelopp).
 * 🛡️ **`sensor.optimizer_light_peakguard_status`**: Aktuell status för den lokala effektvakten (t.ex. `Monitoring`, `Triggered`, `Paused`, `Solar Override Active`).
 * 🛑 **`sensor.optimizer_light_peak_limit`**: Den effektgräns (i Watt) som effektvakten just nu försvarar.
 * 🏠 **`sensor.optimizer_light_virtual_load`**: Husets beräknade nettolast i realtid (W).
@@ -460,7 +460,7 @@ För att faktiskt styra ditt batteri behöver du bygga en egen automation i Home
 Kopiera nedanstående exempel och anpassa `action` (t.ex. `script.din_inverter_charge`) så att de matchar de tjänster och skript du använder för din specifika anläggning.
 
 ### Exempel: Huvudstyrenhet (Utför Beslut)
-Lyssnar på ändringar från molnets besluts-sensor (`sensor.optimizer_light_action`) och styr batteriet. Notera att värdena för laddning och urladdning redan är konverterade till Watt (W) av integrationen.
+Lyssnar på ändringar från molnets besluts-sensor (`sensor.optimizer_light_action`) och styr batteriet. Notera att värdena för laddning och urladdning redan är konverterade till Watt (W) av integrationen och **alltid är positiva absolutbelopp** (du behöver alltså inte hantera minustecken i dina egna skript).
 
 ```yaml
 alias: 🔋 Battery Optimizer Light - Manuell Styrning (Generic)
