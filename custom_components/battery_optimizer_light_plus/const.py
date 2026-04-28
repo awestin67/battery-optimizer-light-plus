@@ -29,9 +29,6 @@ BATTERY_TYPE_SOLIS_MODBUS = "solis_modbus"
 CONF_API_KEY = "api_key"
 CONF_API_URL = "api_url"
 
-# Gemensam konfiguration
-CONF_AUTO_CONTROL = "auto_control"
-
 # Sonnen-specifik konfiguration
 CONF_HOST = "host"
 CONF_API_TOKEN = "api_token"
