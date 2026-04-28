@@ -58,7 +58,7 @@
             },
             "common": {
                 "title": "Common Settings",
-                "description": "Enter your API key for Battery Optimizer Light Plus. (If using Huawei, Solis, or Generic, also select your sensors below).",
+                "description": "Enter your API key. If using Generic, you must also select sensors for SoC, Battery Power, and Grid below.",
                 "data": {
                     "api_url": "API URL",
                     "api_key": "API Key (from Dashboard)",

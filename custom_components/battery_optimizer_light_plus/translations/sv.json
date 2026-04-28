@@ -58,7 +58,7 @@
             },
             "common": {
                 "title": "Gemensamma inställningar",
-                "description": "Fyll i din API-nyckel för Battery Optimizer Light Plus. (För Huawei och Generic pekar du även ut dina mät-sensorer nedan).",
+                "description": "Fyll i din API-nyckel. Använder du Generic måste du även peka ut sensorer för Batterinivå (SoC), Batteri och Nät (Grid) nedan.",
                 "data": {
                     "api_url": "API URL",
                     "api_key": "API Nyckel (från Dashboard)",

@@ -68,8 +68,8 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
 3. Följ guiden:
     * **Steg 1:** Välj vilken typ av batteri du har (Sonnen, Huawei, Homevolt, Solis Modbus, Generic).
     * **Steg 2:** Fyll i batterispecifika uppgifter (t.ex. IP och API-token för Sonnen, eller enheter för Huawei).
-    * **Steg 3:** Fyll i din API-nyckel från Dashboarden. Om du valt Sonnen, Huawei, Homevolt eller Solis hanteras de flesta mätvärden automatiskt, men för Generic (eller för anpassade behov) kan du behöva peka ut sensorer för nätutbyte och batteri manuellt.
-    * **Steg 4 (Valfritt):** Peka ut din **Elbilsladdning Sensor** för att aktivera det smarta elbilsstödet, samt eventuell **Förbrukningsprognos**.
+    * **Steg 3:** Fyll i din API-nyckel från Dashboarden. Om du valt Sonnen, Huawei, Homevolt eller Solis hittas de flesta mätvärden automatiskt. För **Generic** måste du dock manuellt peka ut dina sensorer för *Batterinivå (SoC)*, *Batteriets effekt (W)* och *Nätutbyte (Grid)*.
+    * **Steg 4 (Valfritt):** Peka ut din **Elbilsladdning Sensor** för att aktivera det smarta elbilsstödet.
 
 ---
 
