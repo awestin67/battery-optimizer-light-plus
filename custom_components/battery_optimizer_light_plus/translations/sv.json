@@ -10,6 +10,7 @@
                     "homevolt": "Homevolt",
                     "solis_modbus": "Solis Modbus",
                     "sigenergy": "Sigenergy",
+                    "solinteg": "Solinteg",
                     "generic": "Generic / Övriga (Ingen lokal styrning)"
                 }
             },
@@ -65,6 +66,16 @@
                 },
                 "data_description": {
                     "battery_device_id": "Välj din Sigenergy-växelriktare i listan så integrationen vet var kommandona ska skickas."
+                }
+            },
+            "solinteg": {
+                "title": "Konfigurera Solinteg",
+                "description": "Välj enheter och entiteter för din Solinteg-anläggning.",
+                "data": {
+                    "battery_device_id": "Solinteg-enhet"
+                },
+                "data_description": {
+                    "battery_device_id": "Välj din Solinteg-växelriktare i listan så integrationen vet var kommandona ska skickas."
                 }
             },
             "common": {

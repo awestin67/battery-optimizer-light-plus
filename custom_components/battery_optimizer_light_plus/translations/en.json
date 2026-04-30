@@ -10,6 +10,7 @@
                     "homevolt": "Homevolt",
                     "solis_modbus": "Solis Modbus",
                     "sigenergy": "Sigenergy",
+                    "solinteg": "Solinteg",
                     "generic": "Generic / Other (No local control)"
                 }
             },
@@ -65,6 +66,16 @@
                 },
                 "data_description": {
                     "battery_device_id": "Select your Sigenergy inverter from the list so the integration knows where to send commands."
+                }
+            },
+            "solinteg": {
+                "title": "Configure Solinteg",
+                "description": "Select the device for your Solinteg setup.",
+                "data": {
+                    "battery_device_id": "Solinteg Device"
+                },
+                "data_description": {
+                    "battery_device_id": "Select your Solinteg inverter from the list so the integration knows where to send commands."
                 }
             },
             "common": {

@@ -50,6 +50,16 @@ Styr Solis-batterier lokalt via Pho3niX90's Solis Modbus-integration.
 *   **Kompatibilitet:** Byggd och optimerad primärt för **Solis S6 Hybrid** (EH-modeller).
 *   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter vid installationen. Den använder växelriktarens "Remote Control" (RC) register för tillförlitlig lokal styrning.
 
+### 🔋 Sigenergy
+Styr Sigenergy-växelriktare lokalt via Modbus.
+*   **Krav:** En fungerande, förkonfigurerad installation av en Sigenergy Modbus-integration.
+*   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter (t.ex. `select.sigen_plant_remote_ems_control_mode`) vid installationen.
+
+### 🔌 Solinteg
+Styr Solinteg-växelriktare lokalt via Modbus.
+*   **Krav:** En fungerande, förkonfigurerad installation av en Solinteg-kompatibel Modbus-integration (t.ex. `solax-modbus` med `plugin_solinteg.py`).
+*   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter (t.ex. `select.solinteg_working_mode` och `number.solinteg_battery_charge_discharge_power_target`) vid installationen.
+
 ### ☁️ Generic / Light
 För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men sedan styra ditt batteri manuellt via egna automationsflöden. [Se exempel på automation här nere](#-automationer-för-generic--övriga-batterier).
 
@@ -68,7 +78,7 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
 1. Gå till **Inställningar** -> **Enheter & Tjänster**.
 2. Klicka på **Lägg till integration** och sök efter **Battery Optimizer Light Plus**.
 3. Följ guiden:
-    * **Steg 1:** Välj vilken typ av batteri du har (Sonnen, Huawei, Homevolt, Solis Modbus, Generic).
+    * **Steg 1:** Välj vilken typ av batteri du har (Sonnen, Huawei, Homevolt, Solis Modbus, Sigenergy, Solinteg, Generic).
     * **Steg 2:** Fyll i batterispecifika uppgifter (t.ex. IP och API-token för Sonnen, eller enheter för Huawei).
     * **Steg 3:** Fyll i din API-nyckel från Dashboarden. Om du valt Sonnen, Huawei, Homevolt eller Solis hittas de flesta mätvärden automatiskt. För **Generic** måste du dock manuellt peka ut dina sensorer för *Batterinivå (SoC)*, *Batteriets effekt (W)* och *Nätutbyte (Grid)*.
     * **Steg 4 (Valfritt):** Peka ut din **Elbilsladdning Sensor** för att aktivera det smarta elbilsstödet.

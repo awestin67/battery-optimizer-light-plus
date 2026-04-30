@@ -23,6 +23,7 @@ from .const import (
     BATTERY_TYPE_HOMEVOLT,
     BATTERY_TYPE_SOLIS_MODBUS,
     BATTERY_TYPE_SIGENERGY,
+    BATTERY_TYPE_SOLINTEG,
     CONF_HOST,
     CONF_PORT,
     CONF_API_TOKEN,
@@ -102,6 +103,19 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
         from .batteries.sigenergy.sigenergy import SigenergyBattery
 
         return SigenergyBattery(
+            hass=hass,
+            device_id=config[CONF_BATTERY_DEVICE_ID],
+            soc_entity=config.get(CONF_SOC_SENSOR),
+            device_status_entity=config.get(CONF_DEVICE_STATUS_ENTITY),
+            max_discharge_entity=config.get(CONF_MAX_DISCHARGE_ENTITY),
+            grid_entity=config.get(CONF_GRID_SENSOR),
+            invert_grid=config.get(CONF_GRID_SENSOR_INVERT, False),
+        )
+
+    if battery_type == BATTERY_TYPE_SOLINTEG:
+        from .batteries.solinteg.solinteg import SolintegBattery
+
+        return SolintegBattery(
             hass=hass,
             device_id=config[CONF_BATTERY_DEVICE_ID],
             soc_entity=config.get(CONF_SOC_SENSOR),

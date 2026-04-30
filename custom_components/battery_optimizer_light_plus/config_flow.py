@@ -35,6 +35,7 @@ from .const import (
     BATTERY_TYPE_HOMEVOLT,
     BATTERY_TYPE_SOLIS_MODBUS,
     BATTERY_TYPE_SIGENERGY,
+    BATTERY_TYPE_SOLINTEG,
     CONF_API_URL,
     DEFAULT_API_URL,
     CONF_API_KEY,
@@ -177,6 +178,23 @@ def async_auto_discover_sigenergy_entities(hass, device_id: str) -> dict:
 
     return found_entities
 
+def async_auto_discover_solinteg_entities(hass, device_id: str) -> dict:
+    """Attempt to auto-discover standard entities for a Solinteg device."""
+    registry = er.async_get(hass)
+    entries = er.async_entries_for_device(registry, device_id)
+    found_entities = {}
+
+    for entry in entries:
+        ent_id = entry.entity_id
+        if CONF_SOC_SENSOR not in found_entities and "soc" in ent_id and "sensor." in ent_id:
+            found_entities[CONF_SOC_SENSOR] = ent_id
+        elif CONF_GRID_SENSOR not in found_entities and "grid" in ent_id and "power" in ent_id and "sensor." in ent_id:
+            found_entities[CONF_GRID_SENSOR] = ent_id
+        elif CONF_BATTERY_POWER_SENSOR not in found_entities and "battery" in ent_id and "power" in ent_id and "sensor." in ent_id:
+            found_entities[CONF_BATTERY_POWER_SENSOR] = ent_id
+
+    return found_entities
+
 class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Battery Optimizer Light."""
     VERSION = 1
@@ -189,7 +207,7 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the initial step where the user selects the battery type."""
         return self.async_show_menu(
             step_id="user",
-            menu_options=["sonnen", "huawei", "homevolt", "solis_modbus", "sigenergy", "generic"]
+            menu_options=["sonnen", "huawei", "homevolt", "solis_modbus", "sigenergy", "solinteg", "generic"]
         )
 
     async def async_step_sonnen(self, user_input=None):
@@ -299,6 +317,26 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             })
         )
 
+    async def async_step_solinteg(self, user_input=None):
+        """Handle the Solinteg battery configuration step."""
+        self.data[CONF_BATTERY_TYPE] = BATTERY_TYPE_SOLINTEG
+
+        if user_input is not None:
+            discovered_entities = async_auto_discover_solinteg_entities(self.hass, user_input[CONF_BATTERY_DEVICE_ID])
+            if discovered_entities:
+                _LOGGER.info(f"Auto-discovered Solinteg entities: {discovered_entities}")
+                self.data.update(discovered_entities)
+
+            self.data.update(user_input)
+            return await self.async_step_common()
+
+        return self.async_show_form(
+            step_id="solinteg",
+            data_schema=vol.Schema({
+                vol.Required(CONF_BATTERY_DEVICE_ID): selector.DeviceSelector(selector.DeviceSelectorConfig()),
+            })
+        )
+
     async def async_step_generic(self, user_input=None):
         """Handle the Generic battery configuration step."""
         self.data[CONF_BATTERY_TYPE] = BATTERY_TYPE_GENERIC
@@ -384,7 +422,7 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                 )
 
-            if battery_type in [BATTERY_TYPE_HUAWEI, BATTERY_TYPE_SOLIS_MODBUS, BATTERY_TYPE_SIGENERGY]:
+            if battery_type in [BATTERY_TYPE_HUAWEI, BATTERY_TYPE_SOLIS_MODBUS, BATTERY_TYPE_SIGENERGY, BATTERY_TYPE_SOLINTEG]:
                 schema_dict.update({
                     _opt(
                         CONF_DEVICE_STATUS_ENTITY, get_val(CONF_DEVICE_STATUS_ENTITY)
@@ -472,6 +510,10 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             device_id = self.config_entry.data.get(CONF_BATTERY_DEVICE_ID)
             if device_id:
                 discovered = async_auto_discover_sigenergy_entities(self.hass, device_id)
+        elif battery_type == BATTERY_TYPE_SOLINTEG:
+            device_id = self.config_entry.data.get(CONF_BATTERY_DEVICE_ID)
+            if device_id:
+                discovered = async_auto_discover_solinteg_entities(self.hass, device_id)
 
         def get_default(key, default_fallback=vol.UNDEFINED):
             val = self.config_entry.data.get(key)
@@ -548,6 +590,17 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
                 _opt(CONF_BATTERY_STATUS_KEYWORDS, get_default(CONF_BATTERY_STATUS_KEYWORDS, DEFAULT_BATTERY_STATUS_KEYWORDS)): TextSelector(TextSelectorConfig(multiline=True)),
             })
         elif battery_type == BATTERY_TYPE_SIGENERGY:
+            schema_fields.update({
+                vol.Required(CONF_BATTERY_DEVICE_ID, default=get_default(CONF_BATTERY_DEVICE_ID)): selector.DeviceSelector(
+                    selector.DeviceSelectorConfig()
+                ),
+                vol.Required(CONF_SOC_SENSOR, default=get_default(CONF_SOC_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                _opt(CONF_GRID_SENSOR, get_default(CONF_GRID_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                vol.Required(CONF_BATTERY_POWER_SENSOR, default=get_default(CONF_BATTERY_POWER_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                _opt(CONF_DEVICE_STATUS_ENTITY, get_default(CONF_DEVICE_STATUS_ENTITY)): selector.EntitySelector(EntitySelectorConfig(domain="sensor")),
+                _opt(CONF_BATTERY_STATUS_KEYWORDS, get_default(CONF_BATTERY_STATUS_KEYWORDS, DEFAULT_BATTERY_STATUS_KEYWORDS)): TextSelector(TextSelectorConfig(multiline=True)),
+            })
+        elif battery_type == BATTERY_TYPE_SOLINTEG:
             schema_fields.update({
                 vol.Required(CONF_BATTERY_DEVICE_ID, default=get_default(CONF_BATTERY_DEVICE_ID)): selector.DeviceSelector(
                     selector.DeviceSelectorConfig()

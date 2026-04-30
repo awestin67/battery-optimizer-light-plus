@@ -25,6 +25,7 @@ BATTERY_TYPE_GENERIC = "generic"
 BATTERY_TYPE_HOMEVOLT = "homevolt"
 BATTERY_TYPE_SOLIS_MODBUS = "solis_modbus"
 BATTERY_TYPE_SIGENERGY = "sigenergy"
+BATTERY_TYPE_SOLINTEG = "solinteg"
 
 # Konfiguration
 CONF_API_KEY = "api_key"
