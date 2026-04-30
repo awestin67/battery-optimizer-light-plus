@@ -43,6 +43,7 @@ from .const import (
     CONF_BATTERY_STATUS_KEYWORDS,
     CONF_VIRTUAL_LOAD_SENSOR,
     DEFAULT_BATTERY_STATUS_KEYWORDS,
+    CONF_EXTERNAL_CONTROL_SENSOR,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -128,6 +129,12 @@ async def async_setup_entry(hass: HomeAssistant, entry):
     if status_entity:
         entities_to_track.append(status_entity)
         _LOGGER.info(f"PeakGuard monitoring battery status: {status_entity}")
+
+    # 3. Extern Paus-sensor
+    ext_entity = config.get(CONF_EXTERNAL_CONTROL_SENSOR)
+    if ext_entity:
+        entities_to_track.append(ext_entity)
+        _LOGGER.info(f"PeakGuard monitoring external control sensor: {ext_entity}")
 
     # Starta bevakning
     if entities_to_track:
@@ -246,7 +253,33 @@ class PeakGuard:
                 # OBS! Vi avbryter INTE (return) här längre.
                 # Solar Override ska fortsätta fungera oavsett molnets inställning.
 
-            # 0.1 Kontrollera Batteristatus (Maintenance/Full Charge)
+            # 0.1 Kontrollera Extern Paus (CheckWatt/FCR)
+            ext_entity = self.config.get(CONF_EXTERNAL_CONTROL_SENSOR)
+            external_pause = False
+            if ext_entity:
+                ext_state = self.hass.states.get(ext_entity)
+                if ext_state and ext_state.state.lower() in ["on", "true", "1", "active", "yes", "på", "sant"]:
+                    external_pause = True
+
+            if external_pause:
+                self._maintenance_cooldown_start = None
+                if not self._in_maintenance:
+                    _LOGGER.info(f"⏸️ External pause sensor active ({ext_entity}). Pausing Battery Optimizer.")
+                    self._in_maintenance = True
+                    self._maintenance_reason = "External Control Active"
+                    self._last_sent_command = None
+                    self.coordinator.async_update_listeners()
+                    # Släpp eventuella egna lås så externa system kan ta över
+                    try:
+                        await self.battery.apply_action("IDLE")
+                    except Exception as e:
+                        _LOGGER.error(f"Failed to send IDLE on external pause: {e}")
+
+                if self.is_active:
+                    self._set_reported_state(False)
+                return
+
+            # 0.2 Kontrollera Batteristatus (Maintenance/Full Charge)
             val_display = None
             if hasattr(self.battery, "get_status_text"):
                 val_display = await self.battery.get_status_text()

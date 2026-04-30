@@ -277,7 +277,12 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     data["cloud_target_power_kw"] = target_kw
 
                     # Låt batterihanteraren verkställa beslutet, om inte PeakGuard har tagit över lokalt
-                    if not is_solar_override and not (hasattr(self, "peak_guard") and self.peak_guard.is_active):
+                    is_in_maintenance = hasattr(self, "peak_guard") and self.peak_guard.in_maintenance
+                    if (
+                        not is_in_maintenance
+                        and not is_solar_override
+                        and not (hasattr(self, "peak_guard") and self.peak_guard.is_active)
+                    ):
                         # Spärra manuell urladdning om vi har nått hårdvarureserven (t.ex. Sonnen Backup)
                         if action == "DISCHARGE" and soc <= hardware_min_soc:
                             _LOGGER.info(

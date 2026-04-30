@@ -24,6 +24,7 @@ BATTERY_TYPE_HUAWEI = "huawei"
 BATTERY_TYPE_GENERIC = "generic"
 BATTERY_TYPE_HOMEVOLT = "homevolt"
 BATTERY_TYPE_SOLIS_MODBUS = "solis_modbus"
+BATTERY_TYPE_SIGENERGY = "sigenergy"
 
 # Konfiguration
 CONF_API_KEY = "api_key"
@@ -50,8 +51,12 @@ CONF_BATTERY_STATUS_SENSOR = "battery_status_sensor" # Sensor för driftstatus (
 CONF_BATTERY_STATUS_KEYWORDS = "battery_status_keywords" # Nyckelord för underhållsläge
 CONF_VIRTUAL_LOAD_SENSOR = "virtual_load_sensor" # Virtuell last (Husets netto utan batteri)
 CONF_EV_CHARGING_SENSOR = "ev_charging_sensor" # Sensor för elbilsladdning
+CONF_EXTERNAL_CONTROL_SENSOR = "external_control_sensor" # Sensor för CheckWatt/FCR (Pausar systemet)
 CONF_MIN_SOC = "min_soc" # Backup-reserv för Generic-batterier
 CONF_GRAPH_HISTORY_HOURS = "graph_history_hours"
 
 DEFAULT_API_URL = "https://battery-light-production.up.railway.app"
-DEFAULT_BATTERY_STATUS_KEYWORDS = "battery_care, puls_orange, calibration, firmware_update, solid_red, warning_internet"
+DEFAULT_BATTERY_STATUS_KEYWORDS = (
+    "battery_care, puls_orange, calibration, firmware_update, "
+    "solid_red, warning_internet, checkwatt, fcr"
+)

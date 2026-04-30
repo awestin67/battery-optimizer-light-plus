@@ -20,8 +20,10 @@ Systemet kombinerar **Molnintelligens** (för prisoptimering och arbitrage) med 
     * *Hysteres:* Inbyggd smart logik förhindrar "fladder" när lasten pendlar runt gränsvärdet.
 * **🤖 Zero-Config Automation:** Integrationen lyssnar automatiskt på beslut från molnet och styr ditt batteri. Inga krångliga YAML-skript eller automationer krävs!
 * **📊 Analys:** Följ dina besparingar och effekttoppar via vår snygga [Web Dashboard](https://battery-prod.awestinconsulting.se).
-* **🚗 Smart Elbilsstöd:** Peka ut en sensor från din laddbox i Home Assistant så informeras molnet automatiskt när bilen laddas, vilket förbättrar AI-beslut kring urladdning! 
+* **🚗 Smart Elbilsstöd:** Peka ut en sensor från din laddbox i Home Assistant så informeras molnet automatiskt när bilen laddas, vilket förbättrar AI-beslut kring urladdning och sätter batteriet i läge `HOLD`! 
   *(Integrationen känner automatiskt igen tillstånden `on`, `true`, `1`, `charging`, `på`, `charge`, `sant` samt numeriska effektvärden `> 0` W).*
+* **⏸️ Stöd för CheckWatt & Stödtjänster (Extern Paus):** Om ett externt system behöver exklusiv kontroll över batteriet kan du peka ut en Paus-sensor (t.ex. en `input_boolean` eller status-sensor för CheckWatt). 
+  *(Integrationen reagerar automatiskt på tillstånden `on`, `true`, `1`, `active`, `yes`, `på` eller `sant`. Då pausas all styrning från Battery Optimizer och batteriet sätts i `IDLE` så att systemen inte slåss om kommandona).*
 
 ---
 
@@ -70,6 +72,7 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
     * **Steg 2:** Fyll i batterispecifika uppgifter (t.ex. IP och API-token för Sonnen, eller enheter för Huawei).
     * **Steg 3:** Fyll i din API-nyckel från Dashboarden. Om du valt Sonnen, Huawei, Homevolt eller Solis hittas de flesta mätvärden automatiskt. För **Generic** måste du dock manuellt peka ut dina sensorer för *Batterinivå (SoC)*, *Batteriets effekt (W)* och *Nätutbyte (Grid)*.
     * **Steg 4 (Valfritt):** Peka ut din **Elbilsladdning Sensor** för att aktivera det smarta elbilsstödet.
+    * **Steg 5 (Valfritt):** Peka ut en sensor för **Pausa Battery Optimizer** om du använder externa stödtjänster (ex. CheckWatt) som ibland behöver egen kontroll över batteriet.
 
 ---
 

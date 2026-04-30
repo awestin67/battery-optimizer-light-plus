@@ -34,6 +34,7 @@ from .const import (
     BATTERY_TYPE_GENERIC,
     BATTERY_TYPE_HOMEVOLT,
     BATTERY_TYPE_SOLIS_MODBUS,
+    BATTERY_TYPE_SIGENERGY,
     CONF_API_URL,
     DEFAULT_API_URL,
     CONF_API_KEY,
@@ -46,6 +47,7 @@ from .const import (
     CONF_BATTERY_STATUS_KEYWORDS,
     CONF_VIRTUAL_LOAD_SENSOR,
     CONF_EV_CHARGING_SENSOR,
+    CONF_EXTERNAL_CONTROL_SENSOR,
     CONF_MIN_SOC,
     DEFAULT_BATTERY_STATUS_KEYWORDS,
     CONF_HOST,
@@ -156,6 +158,25 @@ def async_auto_discover_solis_entities(hass, device_id: str) -> dict:
 
     return found_entities
 
+def async_auto_discover_sigenergy_entities(hass, device_id: str) -> dict:
+    """Attempt to auto-discover standard entities for a Sigenergy device."""
+    registry = er.async_get(hass)
+    entries = er.async_entries_for_device(registry, device_id)
+    found_entities = {}
+
+    for entry in entries:
+        ent_id = entry.entity_id
+        if CONF_SOC_SENSOR not in found_entities and "soc" in ent_id and "sensor." in ent_id:
+            found_entities[CONF_SOC_SENSOR] = ent_id
+        elif CONF_GRID_SENSOR not in found_entities and "grid" in ent_id and "power" in ent_id and "sensor." in ent_id:
+            found_entities[CONF_GRID_SENSOR] = ent_id
+        elif CONF_BATTERY_POWER_SENSOR not in found_entities and "battery" in ent_id and "power" in ent_id and "sensor." in ent_id:
+            found_entities[CONF_BATTERY_POWER_SENSOR] = ent_id
+        elif CONF_DEVICE_STATUS_ENTITY not in found_entities and "status" in ent_id and "sensor." in ent_id:
+            found_entities[CONF_DEVICE_STATUS_ENTITY] = ent_id
+
+    return found_entities
+
 class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Battery Optimizer Light."""
     VERSION = 1
@@ -168,7 +189,7 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the initial step where the user selects the battery type."""
         return self.async_show_menu(
             step_id="user",
-            menu_options=["sonnen", "huawei", "homevolt", "solis_modbus", "generic"]
+            menu_options=["sonnen", "huawei", "homevolt", "solis_modbus", "sigenergy", "generic"]
         )
 
     async def async_step_sonnen(self, user_input=None):
@@ -258,6 +279,26 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             })
         )
 
+    async def async_step_sigenergy(self, user_input=None):
+        """Handle the Sigenergy battery configuration step."""
+        self.data[CONF_BATTERY_TYPE] = BATTERY_TYPE_SIGENERGY
+
+        if user_input is not None:
+            discovered_entities = async_auto_discover_sigenergy_entities(self.hass, user_input[CONF_BATTERY_DEVICE_ID])
+            if discovered_entities:
+                _LOGGER.info(f"Auto-discovered Sigenergy entities: {discovered_entities}")
+                self.data.update(discovered_entities)
+
+            self.data.update(user_input)
+            return await self.async_step_common()
+
+        return self.async_show_form(
+            step_id="sigenergy",
+            data_schema=vol.Schema({
+                vol.Required(CONF_BATTERY_DEVICE_ID): selector.DeviceSelector(selector.DeviceSelectorConfig()),
+            })
+        )
+
     async def async_step_generic(self, user_input=None):
         """Handle the Generic battery configuration step."""
         self.data[CONF_BATTERY_TYPE] = BATTERY_TYPE_GENERIC
@@ -288,6 +329,9 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_API_KEY): TextSelector(),
             _opt(
                 CONF_EV_CHARGING_SENSOR, get_val(CONF_EV_CHARGING_SENSOR)
+            ): EntitySelector(EntitySelectorConfig()),
+            _opt(
+                CONF_EXTERNAL_CONTROL_SENSOR, get_val(CONF_EXTERNAL_CONTROL_SENSOR)
             ): EntitySelector(EntitySelectorConfig()),
             vol.Optional("enable_solar_override", default=get_val("enable_solar_override", False)): bool,
             vol.Optional(CONF_GRAPH_HISTORY_HOURS, default=get_val(CONF_GRAPH_HISTORY_HOURS, "24")): selector.SelectSelector(
@@ -340,7 +384,7 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                 )
 
-            if battery_type in [BATTERY_TYPE_HUAWEI, BATTERY_TYPE_SOLIS_MODBUS]:
+            if battery_type in [BATTERY_TYPE_HUAWEI, BATTERY_TYPE_SOLIS_MODBUS, BATTERY_TYPE_SIGENERGY]:
                 schema_dict.update({
                     _opt(
                         CONF_DEVICE_STATUS_ENTITY, get_val(CONF_DEVICE_STATUS_ENTITY)
@@ -380,6 +424,7 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             # Home Assistant utelämnar dessa helt från user_input om de rensas via gränssnittet.
             clearable_keys = [
                 CONF_EV_CHARGING_SENSOR,
+                CONF_EXTERNAL_CONTROL_SENSOR,
                 CONF_GRID_SENSOR,
                 CONF_BATTERY_STATUS_SENSOR,
                 CONF_BATTERY_STATUS_KEYWORDS,
@@ -423,6 +468,10 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             device_id = self.config_entry.data.get(CONF_BATTERY_DEVICE_ID)
             if device_id:
                 discovered = async_auto_discover_solis_entities(self.hass, device_id)
+        elif battery_type == BATTERY_TYPE_SIGENERGY:
+            device_id = self.config_entry.data.get(CONF_BATTERY_DEVICE_ID)
+            if device_id:
+                discovered = async_auto_discover_sigenergy_entities(self.hass, device_id)
 
         def get_default(key, default_fallback=vol.UNDEFINED):
             val = self.config_entry.data.get(key)
@@ -437,6 +486,9 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             ),
             vol.Required(CONF_API_KEY, default=get_default(CONF_API_KEY)): TextSelector(),
             _opt(CONF_EV_CHARGING_SENSOR, get_default(CONF_EV_CHARGING_SENSOR)): EntitySelector(
+                EntitySelectorConfig()
+            ),
+            _opt(CONF_EXTERNAL_CONTROL_SENSOR, get_default(CONF_EXTERNAL_CONTROL_SENSOR)): EntitySelector(
                 EntitySelectorConfig()
             ),
             vol.Optional("enable_solar_override", default=get_default("enable_solar_override", False)): bool,
@@ -488,6 +540,17 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             schema_fields.update({
                 vol.Required(CONF_BATTERY_DEVICE_ID, default=get_default(CONF_BATTERY_DEVICE_ID)): selector.DeviceSelector(
                     selector.DeviceSelectorConfig(integration="solis_modbus")
+                ),
+                vol.Required(CONF_SOC_SENSOR, default=get_default(CONF_SOC_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                _opt(CONF_GRID_SENSOR, get_default(CONF_GRID_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                vol.Required(CONF_BATTERY_POWER_SENSOR, default=get_default(CONF_BATTERY_POWER_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                _opt(CONF_DEVICE_STATUS_ENTITY, get_default(CONF_DEVICE_STATUS_ENTITY)): selector.EntitySelector(EntitySelectorConfig(domain="sensor")),
+                _opt(CONF_BATTERY_STATUS_KEYWORDS, get_default(CONF_BATTERY_STATUS_KEYWORDS, DEFAULT_BATTERY_STATUS_KEYWORDS)): TextSelector(TextSelectorConfig(multiline=True)),
+            })
+        elif battery_type == BATTERY_TYPE_SIGENERGY:
+            schema_fields.update({
+                vol.Required(CONF_BATTERY_DEVICE_ID, default=get_default(CONF_BATTERY_DEVICE_ID)): selector.DeviceSelector(
+                    selector.DeviceSelectorConfig()
                 ),
                 vol.Required(CONF_SOC_SENSOR, default=get_default(CONF_SOC_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor")),
                 _opt(CONF_GRID_SENSOR, get_default(CONF_GRID_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),

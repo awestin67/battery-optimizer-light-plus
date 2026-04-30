@@ -892,6 +892,44 @@ async def test_peak_guard_pauses_on_custom_keyword(mock_hass_instance, mock_batt
     assert guard._in_maintenance is True
 
 @pytest.mark.asyncio
+async def test_peak_guard_pauses_on_external_control_sensor(mock_hass_instance, mock_battery):
+    """Krav: Om external_control_sensor är 'on' ska PeakGuard pausa systemet direkt (t.ex. CheckWatt)."""
+    config = MOCK_CONFIG.copy()
+    config["external_control_sensor"] = "input_boolean.checkwatt_active"
+
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
+
+    guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+
+    limit_state = MagicMock()
+    limit_state.state = "5.0"
+
+    # Sensorn för CheckWatt är på!
+    external_state = MagicMock()
+    external_state.state = "on"
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "input_boolean.checkwatt_active":
+            return external_state
+        return None
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    await guard.update(None, "sensor.optimizer_light_peak_limit")
+
+    # Verifiera att PeakGuard gick in i underhållsläge och släppte batteriet till IDLE
+    assert guard._in_maintenance is True
+    assert guard._maintenance_reason == "External Control Active"
+    mock_battery.apply_action.assert_called_with("IDLE")
+
+@pytest.mark.asyncio
 async def test_peak_guard_stops_at_zero_soc(mock_hass_instance, mock_battery):
     """Krav: PeakGuard ska sluta urladda när SoC når 0%."""
     coordinator = MagicMock()

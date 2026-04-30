@@ -9,6 +9,7 @@
                     "huawei": "Huawei Luna2000",
                     "homevolt": "Homevolt",
                     "solis_modbus": "Solis Modbus",
+                    "sigenergy": "Sigenergy",
                     "generic": "Generic / Övriga (Ingen lokal styrning)"
                 }
             },
@@ -56,6 +57,16 @@
                     "battery_device_id": "Välj din Solis-växelriktare i listan så integrationen vet var kommandona ska skickas."
                 }
             },
+            "sigenergy": {
+                "title": "Konfigurera Sigenergy",
+                "description": "Välj enheter och entiteter för din Sigenergy-anläggning.",
+                "data": {
+                    "battery_device_id": "Sigenergy-enhet"
+                },
+                "data_description": {
+                    "battery_device_id": "Välj din Sigenergy-växelriktare i listan så integrationen vet var kommandona ska skickas."
+                }
+            },
             "common": {
                 "title": "Gemensamma inställningar",
                 "description": "Fyll i din API-nyckel. Använder du Generic måste du även peka ut sensorer för Batterinivå (SoC), Batteri och Nät (Grid) nedan.",
@@ -68,10 +79,11 @@
                     "battery_power_sensor": "Batteri Effekt Sensor (W)",
                     "battery_sensor_invert": "Invertera Batteri Sensor? (Välj om positivt värde = Laddar)",
                     "battery_status_sensor": "Batteri Status Sensor (Valfritt)",
-                    "battery_status_keywords": "Nyckelord för underhåll (t.ex. Battery-Care, Service)",
+                    "battery_status_keywords": "Nyckelord för underhåll (t.ex. Battery-Care, CheckWatt)",
                     "min_soc": "Backup Reserv / Min SoC (%)",
                     "virtual_load_sensor": "Virtuell Last Sensor (Valfritt - Ersätter Grid+Batteri beräkning)",
                     "ev_charging_sensor": "Elbilsladdning Sensor (Valfritt)",
+                    "external_control_sensor": "Pausa Battery Optimizer (Extern styrnings-sensor, Valfritt)",
                     "device_status_entity": "Device Status (Entitet)",
                     "max_discharge_entity": "Max Urladdning (Entitet)",
                     "enable_solar_override": "Aktivera Solar Override (Pausar urladdning vid solelexport)",
@@ -88,6 +100,7 @@
                     "virtual_load_sensor": "Lämna tom för att låta integrationen räkna ut lasten automatiskt (Grid + Batteri).",
                     "min_soc": "Ange hur många procent av batteriet som ska döljas för molnet (t.ex. reserverat för strömavbrott).",
                     "ev_charging_sensor": "Peka ut en sensor (t.ex. från din laddbox) som indikerar om elbilen laddas.",
+                    "external_control_sensor": "Peka ut en sensor som, när den är 'on', helt pausar Battery Optimizer (både moln och PeakGuard) så att externa system kan styra.",
                     "device_status_entity": "Peka ut sensorn för status (t.ex. 'sensor.inverter_device_status') så känner PeakGuard automatiskt av fel och underhållslägen.",
                     "max_discharge_entity": "Peka ut Number-entiteten för Maximal Urladdningseffekt. Lämna tom för automatisk sökning.",
                     "enable_solar_override": "Kryssa i denna för att automatiskt pausa PeakGuard och moln-urladdning när du har ett stort överskott av solel.",
@@ -118,10 +131,11 @@
                     "battery_power_sensor": "Batteri Effekt (W)",
                     "battery_sensor_invert": "Invertera Batteri Sensor",
                     "battery_status_sensor": "Batteri Status Sensor",
-                    "battery_status_keywords": "Nyckelord för underhåll (komma-separerad)",
+                    "battery_status_keywords": "Nyckelord för underhåll (t.ex. Service, CheckWatt)",
                     "min_soc": "Backup Reserv / Min SoC (%)",
                     "virtual_load_sensor": "Virtuell Last Sensor",
                     "ev_charging_sensor": "Elbilsladdning Sensor",
+                    "external_control_sensor": "Pausa Battery Optimizer (Extern styrning)",
                     "host": "IP-adress (Sonnen)",
                     "api_token": "API-token (Sonnen)",
                     "port": "Port (Sonnen)",
@@ -142,6 +156,7 @@
                     "virtual_load_sensor": "Lämna tom för att låta integrationen räkna ut lasten automatiskt (Grid + Batteri).",
                     "min_soc": "Ange hur många procent av batteriet som ska döljas för molnet (t.ex. reserverat för strömavbrott).",
                     "ev_charging_sensor": "Peka ut en sensor (t.ex. från din laddbox) som indikerar om elbilen laddas.",
+                    "external_control_sensor": "Peka ut en sensor som, när den är 'on', helt pausar Battery Optimizer (både moln och PeakGuard) så att externa system kan styra.",
                     "host": "Skriv in IP-adressen till ditt Sonnen-batteri (t.ex. 192.168.1.50).",
                     "api_token": "Kopiera ditt Auth-Token från batteriets lokala webbsida under 'Software Integration' -> 'JSON API'.",
                     "port": "Standardport för Sonnen är 80.",

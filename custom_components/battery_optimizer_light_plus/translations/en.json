@@ -9,6 +9,7 @@
                     "huawei": "Huawei Luna2000",
                     "homevolt": "Homevolt",
                     "solis_modbus": "Solis Modbus",
+                    "sigenergy": "Sigenergy",
                     "generic": "Generic / Other (No local control)"
                 }
             },
@@ -56,6 +57,16 @@
                     "battery_device_id": "Select your Solis inverter from the list so the integration knows where to send commands."
                 }
             },
+            "sigenergy": {
+                "title": "Configure Sigenergy",
+                "description": "Select the device for your Sigenergy setup.",
+                "data": {
+                    "battery_device_id": "Sigenergy Device"
+                },
+                "data_description": {
+                    "battery_device_id": "Select your Sigenergy inverter from the list so the integration knows where to send commands."
+                }
+            },
             "common": {
                 "title": "Common Settings",
                 "description": "Enter your API key. If using Generic, you must also select sensors for SoC, Battery Power, and Grid below.",
@@ -68,10 +79,11 @@
                     "battery_power_sensor": "Battery Power Sensor (W)",
                     "battery_sensor_invert": "Invert Battery Sensor? (Check if positive value = Charging)",
                     "battery_status_sensor": "Battery Status Sensor (Optional)",
-                    "battery_status_keywords": "Maintenance Keywords (e.g. Battery-Care, Service)",
+                    "battery_status_keywords": "Maintenance Keywords (e.g. Battery-Care, CheckWatt)",
                     "min_soc": "Backup Reserve / Min SoC (%)",
                     "virtual_load_sensor": "Virtual Load Sensor (Optional - Overrides calc)",
                     "ev_charging_sensor": "EV Charging Sensor (Optional)",
+                    "external_control_sensor": "Pause Battery Optimizer (External Control Sensor, Optional)",
                     "device_status_entity": "Device Status (Entity)",
                     "max_discharge_entity": "Max Discharge (Entity)",
                     "enable_solar_override": "Enable Solar Override (Pauses discharge on high solar export)",
@@ -88,6 +100,7 @@
                     "virtual_load_sensor": "Leave empty to let the integration calculate the load automatically (Grid + Battery).",
                     "min_soc": "Specify the percentage of the battery to hide from the cloud (e.g., reserved for power outages).",
                     "ev_charging_sensor": "Select a sensor (e.g., from your EV charger) that indicates if the EV is currently charging.",
+                    "external_control_sensor": "Select a sensor that, when 'on', fully pauses the Battery Optimizer (both cloud and PeakGuard) to allow external systems to control the battery.",
                     "device_status_entity": "Select the status sensor (e.g., 'sensor.inverter_device_status') to allow PeakGuard to automatically detect errors and maintenance modes.",
                     "max_discharge_entity": "Select the Number entity for Maximum Discharging Power. Leave empty for auto-discovery.",
                     "enable_solar_override": "Check this to automatically pause PeakGuard and cloud discharging when exporting a large amount of solar power.",
@@ -118,10 +131,11 @@
                     "battery_power_sensor": "Battery Power Sensor (W)",
                     "battery_sensor_invert": "Invert Battery Sensor",
                     "battery_status_sensor": "Battery Status Sensor",
-                    "battery_status_keywords": "Maintenance Keywords (comma-separated)",
+                    "battery_status_keywords": "Maintenance Keywords (e.g. Service, CheckWatt)",
                     "min_soc": "Backup Reserve / Min SoC (%)",
                     "virtual_load_sensor": "Virtual Load Sensor",
                     "ev_charging_sensor": "EV Charging Sensor",
+                    "external_control_sensor": "Pause Battery Optimizer (External Control)",
                     "host": "IP Address (Sonnen)",
                     "api_token": "API Token (Sonnen)",
                     "port": "Port (Sonnen)",
@@ -142,6 +156,7 @@
                     "virtual_load_sensor": "Leave empty to let the integration calculate the load automatically (Grid + Battery).",
                     "min_soc": "Specify the percentage of the battery to hide from the cloud (e.g., reserved for power outages).",
                     "ev_charging_sensor": "Select a sensor (e.g., from your EV charger) that indicates if the EV is currently charging.",
+                    "external_control_sensor": "Select a sensor that, when 'on', fully pauses the Battery Optimizer (both cloud and PeakGuard) to allow external systems to control the battery.",
                     "host": "Enter the IP address of your Sonnen battery (e.g. 192.168.1.50).",
                     "api_token": "Copy your Auth-Token from the battery's local web page under 'Software Integration' -> 'JSON API'.",
                     "port": "Default port for Sonnen is 80.",
