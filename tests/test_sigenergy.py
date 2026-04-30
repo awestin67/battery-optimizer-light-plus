@@ -16,6 +16,7 @@
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
+from homeassistant.exceptions import ServiceNotFound
 from homeassistant.const import STATE_UNAVAILABLE
 
 from custom_components.battery_optimizer_light_plus.batteries.sigenergy.sigenergy import SigenergyBattery
@@ -158,14 +159,30 @@ async def test_apply_action_discharge(sigenergy_battery, mock_hass):
 
 @pytest.mark.asyncio
 async def test_apply_action_hold(sigenergy_battery, mock_hass):
-    """Krav: HOLD ska sätta urladdningsgränsen till 0W och aktivera Hold-läget."""
+    """Krav: HOLD ska sätta laddnings- och urladdningsgränsen till 0W och aktivera Hold-läget."""
     async def mock_find_entity(domain, partial_key):
         if partial_key == "ems_control_mode":
             return "select.sig_ems_control_mode"
+        if partial_key == "max_charging_limit":
+            return "number.sig_max_charging_limit"
+        if partial_key == "max_discharging_limit":
+            return "number.sig_max_discharging_limit"
         return None
 
     with patch.object(sigenergy_battery, "_find_entity", side_effect=mock_find_entity):
         await sigenergy_battery.apply_action("HOLD")
+        mock_hass.services.async_call.assert_any_call(
+            "number",
+            "set_value",
+            {"entity_id": "number.sig_max_charging_limit", "value": 0},
+            blocking=True,
+        )
+        mock_hass.services.async_call.assert_any_call(
+            "number",
+            "set_value",
+            {"entity_id": "number.sig_max_discharging_limit", "value": 0},
+            blocking=True,
+        )
         mock_hass.services.async_call.assert_any_call(
             "select",
             "select_option",
@@ -209,3 +226,43 @@ async def test_apply_action_idle(sigenergy_battery, mock_hass):
             {"entity_id": "select.sig_ems_control_mode", "option": "Maximum Self Consumption"},
             blocking=True,
         )
+
+@pytest.mark.asyncio
+async def test_apply_action_idle_fallback(sigenergy_battery, mock_hass):
+    """Krav: IDLE ska falla tillbaka på 15.0 kW om max-attributet saknas på sensorn."""
+    mock_state = MagicMock()
+    mock_state.attributes = {}  # Saknar 'max' attribut
+    mock_hass.states.get.return_value = mock_state
+
+    async def mock_find_entity(domain, partial_key):
+        if partial_key == "ems_control_mode":
+            return "select.sig_ems_control_mode"
+        if partial_key == "max_charging_limit":
+            return "number.sig_max_charging_limit"
+        return None
+
+    with patch.object(sigenergy_battery, "_find_entity", side_effect=mock_find_entity):
+        await sigenergy_battery.apply_action("IDLE")
+        mock_hass.services.async_call.assert_any_call(
+            "number",
+            "set_value",
+            {"entity_id": "number.sig_max_charging_limit", "value": 15.0},
+            blocking=True,
+        )
+
+@pytest.mark.asyncio
+async def test_apply_action_service_not_found(sigenergy_battery, mock_hass):
+    """Krav: ServiceNotFound fångas och loggas med en varning istället för att krascha."""
+    mock_hass.services.async_call.side_effect = ServiceNotFound("select", "select_option")
+
+    async def mock_find_entity(domain, partial_key):
+        if partial_key == "ems_control_mode":
+            return "select.sig_ems_control_mode"
+        return None
+
+    with patch("custom_components.battery_optimizer_light_plus.batteries.sigenergy.sigenergy._LOGGER") as mock_logger, \
+         patch.object(sigenergy_battery, "_find_entity", side_effect=mock_find_entity):
+
+        await sigenergy_battery.apply_action("IDLE")
+        mock_logger.warning.assert_called_once()
+        assert "Sigenergy service call failed" in mock_logger.warning.call_args[0][0]

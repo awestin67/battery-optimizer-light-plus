@@ -9,6 +9,7 @@
 import logging
 from homeassistant.core import HomeAssistant
 from homeassistant.const import STATE_UNKNOWN, STATE_UNAVAILABLE
+from homeassistant.exceptions import HomeAssistantError, ServiceNotFound
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from ..base import BatteryApi
 
@@ -121,20 +122,33 @@ class SigenergyBattery(BatteryApi):
                 )
 
             elif action == "HOLD":
+                # Sätt effektgränserna till 0 för att vara säker på att batteriet pausas
+                if charge_power_entity:
+                    await self._hass.services.async_call(
+                        "number", "set_value", {"entity_id": charge_power_entity, "value": 0}, blocking=True
+                    )
+                if discharge_power_entity:
+                    await self._hass.services.async_call(
+                        "number", "set_value", {"entity_id": discharge_power_entity, "value": 0}, blocking=True
+                    )
                 await self._hass.services.async_call(
                     "select",
                     "select_option",
                     {"entity_id": mode_entity, "option": "Standby"},
-                    blocking=True
+                    blocking=True,
                 )
 
             elif action == "IDLE":
                 for entity_id in [charge_power_entity, discharge_power_entity]:
                     if entity_id:
                         state = self._hass.states.get(entity_id)
-                        max_val = 100.0  # Fallback 100 kW om sensorn saknar max-attribut
+                        # Säkrare fallback-värde än 100.0 kW
+                        max_val = 15.0
                         if state and "max" in state.attributes:
-                            max_val = float(state.attributes["max"])
+                            try:
+                                max_val = float(state.attributes["max"])
+                            except (ValueError, TypeError):
+                                _LOGGER.warning(f"Could not parse 'max' attribute for {entity_id}")
                         await self._hass.services.async_call(
                             "number",
                             "set_value",
@@ -148,5 +162,7 @@ class SigenergyBattery(BatteryApi):
                     blocking=True,
                 )
 
+        except (ServiceNotFound, HomeAssistantError) as e:
+            _LOGGER.warning(f"Sigenergy service call failed: {e}")
         except Exception as e:
-            _LOGGER.error(f"Fel vid applicering av Sigenergy-kommando: {e}")
+            _LOGGER.error(f"Fel vid applicering av Sigenergy-kommando: {e}", exc_info=True)

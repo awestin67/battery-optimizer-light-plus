@@ -37,6 +37,9 @@ mock_exceptions = MagicMock()
 class ServiceNotFound(Exception):
     pass
 mock_exceptions.ServiceNotFound = ServiceNotFound
+class HomeAssistantError(Exception):
+    pass
+mock_exceptions.HomeAssistantError = HomeAssistantError
 sys.modules["homeassistant.exceptions"] = mock_exceptions
 
 mock_config_entries = MagicMock()
