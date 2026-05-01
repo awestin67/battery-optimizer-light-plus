@@ -26,7 +26,9 @@ def mock_hass():
     """Skapar en fejkad Home Assistant-instans."""
     hass = MagicMock()
     hass.services.async_call = AsyncMock()
-    hass.states.get = MagicMock()
+    mock_state = MagicMock()
+    mock_state.attributes = {}
+    hass.states.get = MagicMock(return_value=mock_state)
     return hass
 
 @pytest.fixture
@@ -266,3 +268,47 @@ async def test_apply_action_service_not_found(sigenergy_battery, mock_hass):
         await sigenergy_battery.apply_action("IDLE")
         mock_logger.warning.assert_called_once()
         assert "Sigenergy service call failed" in mock_logger.warning.call_args[0][0]
+
+@pytest.mark.asyncio
+async def test_apply_action_charge_clamped(sigenergy_battery, mock_hass):
+    """Krav: Laddning ska begränsas av växelriktarens max-attribut."""
+    async def mock_find_entity(domain, partial_key):
+        if partial_key == "ems_control_mode":
+            return "select.sig_ems_control_mode"
+        if partial_key == "max_charging_limit":
+            return "number.sig_max_charging_limit"
+        return None
+
+    mock_hass.states.get.return_value = MagicMock(attributes={"min": 0, "max": 5.0})
+
+    with patch.object(sigenergy_battery, "_find_entity", side_effect=mock_find_entity):
+        await sigenergy_battery.apply_action("CHARGE", 7.0)
+
+        mock_hass.services.async_call.assert_any_call(
+            "number",
+            "set_value",
+            {"entity_id": "number.sig_max_charging_limit", "value": 5.0},
+            blocking=True,
+        )
+
+@pytest.mark.asyncio
+async def test_apply_action_discharge_clamped(sigenergy_battery, mock_hass):
+    """Krav: Urladdning ska begränsas av växelriktarens max-attribut."""
+    async def mock_find_entity(domain, partial_key):
+        if partial_key == "ems_control_mode":
+            return "select.sig_ems_control_mode"
+        if partial_key == "max_discharging_limit":
+            return "number.sig_max_discharging_limit"
+        return None
+
+    mock_hass.states.get.return_value = MagicMock(attributes={"min": 0, "max": 5.0})
+
+    with patch.object(sigenergy_battery, "_find_entity", side_effect=mock_find_entity):
+        await sigenergy_battery.apply_action("DISCHARGE", 7.0)
+
+        mock_hass.services.async_call.assert_any_call(
+            "number",
+            "set_value",
+            {"entity_id": "number.sig_max_discharging_limit", "value": 5.0},
+            blocking=True,
+        )

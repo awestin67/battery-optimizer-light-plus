@@ -26,7 +26,9 @@ def mock_hass():
     """Skapar en fejkad Home Assistant-instans."""
     hass = MagicMock()
     hass.services.async_call = AsyncMock()
-    hass.states.get = MagicMock()
+    mock_state = MagicMock()
+    mock_state.attributes = {}
+    hass.states.get = MagicMock(return_value=mock_state)
     return hass
 
 
@@ -252,5 +254,52 @@ async def test_apply_action_idle(solis_battery, mock_hass):
             "select",
             "select_option",
             {"entity_id": "select.solis_rc_mode", "option": "None"},
+            blocking=True
+        )
+
+@pytest.mark.asyncio
+async def test_apply_action_charge_clamped(solis_battery, mock_hass):
+    """Krav: Solis CHARGE ska begränsas av växelriktarens max-attribut."""
+    async def mock_find_entity(domain, partial_key):
+        if partial_key == "rc_force_charge_discharge":
+            return "select.solis_rc_mode"
+        if partial_key == "rc_force_charge_power":
+            return "number.solis_charge_power"
+        if partial_key == "rc_timeout":
+            return "number.solis_rc_timeout"
+        return None
+
+    mock_hass.states.get.return_value = MagicMock(attributes={"min": 0, "max": 3000})
+
+    with patch.object(solis_battery, "_find_entity", side_effect=mock_find_entity):
+        await solis_battery.apply_action("CHARGE", 4.0)
+
+        mock_hass.services.async_call.assert_any_call(
+            "number", "set_value",
+            {"entity_id": "number.solis_charge_power", "value": 3000},
+            blocking=True
+        )
+
+@pytest.mark.asyncio
+async def test_apply_action_discharge_clamped(solis_battery, mock_hass):
+    """Krav: Solis DISCHARGE ska begränsas av växelriktarens max-attribut."""
+    async def mock_find_entity(domain, partial_key):
+        keys = {
+            "rc_force_charge_discharge": "select.solis_rc_mode",
+            "rc_force_discharge_power": "number.solis_discharge_power",
+            "rc_timeout": "number.solis_rc_timeout",
+            "battery_discharge_limit_power": "number.solis_discharge_limit",
+        }
+        return keys.get(partial_key)
+
+    mock_hass.states.get.return_value = MagicMock(attributes={"min": 0, "max": 3000})
+
+    with patch.object(solis_battery, "_find_entity", side_effect=mock_find_entity):
+        await solis_battery.apply_action("DISCHARGE", 4.0)
+
+        mock_hass.services.async_call.assert_any_call(
+            "number",
+            "set_value",
+            {"entity_id": "number.solis_discharge_power", "value": 3000},
             blocking=True
         )

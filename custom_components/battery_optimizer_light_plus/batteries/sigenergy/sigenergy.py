@@ -93,10 +93,28 @@ class SigenergyBattery(BatteryApi):
         try:
             if action == "CHARGE":
                 if charge_power_entity:
+                    val = target_kw
+                    state = self._hass.states.get(charge_power_entity)
+                    if state:
+                        min_val = state.attributes.get("min")
+                        max_val = state.attributes.get("max")
+                        if min_val is not None and val < float(min_val):
+                            _LOGGER.debug(
+                                f"Sigenergy: Begränsar laddningseffekt från {val} kW "
+                                f"till växelriktarens gräns {min_val} kW"
+                            )
+                            val = float(min_val)
+                        if max_val is not None and val > float(max_val):
+                            _LOGGER.debug(
+                                f"Sigenergy: Begränsar laddningseffekt från {val} kW "
+                                f"till växelriktarens gräns {max_val} kW"
+                            )
+                            val = float(max_val)
+
                     await self._hass.services.async_call(
                         "number",
                         "set_value",
-                        {"entity_id": charge_power_entity, "value": target_kw},
+                        {"entity_id": charge_power_entity, "value": val},
                         blocking=True,
                     )
                 await self._hass.services.async_call(
@@ -108,10 +126,28 @@ class SigenergyBattery(BatteryApi):
 
             elif action == "DISCHARGE":
                 if discharge_power_entity:
+                    val = target_kw
+                    state = self._hass.states.get(discharge_power_entity)
+                    if state:
+                        min_val = state.attributes.get("min")
+                        max_val = state.attributes.get("max")
+                        if min_val is not None and val < float(min_val):
+                            _LOGGER.debug(
+                                f"Sigenergy: Begränsar urladdningseffekt från {val} kW "
+                                f"till växelriktarens gräns {min_val} kW"
+                            )
+                            val = float(min_val)
+                        if max_val is not None and val > float(max_val):
+                            _LOGGER.debug(
+                                f"Sigenergy: Begränsar urladdningseffekt från {val} kW "
+                                f"till växelriktarens gräns {max_val} kW"
+                            )
+                            val = float(max_val)
+
                     await self._hass.services.async_call(
                         "number",
                         "set_value",
-                        {"entity_id": discharge_power_entity, "value": target_kw},
+                        {"entity_id": discharge_power_entity, "value": val},
                         blocking=True,
                     )
                 await self._hass.services.async_call(

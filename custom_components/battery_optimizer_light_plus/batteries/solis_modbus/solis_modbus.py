@@ -131,10 +131,28 @@ class SolisModbusBattery(BatteryApi):
                     _LOGGER.error("Could not find Solis RC charge power number entity.")
                     return
 
+                val = power_w
+                state = self._hass.states.get(charge_power_entity)
+                if state:
+                    min_val = state.attributes.get("min")
+                    max_val = state.attributes.get("max")
+                    if min_val is not None and val < float(min_val):
+                        _LOGGER.debug(
+                            f"Solis: Begränsar laddningseffekt från {val} W "
+                            f"till växelriktarens gräns {min_val} W"
+                        )
+                        val = int(float(min_val))
+                    if max_val is not None and val > float(max_val):
+                        _LOGGER.debug(
+                            f"Solis: Begränsar laddningseffekt från {val} W "
+                            f"till växelriktarens gräns {max_val} W"
+                        )
+                        val = int(float(max_val))
+
                 # Sätt laddeffekt
                 await self._hass.services.async_call(
                     "number", "set_value",
-                    {"entity_id": charge_power_entity, "value": power_w},
+                    {"entity_id": charge_power_entity, "value": val},
                     blocking=True,
                 )
                 # Sätt läge till RC Charge
@@ -150,10 +168,28 @@ class SolisModbusBattery(BatteryApi):
                     _LOGGER.error("Could not find Solis RC discharge power number entity.")
                     return
 
+                val = power_w
+                state = self._hass.states.get(discharge_power_entity)
+                if state:
+                    min_val = state.attributes.get("min")
+                    max_val = state.attributes.get("max")
+                    if min_val is not None and val < float(min_val):
+                        _LOGGER.debug(
+                            f"Solis: Begränsar urladdningseffekt från {val} W "
+                            f"till växelriktarens gräns {min_val} W"
+                        )
+                        val = int(float(min_val))
+                    if max_val is not None and val > float(max_val):
+                        _LOGGER.debug(
+                            f"Solis: Begränsar urladdningseffekt från {val} W "
+                            f"till växelriktarens gräns {max_val} W"
+                        )
+                        val = int(float(max_val))
+
                 # Sätt urladdningseffekt
                 await self._hass.services.async_call(
                     "number", "set_value",
-                    {"entity_id": discharge_power_entity, "value": power_w},
+                    {"entity_id": discharge_power_entity, "value": val},
                     blocking=True,
                 )
                 # Sätt läge till RC Discharge
