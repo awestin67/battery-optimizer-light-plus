@@ -34,6 +34,7 @@ from .const import (
     CONF_GRID_SENSOR,
     CONF_GRID_SENSOR_INVERT,
     CONF_BATTERY_POWER_SENSOR,
+    CONF_BATTERY_SENSOR_INVERT,
     CONF_VIRTUAL_LOAD_SENSOR,
 )
 from .batteries.base import BatteryApi
@@ -123,6 +124,7 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
             max_discharge_entity=config.get(CONF_MAX_DISCHARGE_ENTITY),
             grid_entity=config.get(CONF_GRID_SENSOR),
             invert_grid=config.get(CONF_GRID_SENSOR_INVERT, False),
+            invert_battery=config.get(CONF_BATTERY_SENSOR_INVERT, False),
         )
 
     from .batteries.generic import GenericBattery
