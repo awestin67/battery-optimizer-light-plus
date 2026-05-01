@@ -8,6 +8,7 @@ This covers critical system invariants, physical safety constraints (e.g., hardw
 * **Sticky IDLE vid Solar Override:** När Solar Override aktiveras MÅSTE kommandot `IDLE` (Auto) skickas till batterikontrollern, även om systemet internt tror att batteriet redan står i `IDLE`. Detta säkerställer att ingen moln-laddning råkar ligga kvar.
 * **Maintenance Mode:** Systemet MÅSTE omedelbart släppa all styrning av batteriet om växelriktarstatusen (`battery_status_sensor`) matchar något av de konfigurerade nyckelorden för underhåll (t.ex. "Service", "Calibrating").
 * **Lokal Throttling:** Om backend begär laddning (`CHARGE`), men lasten närmar sig PeakGuard-gränsen, MÅSTE systemet lokalt strypa (throttle) laddningseffekten för att förhindra att batteriet orsakar en effekttopp.
+* **EV-laddning & Huvudsäkring:** När elbils-sensorn indikerar pågående laddning MÅSTE systemet omedelbart tvinga fram ett `HOLD`-läge lokalt för att förhindra att hembatteriet laddas ur in i bilen. Detta får dock inte blockera effektvakten – om husets totala last överstiger gränsvärdet ska systemet tillåtas bryta `HOLD`-läget tillfälligt med en `DISCHARGE` för att skydda huvudsäkringen.
 
 ## 2. Home Assistant State Machine & Data
 * **Inga Blinda Casts:** Tillstånd som hämtas via `hass.states.get()` MÅSTE alltid valideras. Om `state` är `STATE_UNKNOWN`, `STATE_UNAVAILABLE` eller `None`, får den under inga omständigheter konverteras med `float()` eller `int()` då detta kraschar event-loopen.
