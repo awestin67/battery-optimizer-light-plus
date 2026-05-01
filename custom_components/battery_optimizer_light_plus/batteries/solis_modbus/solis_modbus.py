@@ -14,17 +14,12 @@ from ..base import BatteryApi
 
 _LOGGER = logging.getLogger(__name__)
 
-# Möjliga värden för Remote Control (RC) mode.
-OPTION_RC_CHARGE = "Solis RC Force Battery Charge"
-OPTION_RC_DISCHARGE = "Solis RC Force Battery Discharge"
-OPTION_RC_NONE = "None"
-
 # Möjliga 'translation_key' eller delar av 'object_id' för entiteter.
-KEY_RC_MODE = "rc_force_charge_discharge"
-KEY_RC_CHARGE_POWER = "rc_force_charge_power"
-KEY_RC_DISCHARGE_POWER = "rc_force_discharge_power"
-KEY_RC_TIMEOUT = "rc_timeout"
-KEY_BATTERY_DISCHARGE_LIMIT = "battery_discharge_limit_power"
+KEYS_RC_MODE = ["rc_force_charge_discharge", "rc_mode", "remote_control_mode"]
+KEYS_RC_CHARGE_POWER = ["rc_force_charge_power", "rc_charge_power", "charge_power_limit"]
+KEYS_RC_DISCHARGE_POWER = ["rc_force_discharge_power", "rc_discharge_power", "discharge_power_limit"]
+KEYS_RC_TIMEOUT = ["rc_timeout", "timeout"]
+KEYS_BATTERY_DISCHARGE_LIMIT = ["battery_discharge_limit_power", "discharge_limit_power"]
 
 class SolisModbusBattery(BatteryApi):
     """A class to interact with the Solis Modbus battery integration."""
@@ -61,8 +56,8 @@ class SolisModbusBattery(BatteryApi):
                     related_devices.add(dev.id)
         return related_devices
 
-    async def _find_entity(self, domain: str, partial_key: str) -> str | None:
-        """Hittar en entitet baserat på domän och en del av dess object_id eller translation_key."""
+    async def _find_entity(self, domain: str, partial_keys: list[str]) -> str | None:
+        """Hittar en entitet dynamiskt genom att testa flera möjliga nyckelord."""
         from homeassistant.helpers import entity_registry as er
         er_reg = er.async_get(self._hass)
         related_devices = self._get_related_devices()
@@ -70,13 +65,37 @@ class SolisModbusBattery(BatteryApi):
         for d_id in related_devices:
             entries = er.async_entries_for_device(er_reg, d_id)
             for entry in entries:
-                if (entry.domain == domain and entry.translation_key == partial_key) or \
-                   (entry.domain == domain and partial_key in entry.object_id):
-                    _LOGGER.debug(f"Found entity {entry.entity_id} for key {partial_key}")
-                    return entry.entity_id
+                if entry.domain == domain:
+                    name_check = (
+                        f"{entry.translation_key or ''} "
+                        f"{entry.object_id or ''} "
+                        f"{entry.unique_id or ''}"
+                    ).lower()
+                    for key in partial_keys:
+                        if key in name_check:
+                            _LOGGER.debug(f"Found entity {entry.entity_id} for key {key}")
+                            return entry.entity_id
 
-        _LOGGER.warning(f"Could not find any {domain} entity with key matching '{partial_key}'")
+        _LOGGER.warning(f"Could not find any {domain} entity with keys matching '{partial_keys}'")
         return None
+
+    def _get_rc_option(self, entity_id: str, mode: str) -> str:
+        """Hittar rätt driftläge i dropdown-menyn oavsett integrationens version."""
+        state = self._hass.states.get(entity_id)
+        options = state.attributes.get("options", []) if state else []
+        for opt in options:
+            opt_lower = opt.lower()
+            if mode == "charge" and "charge" in opt_lower and "discharge" not in opt_lower:
+                return opt
+            if mode == "discharge" and "discharge" in opt_lower:
+                return opt
+            if mode == "none" and ("none" in opt_lower or "auto" in opt_lower or "self" in opt_lower):
+                return opt
+        if mode == "charge":
+            return "Solis RC Force Battery Charge"
+        if mode == "discharge":
+            return "Solis RC Force Battery Discharge"
+        return "None"
 
     async def get_current_soc(self) -> float | None:
         """Get the battery's state of charge (SoC)."""
@@ -103,15 +122,19 @@ class SolisModbusBattery(BatteryApi):
             # eller ändra en number-entitet.
             _LOGGER.debug(f"Solis Modbus applying action: {action_upper} with {power_w} W")
             # 1. Hitta relevanta entiteter dynamiskt
-            mode_select_entity = await self._find_entity("select", KEY_RC_MODE)
-            charge_power_entity = await self._find_entity("number", KEY_RC_CHARGE_POWER)
-            discharge_power_entity = await self._find_entity("number", KEY_RC_DISCHARGE_POWER)
-            timeout_entity = await self._find_entity("number", KEY_RC_TIMEOUT)
-            discharge_limit_entity = await self._find_entity("number", KEY_BATTERY_DISCHARGE_LIMIT)
+            mode_select_entity = await self._find_entity("select", KEYS_RC_MODE)
+            charge_power_entity = await self._find_entity("number", KEYS_RC_CHARGE_POWER)
+            discharge_power_entity = await self._find_entity("number", KEYS_RC_DISCHARGE_POWER)
+            timeout_entity = await self._find_entity("number", KEYS_RC_TIMEOUT)
+            discharge_limit_entity = await self._find_entity("number", KEYS_BATTERY_DISCHARGE_LIMIT)
 
             if not mode_select_entity:
                 _LOGGER.error("Could not find Solis RC mode select entity. Cannot control battery.")
                 return
+
+            opt_charge = self._get_rc_option(mode_select_entity, "charge")
+            opt_discharge = self._get_rc_option(mode_select_entity, "discharge")
+            opt_none = self._get_rc_option(mode_select_entity, "none")
 
             # Eftersom PeakGuard uppdaterar var 5:e minut och 30s sätter vi timeout till 15 minuter
             # för att förhindra att växelriktaren stänger av kommandot för tidigt.
@@ -124,6 +147,21 @@ class SolisModbusBattery(BatteryApi):
                     )
                 except Exception as e:
                     _LOGGER.debug(f"Failed to set RC timeout: {e}")
+
+            # Säkerställ att eventuell paus släpps om vi ska styra batteriet
+            if action_upper in ["CHARGE", "DISCHARGE"] and discharge_limit_entity:
+                state_obj = self._hass.states.get(discharge_limit_entity)
+                if state_obj:
+                    try:
+                        if float(state_obj.state) == 0:
+                            max_val = state_obj.attributes.get("max", 5000)
+                            await self._hass.services.async_call(
+                                "number", "set_value",
+                                {"entity_id": discharge_limit_entity, "value": max_val},
+                                blocking=False,
+                            )
+                    except ValueError:
+                        pass
 
             # 2. Agera baserat på action
             if action_upper == "CHARGE":
@@ -158,7 +196,7 @@ class SolisModbusBattery(BatteryApi):
                 # Sätt läge till RC Charge
                 await self._hass.services.async_call(
                     "select", "select_option",
-                    {"entity_id": mode_select_entity, "option": OPTION_RC_CHARGE},
+                    {"entity_id": mode_select_entity, "option": opt_charge},
                     blocking=True,
                 )
                 _LOGGER.info(f"Solis: Set mode to RC Charge with {power_w} W.")
@@ -195,7 +233,7 @@ class SolisModbusBattery(BatteryApi):
                 # Sätt läge till RC Discharge
                 await self._hass.services.async_call(
                     "select", "select_option",
-                    {"entity_id": mode_select_entity, "option": OPTION_RC_DISCHARGE},
+                    {"entity_id": mode_select_entity, "option": opt_discharge},
                     blocking=True,
                 )
                 _LOGGER.info(f"Solis: Set mode to RC Discharge with {power_w} W.")
@@ -214,10 +252,10 @@ class SolisModbusBattery(BatteryApi):
                 # Säkerställ att RC-styrningen är avstängd (Auto) så solcellerna får ladda
                 await self._hass.services.async_call(
                     "select", "select_option",
-                    {"entity_id": mode_select_entity, "option": OPTION_RC_NONE},
+                    {"entity_id": mode_select_entity, "option": opt_none},
                     blocking=True,
                 )
-                _LOGGER.info("Solis: Set Discharge Limit to 0 W for HOLD (Allowing Solar).")
+                _LOGGER.info("Solis: Set Discharge Limit to 0 W for HOLD.")
 
             elif action_upper == "IDLE":
                 if discharge_limit_entity:
@@ -233,10 +271,10 @@ class SolisModbusBattery(BatteryApi):
                 # IDLE betyder att vi stänger av RC-läget och återgår till Auto
                 await self._hass.services.async_call(
                     "select", "select_option",
-                    {"entity_id": mode_select_entity, "option": OPTION_RC_NONE},
+                    {"entity_id": mode_select_entity, "option": opt_none},
                     blocking=True,
                 )
-                _LOGGER.info(f"Solis: Restored discharge limit and set mode to {OPTION_RC_NONE} (Auto) for IDLE.")
+                _LOGGER.info(f"Solis: Restored discharge limit and set mode to {opt_none} (Auto) for IDLE.")
 
             else:
                 _LOGGER.warning(f"Unknown action for Solis: {action}")

@@ -114,27 +114,27 @@ async def test_find_entity(solis_battery, mock_hass):
         mock_entries.return_value = [mock_entry]
 
         # Test by translation_key
-        entity_id = await solis_battery._find_entity("select", "rc_force_charge_discharge")
+        entity_id = await solis_battery._find_entity("select", ["rc_force_charge_discharge"])
         assert entity_id == "select.solis_rc_mode"
 
         # Test by object_id partial match
-        entity_id2 = await solis_battery._find_entity("select", "rc_mode")
+        entity_id2 = await solis_battery._find_entity("select", ["rc_mode"])
         assert entity_id2 == "select.solis_rc_mode"
 
         # Test not found
-        entity_id3 = await solis_battery._find_entity("number", "missing_key")
+        entity_id3 = await solis_battery._find_entity("number", ["missing_key"])
         assert entity_id3 is None
 
 
 @pytest.mark.asyncio
 async def test_apply_action_charge(solis_battery, mock_hass):
     """Krav: Solis CHARGE ska sätta RC Mode, Charge Power och uppdatera Timeout via dynamisk uppslagning."""
-    async def mock_find_entity(domain, partial_key):
-        if partial_key == "rc_force_charge_discharge":
+    async def mock_find_entity(domain, partial_keys):
+        if "rc_force_charge_discharge" in partial_keys:
             return "select.solis_rc_mode"
-        if partial_key == "rc_force_charge_power":
+        if "rc_force_charge_power" in partial_keys:
             return "number.solis_charge_power"
-        if partial_key == "rc_timeout":
+        if "rc_timeout" in partial_keys:
             return "number.solis_rc_timeout"
         return None
 
@@ -164,14 +164,16 @@ async def test_apply_action_charge(solis_battery, mock_hass):
 @pytest.mark.asyncio
 async def test_apply_action_discharge(solis_battery, mock_hass):
     """Krav: Solis DISCHARGE ska sätta RC Mode, Discharge Power och uppdatera Timeout."""
-    async def mock_find_entity(domain, partial_key):
-        keys = {
-            "rc_force_charge_discharge": "select.solis_rc_mode",
-            "rc_force_discharge_power": "number.solis_discharge_power",
-            "rc_timeout": "number.solis_rc_timeout",
-            "battery_discharge_limit_power": "number.solis_discharge_limit",
-        }
-        return keys.get(partial_key)
+    async def mock_find_entity(domain, partial_keys):
+        if "rc_force_charge_discharge" in partial_keys:
+            return "select.solis_rc_mode"
+        if "rc_force_discharge_power" in partial_keys:
+            return "number.solis_discharge_power"
+        if "rc_timeout" in partial_keys:
+            return "number.solis_rc_timeout"
+        if "battery_discharge_limit_power" in partial_keys:
+            return "number.solis_discharge_limit"
+        return None
 
     with patch.object(solis_battery, "_find_entity", side_effect=mock_find_entity):
         await solis_battery.apply_action("DISCHARGE", 4.2)
@@ -198,13 +200,14 @@ async def test_apply_action_discharge(solis_battery, mock_hass):
 @pytest.mark.asyncio
 async def test_apply_action_hold(solis_battery, mock_hass):
     """Krav: Solis HOLD ska sätta urladdningsgränsen till 0W och stänga av RC Mode."""
-    async def mock_find_entity(domain, partial_key):
-        keys = {
-            "rc_force_charge_discharge": "select.solis_rc_mode",
-            "battery_discharge_limit_power": "number.solis_discharge_limit",
-            "rc_timeout": "number.solis_rc_timeout",
-        }
-        return keys.get(partial_key)
+    async def mock_find_entity(domain, partial_keys):
+        if "rc_force_charge_discharge" in partial_keys:
+            return "select.solis_rc_mode"
+        if "battery_discharge_limit_power" in partial_keys:
+            return "number.solis_discharge_limit"
+        if "rc_timeout" in partial_keys:
+            return "number.solis_rc_timeout"
+        return None
 
     with patch.object(solis_battery, "_find_entity", side_effect=mock_find_entity):
         await solis_battery.apply_action("HOLD")
@@ -235,12 +238,12 @@ async def test_apply_action_idle(solis_battery, mock_hass):
     mock_state.attributes = {"max": 6000}
     mock_hass.states.get.return_value = mock_state
 
-    async def mock_find_entity(domain, partial_key):
-        keys = {
-            "rc_force_charge_discharge": "select.solis_rc_mode",
-            "battery_discharge_limit_power": "number.solis_discharge_limit"
-        }
-        return keys.get(partial_key)
+    async def mock_find_entity(domain, partial_keys):
+        if "rc_force_charge_discharge" in partial_keys:
+            return "select.solis_rc_mode"
+        if "battery_discharge_limit_power" in partial_keys:
+            return "number.solis_discharge_limit"
+        return None
 
     with patch.object(solis_battery, "_find_entity", side_effect=mock_find_entity):
         await solis_battery.apply_action("IDLE")
@@ -260,12 +263,12 @@ async def test_apply_action_idle(solis_battery, mock_hass):
 @pytest.mark.asyncio
 async def test_apply_action_charge_clamped(solis_battery, mock_hass):
     """Krav: Solis CHARGE ska begränsas av växelriktarens max-attribut."""
-    async def mock_find_entity(domain, partial_key):
-        if partial_key == "rc_force_charge_discharge":
+    async def mock_find_entity(domain, partial_keys):
+        if "rc_force_charge_discharge" in partial_keys:
             return "select.solis_rc_mode"
-        if partial_key == "rc_force_charge_power":
+        if "rc_force_charge_power" in partial_keys:
             return "number.solis_charge_power"
-        if partial_key == "rc_timeout":
+        if "rc_timeout" in partial_keys:
             return "number.solis_rc_timeout"
         return None
 
@@ -283,14 +286,16 @@ async def test_apply_action_charge_clamped(solis_battery, mock_hass):
 @pytest.mark.asyncio
 async def test_apply_action_discharge_clamped(solis_battery, mock_hass):
     """Krav: Solis DISCHARGE ska begränsas av växelriktarens max-attribut."""
-    async def mock_find_entity(domain, partial_key):
-        keys = {
-            "rc_force_charge_discharge": "select.solis_rc_mode",
-            "rc_force_discharge_power": "number.solis_discharge_power",
-            "rc_timeout": "number.solis_rc_timeout",
-            "battery_discharge_limit_power": "number.solis_discharge_limit",
-        }
-        return keys.get(partial_key)
+    async def mock_find_entity(domain, partial_keys):
+        if "rc_force_charge_discharge" in partial_keys:
+            return "select.solis_rc_mode"
+        if "rc_force_discharge_power" in partial_keys:
+            return "number.solis_discharge_power"
+        if "rc_timeout" in partial_keys:
+            return "number.solis_rc_timeout"
+        if "battery_discharge_limit_power" in partial_keys:
+            return "number.solis_discharge_limit"
+        return None
 
     mock_hass.states.get.return_value = MagicMock(attributes={"min": 0, "max": 3000})
 

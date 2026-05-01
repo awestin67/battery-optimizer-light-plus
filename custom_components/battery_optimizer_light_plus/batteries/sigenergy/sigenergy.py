@@ -65,8 +65,8 @@ class SigenergyBattery(BatteryApi):
                     related_devices.add(dev.id)
         return related_devices
 
-    async def _find_entity(self, domain: str, partial_key: str) -> str | None:
-        """Hittar en entitet baserat på domän och en del av dess translation_key eller object_id."""
+    async def _find_entity(self, domain: str, partial_keys: list[str]) -> str | None:
+        """Hittar en entitet dynamiskt genom att testa flera möjliga nyckelord."""
         registry = er.async_get(self._hass)
         related_devices = self._get_related_devices()
 
@@ -74,26 +74,75 @@ class SigenergyBattery(BatteryApi):
             entries = er.async_entries_for_device(registry, dev_id)
             for entry in entries:
                 if entry.domain == domain:
-                    if entry.translation_key and partial_key in entry.translation_key:
-                        return entry.entity_id
-                    if entry.object_id and partial_key in entry.object_id:
-                        return entry.entity_id
+                    name_check = (
+                        f"{entry.translation_key or ''} "
+                        f"{entry.object_id or ''} "
+                        f"{entry.unique_id or ''}"
+                    ).lower()
+                    for key in partial_keys:
+                        if key in name_check:
+                            return entry.entity_id
         return None
+
+    def _get_target_val(self, entity_id: str, target_kw: float) -> float:
+        """Säkerställer rätt enhet (W vs kW) dynamiskt utifrån sensorns inbyggda max-gräns."""
+        state = self._hass.states.get(entity_id)
+        is_kw = True
+        if state and "max" in state.attributes:
+            try:
+                if float(state.attributes["max"]) > 500:
+                    is_kw = False
+            except ValueError:
+                pass
+        return target_kw if is_kw else float(int(target_kw * 1000))
+
+    def _get_sigenergy_mode(self, entity_id: str, mode: str) -> str:
+        """Hittar rätt driftläge i dropdown-menyn oavsett integrationens version."""
+        state = self._hass.states.get(entity_id)
+        options = state.attributes.get("options", []) if state else []
+        for opt in options:
+            opt_lower = opt.lower()
+            if mode == "charge" and "charging" in opt_lower:
+                return opt
+            if mode == "discharge" and "discharging" in opt_lower:
+                return opt
+            if mode == "standby" and "standby" in opt_lower:
+                return opt
+            if mode == "idle" and "maximum self consumption" in opt_lower:
+                return opt
+        if mode == "charge":
+            return "Command Charging (PV First)"
+        if mode == "discharge":
+            return "Command Discharging (PV First)"
+        if mode == "standby":
+            return "Standby"
+        return "Maximum Self Consumption"
 
     async def apply_action(self, action: str, target_kw: float = 0.0):
         """Verkställer ett beslut från molnet eller lokalt."""
-        mode_entity = await self._find_entity("select", "ems_control_mode")
-        charge_power_entity = await self._find_entity("number", "max_charging_limit")
-        discharge_power_entity = await self._find_entity("number", "max_discharging_limit")
+        mode_entity = await self._find_entity(
+            "select", ["ems_control_mode", "control_mode"]
+        )
+        charge_power_entity = await self._find_entity(
+            "number", ["max_charging_limit", "max_charge_power", "charging_limit"]
+        )
+        discharge_power_entity = await self._find_entity(
+            "number", ["max_discharging_limit", "max_discharge_power", "discharging_limit"]
+        )
 
         if not mode_entity:
             _LOGGER.warning("Sigenergy: Kunde inte hitta 'select'-entiteten för ems_control_mode.")
             return
 
+        opt_charge = self._get_sigenergy_mode(mode_entity, "charge")
+        opt_discharge = self._get_sigenergy_mode(mode_entity, "discharge")
+        opt_standby = self._get_sigenergy_mode(mode_entity, "standby")
+        opt_idle = self._get_sigenergy_mode(mode_entity, "idle")
+
         try:
             if action == "CHARGE":
                 if charge_power_entity:
-                    val = target_kw
+                    val = self._get_target_val(charge_power_entity, target_kw)
                     state = self._hass.states.get(charge_power_entity)
                     if state:
                         min_val = state.attributes.get("min")
@@ -120,13 +169,13 @@ class SigenergyBattery(BatteryApi):
                 await self._hass.services.async_call(
                     "select",
                     "select_option",
-                    {"entity_id": mode_entity, "option": "Command Charging (PV First)"},
+                    {"entity_id": mode_entity, "option": opt_charge},
                     blocking=True,
                 )
 
             elif action == "DISCHARGE":
                 if discharge_power_entity:
-                    val = target_kw
+                    val = self._get_target_val(discharge_power_entity, target_kw)
                     state = self._hass.states.get(discharge_power_entity)
                     if state:
                         min_val = state.attributes.get("min")
@@ -153,7 +202,7 @@ class SigenergyBattery(BatteryApi):
                 await self._hass.services.async_call(
                     "select",
                     "select_option",
-                    {"entity_id": mode_entity, "option": "Command Discharging (PV First)"},
+                    {"entity_id": mode_entity, "option": opt_discharge},
                     blocking=True,
                 )
 
@@ -170,7 +219,7 @@ class SigenergyBattery(BatteryApi):
                 await self._hass.services.async_call(
                     "select",
                     "select_option",
-                    {"entity_id": mode_entity, "option": "Standby"},
+                    {"entity_id": mode_entity, "option": opt_standby},
                     blocking=True,
                 )
 
@@ -194,7 +243,7 @@ class SigenergyBattery(BatteryApi):
                 await self._hass.services.async_call(
                     "select",
                     "select_option",
-                    {"entity_id": mode_entity, "option": "Maximum Self Consumption"},
+                    {"entity_id": mode_entity, "option": opt_idle},
                     blocking=True,
                 )
 

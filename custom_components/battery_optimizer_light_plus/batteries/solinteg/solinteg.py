@@ -8,6 +8,7 @@
 
 import logging
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from ..base import BatteryApi
 
@@ -49,42 +50,87 @@ class SolintegBattery(BatteryApi):
                 pass
         return None
 
+    def _get_related_devices(self) -> set[str]:
+        """Hittar alla enheter som tillhör samma config_entry."""
+        registry = dr.async_get(self._hass)
+        device = registry.devices.get(self._device_id)
+        if not device:
+            return {self._device_id}
+
+        related_devices = set()
+        for entry_id in device.config_entries:
+            for dev in registry.devices.values():
+                if entry_id in dev.config_entries:
+                    related_devices.add(dev.id)
+        return related_devices
+
+    async def _find_entity(self, domain: str, partial_keys: list[str]) -> str | None:
+        """Hittar en entitet dynamiskt genom att testa flera möjliga nyckelord."""
+        registry = er.async_get(self._hass)
+        related_devices = self._get_related_devices()
+
+        for dev_id in related_devices:
+            entries = er.async_entries_for_device(registry, dev_id)
+            for entry in entries:
+                if entry.domain == domain:
+                    name_check = (
+                        f"{entry.translation_key or ''} "
+                        f"{entry.object_id or ''} "
+                        f"{entry.unique_id or ''}"
+                    ).lower()
+                    for key in partial_keys:
+                        if key in name_check:
+                            return entry.entity_id
+        return None
+
+    def _get_solinteg_mode(self, entity_id: str, mode: str) -> str:
+        """Hittar rätt driftläge i dropdown-menyn oavsett integrationens version."""
+        state = self._hass.states.get(entity_id)
+        options = state.attributes.get("options", []) if state else []
+        for opt in options:
+            opt_lower = opt.lower()
+            if mode == "auto" and ("self" in opt_lower or "auto" in opt_lower):
+                return opt
+            if mode == "manual" and (
+                "charge" in opt_lower or "discharge" in opt_lower or
+                "manual" in opt_lower or "ems" in opt_lower
+            ):
+                return opt
+        return "Self Use" if mode == "auto" else "Charge-Discharge"
+
     async def apply_action(self, action: str, target_kw: float = 0.0):
         """Verkställer ett beslut från molnet eller lokalt."""
         power_w = int(target_kw * 1000)
         _LOGGER.debug(f"Solinteg applying action: {action} with target {power_w} W")
 
-        registry = er.async_get(self._hass)
-        entries = er.async_entries_for_device(registry, self._device_id)
-
-        working_mode_entity = None
-        power_target_entity = None
-
-        for entry in entries:
-            name_check = entry.unique_id or entry.entity_id
-            if entry.domain == "select" and "working_mode" in name_check:
-                working_mode_entity = entry.entity_id
-            if entry.domain == "number" and ("charge_discharge_power" in name_check or "power_target" in name_check):
-                power_target_entity = entry.entity_id
+        working_mode_entity = await self._find_entity(
+            "select", ["working_mode", "operation_mode", "mode"]
+        )
+        power_target_entity = await self._find_entity(
+            "number", ["charge_discharge_power", "power_target", "charge_power"]
+        )
 
         if not working_mode_entity:
             _LOGGER.error(f"Solinteg: Kunde inte hitta working_mode entitet för enhet {self._device_id}")
             return
 
+        opt_auto = self._get_solinteg_mode(working_mode_entity, "auto")
+        opt_manual = self._get_solinteg_mode(working_mode_entity, "manual")
+
         # Bestäm läge och effekt
-        mode = "Self Use" # Standard Auto-läge
+        mode = opt_auto
         target_val = 0
 
         if action == "IDLE":
-            mode = "Self Use"
+            mode = opt_auto
         elif action == "HOLD":
-            mode = "Charge-Discharge"
+            mode = opt_manual
             target_val = 0
         elif action == "CHARGE":
-            mode = "Charge-Discharge"
+            mode = opt_manual
             target_val = power_w if self._invert_battery else -power_w
         elif action == "DISCHARGE":
-            mode = "Charge-Discharge"
+            mode = opt_manual
             target_val = -power_w if self._invert_battery else power_w
 
         # Kontrollera och begränsa effekten utifrån växelriktarens gränser (min/max)

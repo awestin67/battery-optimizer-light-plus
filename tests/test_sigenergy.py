@@ -102,19 +102,19 @@ async def test_find_entity(sigenergy_battery, mock_hass):
 
         mock_entries.return_value = [mock_entry]
 
-        entity_id = await sigenergy_battery._find_entity("select", "ems_control_mode")
+        entity_id = await sigenergy_battery._find_entity("select", ["ems_control_mode"])
         assert entity_id == "select.sig_ems_control_mode"
 
-        entity_id2 = await sigenergy_battery._find_entity("select", "control_mode")
+        entity_id2 = await sigenergy_battery._find_entity("select", ["control_mode"])
         assert entity_id2 == "select.sig_ems_control_mode"
 
 @pytest.mark.asyncio
 async def test_apply_action_charge(sigenergy_battery, mock_hass):
     """Krav: CHARGE ska sätta EMS Control Mode och Max Charging Limit i kW via dynamisk uppslagning."""
-    async def mock_find_entity(domain, partial_key):
-        if partial_key == "ems_control_mode":
+    async def mock_find_entity(domain, partial_keys):
+        if "ems_control_mode" in partial_keys:
             return "select.sig_ems_control_mode"
-        if partial_key == "max_charging_limit":
+        if "max_charging_limit" in partial_keys:
             return "number.sig_max_charging_limit"
         return None
 
@@ -137,10 +137,10 @@ async def test_apply_action_charge(sigenergy_battery, mock_hass):
 @pytest.mark.asyncio
 async def test_apply_action_discharge(sigenergy_battery, mock_hass):
     """Krav: DISCHARGE ska sätta EMS Control Mode och Max Discharging Limit i kW via dynamisk uppslagning."""
-    async def mock_find_entity(domain, partial_key):
-        if partial_key == "ems_control_mode":
+    async def mock_find_entity(domain, partial_keys):
+        if "ems_control_mode" in partial_keys:
             return "select.sig_ems_control_mode"
-        if partial_key == "max_discharging_limit":
+        if "max_discharging_limit" in partial_keys:
             return "number.sig_max_discharging_limit"
         return None
 
@@ -162,12 +162,12 @@ async def test_apply_action_discharge(sigenergy_battery, mock_hass):
 @pytest.mark.asyncio
 async def test_apply_action_hold(sigenergy_battery, mock_hass):
     """Krav: HOLD ska sätta laddnings- och urladdningsgränsen till 0W och aktivera Hold-läget."""
-    async def mock_find_entity(domain, partial_key):
-        if partial_key == "ems_control_mode":
+    async def mock_find_entity(domain, partial_keys):
+        if "ems_control_mode" in partial_keys:
             return "select.sig_ems_control_mode"
-        if partial_key == "max_charging_limit":
+        if "max_charging_limit" in partial_keys:
             return "number.sig_max_charging_limit"
-        if partial_key == "max_discharging_limit":
+        if "max_discharging_limit" in partial_keys:
             return "number.sig_max_discharging_limit"
         return None
 
@@ -199,12 +199,12 @@ async def test_apply_action_idle(sigenergy_battery, mock_hass):
     mock_state.attributes = {"max": 100.0}
     mock_hass.states.get.return_value = mock_state
 
-    async def mock_find_entity(domain, partial_key):
-        if partial_key == "ems_control_mode":
+    async def mock_find_entity(domain, partial_keys):
+        if "ems_control_mode" in partial_keys:
             return "select.sig_ems_control_mode"
-        if partial_key == "max_charging_limit":
+        if "max_charging_limit" in partial_keys:
             return "number.sig_max_charging_limit"
-        if partial_key == "max_discharging_limit":
+        if "max_discharging_limit" in partial_keys:
             return "number.sig_max_discharging_limit"
         return None
 
@@ -236,10 +236,10 @@ async def test_apply_action_idle_fallback(sigenergy_battery, mock_hass):
     mock_state.attributes = {}  # Saknar 'max' attribut
     mock_hass.states.get.return_value = mock_state
 
-    async def mock_find_entity(domain, partial_key):
-        if partial_key == "ems_control_mode":
+    async def mock_find_entity(domain, partial_keys):
+        if "ems_control_mode" in partial_keys:
             return "select.sig_ems_control_mode"
-        if partial_key == "max_charging_limit":
+        if "max_charging_limit" in partial_keys:
             return "number.sig_max_charging_limit"
         return None
 
@@ -257,8 +257,8 @@ async def test_apply_action_service_not_found(sigenergy_battery, mock_hass):
     """Krav: ServiceNotFound fångas och loggas med en varning istället för att krascha."""
     mock_hass.services.async_call.side_effect = ServiceNotFound("select", "select_option")
 
-    async def mock_find_entity(domain, partial_key):
-        if partial_key == "ems_control_mode":
+    async def mock_find_entity(domain, partial_keys):
+        if "ems_control_mode" in partial_keys:
             return "select.sig_ems_control_mode"
         return None
 
@@ -272,10 +272,10 @@ async def test_apply_action_service_not_found(sigenergy_battery, mock_hass):
 @pytest.mark.asyncio
 async def test_apply_action_charge_clamped(sigenergy_battery, mock_hass):
     """Krav: Laddning ska begränsas av växelriktarens max-attribut."""
-    async def mock_find_entity(domain, partial_key):
-        if partial_key == "ems_control_mode":
+    async def mock_find_entity(domain, partial_keys):
+        if "ems_control_mode" in partial_keys:
             return "select.sig_ems_control_mode"
-        if partial_key == "max_charging_limit":
+        if "max_charging_limit" in partial_keys:
             return "number.sig_max_charging_limit"
         return None
 
@@ -294,10 +294,10 @@ async def test_apply_action_charge_clamped(sigenergy_battery, mock_hass):
 @pytest.mark.asyncio
 async def test_apply_action_discharge_clamped(sigenergy_battery, mock_hass):
     """Krav: Urladdning ska begränsas av växelriktarens max-attribut."""
-    async def mock_find_entity(domain, partial_key):
-        if partial_key == "ems_control_mode":
+    async def mock_find_entity(domain, partial_keys):
+        if "ems_control_mode" in partial_keys:
             return "select.sig_ems_control_mode"
-        if partial_key == "max_discharging_limit":
+        if "max_discharging_limit" in partial_keys:
             return "number.sig_max_discharging_limit"
         return None
 

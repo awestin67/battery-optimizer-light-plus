@@ -50,21 +50,64 @@ async def test_get_current_soc_unavailable(solinteg_battery, mock_hass):
     soc = await solinteg_battery.get_current_soc()
     assert soc is None
 
-def setup_mock_registry(mock_entries):
-    """Hjälpfunktion för att sätta upp entiteter."""
-    mock_mode = MagicMock(domain="select", unique_id="working_mode", entity_id="select.solinteg_working_mode")
-    mock_power = MagicMock(domain="number", unique_id="power_target", entity_id="number.solinteg_power_target")
-    mock_entries.return_value = [mock_mode, mock_power]
+@pytest.mark.asyncio
+async def test_get_related_devices(solinteg_battery, mock_hass):
+    """Krav: _get_related_devices ska hitta alla enheter kopplade till samma config entry."""
+    with patch("homeassistant.helpers.device_registry.async_get") as mock_dr_get:
+        mock_registry = MagicMock()
+        mock_device = MagicMock()
+        mock_device.id = "solinteg_inv_1"
+        mock_device.config_entries = {"config_entry_1"}
+
+        mock_related_device = MagicMock()
+        mock_related_device.id = "solinteg_dongle_1"
+        mock_related_device.config_entries = {"config_entry_1"}
+
+        mock_registry.async_get.return_value = mock_device
+        mock_registry.devices = {
+            "solinteg_inv_1": mock_device,
+            "solinteg_dongle_1": mock_related_device,
+        }
+        mock_dr_get.return_value = mock_registry
+
+        devices = solinteg_battery._get_related_devices()
+        assert devices == {"solinteg_inv_1", "solinteg_dongle_1"}
+
+@pytest.mark.asyncio
+async def test_find_entity(solinteg_battery, mock_hass):
+    """Krav: _find_entity ska dynamiskt leta upp entiteter."""
+    with patch.object(solinteg_battery, "_get_related_devices", return_value={"solinteg_inv_1"}), \
+         patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get, \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+
+        mock_registry = MagicMock()
+        mock_er_get.return_value = mock_registry
+
+        mock_entry = MagicMock()
+        mock_entry.domain = "select"
+        mock_entry.unique_id = "working_mode_123"
+        mock_entry.object_id = "solinteg_working_mode"
+        mock_entry.translation_key = "working_mode"
+        mock_entry.entity_id = "select.solinteg_working_mode"
+
+        mock_entries.return_value = [mock_entry]
+
+        entity_id = await solinteg_battery._find_entity("select", ["working_mode"])
+        assert entity_id == "select.solinteg_working_mode"
 
 @pytest.mark.asyncio
 async def test_apply_action_charge(solinteg_battery, mock_hass):
     """Krav: CHARGE ska sätta Charge-Discharge och negativ effekt i Watt."""
-    with patch("homeassistant.helpers.entity_registry.async_get"), \
-         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+    async def mock_find_entity(domain, partial_keys):
+        if "working_mode" in partial_keys:
+            return "select.solinteg_working_mode"
+        if "power_target" in partial_keys:
+            return "number.solinteg_power_target"
+        return None
 
-        setup_mock_registry(mock_entries)
-        mock_hass.states.get.return_value = MagicMock(attributes={})
+    mock_hass.states.get.return_value = MagicMock(attributes={})
 
+    with patch.object(solinteg_battery, "_find_entity", side_effect=mock_find_entity):
         await solinteg_battery.apply_action("CHARGE", 3.5)
 
         mock_hass.services.async_call.assert_any_call(
@@ -83,12 +126,16 @@ async def test_apply_action_charge(solinteg_battery, mock_hass):
 @pytest.mark.asyncio
 async def test_apply_action_discharge(solinteg_battery, mock_hass):
     """Krav: DISCHARGE ska sätta Charge-Discharge och positiv effekt i Watt."""
-    with patch("homeassistant.helpers.entity_registry.async_get"), \
-         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+    async def mock_find_entity(domain, partial_keys):
+        if "working_mode" in partial_keys:
+            return "select.solinteg_working_mode"
+        if "power_target" in partial_keys:
+            return "number.solinteg_power_target"
+        return None
 
-        setup_mock_registry(mock_entries)
-        mock_hass.states.get.return_value = MagicMock(attributes={})
+    mock_hass.states.get.return_value = MagicMock(attributes={})
 
+    with patch.object(solinteg_battery, "_find_entity", side_effect=mock_find_entity):
         await solinteg_battery.apply_action("DISCHARGE", 4.2)
 
         mock_hass.services.async_call.assert_any_call(
@@ -107,12 +154,16 @@ async def test_apply_action_discharge(solinteg_battery, mock_hass):
 @pytest.mark.asyncio
 async def test_apply_action_hold(solinteg_battery, mock_hass):
     """Krav: HOLD ska sätta Charge-Discharge och effekten till 0."""
-    with patch("homeassistant.helpers.entity_registry.async_get"), \
-         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+    async def mock_find_entity(domain, partial_keys):
+        if "working_mode" in partial_keys:
+            return "select.solinteg_working_mode"
+        if "power_target" in partial_keys:
+            return "number.solinteg_power_target"
+        return None
 
-        setup_mock_registry(mock_entries)
-        mock_hass.states.get.return_value = MagicMock(attributes={})
+    mock_hass.states.get.return_value = MagicMock(attributes={})
 
+    with patch.object(solinteg_battery, "_find_entity", side_effect=mock_find_entity):
         await solinteg_battery.apply_action("HOLD")
 
         mock_hass.services.async_call.assert_any_call(
@@ -131,12 +182,16 @@ async def test_apply_action_hold(solinteg_battery, mock_hass):
 @pytest.mark.asyncio
 async def test_apply_action_idle(solinteg_battery, mock_hass):
     """Krav: IDLE ska byta till Self Use och INGA set_value anrop ska göras."""
-    with patch("homeassistant.helpers.entity_registry.async_get"), \
-         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+    async def mock_find_entity(domain, partial_keys):
+        if "working_mode" in partial_keys:
+            return "select.solinteg_working_mode"
+        if "power_target" in partial_keys:
+            return "number.solinteg_power_target"
+        return None
 
-        setup_mock_registry(mock_entries)
-        mock_hass.states.get.return_value = MagicMock(attributes={})
+    mock_hass.states.get.return_value = MagicMock(attributes={})
 
+    with patch.object(solinteg_battery, "_find_entity", side_effect=mock_find_entity):
         await solinteg_battery.apply_action("IDLE")
 
         mock_hass.services.async_call.assert_any_call(
@@ -153,13 +208,16 @@ async def test_apply_action_idle(solinteg_battery, mock_hass):
 @pytest.mark.asyncio
 async def test_apply_action_charge_clamped(solinteg_battery, mock_hass):
     """Krav: Laddning ska begränsas av växelriktarens min-attribut."""
-    with patch("homeassistant.helpers.entity_registry.async_get"), \
-         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+    async def mock_find_entity(domain, partial_keys):
+        if "working_mode" in partial_keys:
+            return "select.solinteg_working_mode"
+        if "power_target" in partial_keys:
+            return "number.solinteg_power_target"
+        return None
 
-        setup_mock_registry(mock_entries)
-        # Sätt max laddning (min) till -3000 W
-        mock_hass.states.get.return_value = MagicMock(attributes={"min": -3000, "max": 5000})
+    mock_hass.states.get.return_value = MagicMock(attributes={"min": -3000, "max": 5000})
 
+    with patch.object(solinteg_battery, "_find_entity", side_effect=mock_find_entity):
         # Försök ladda med 4.0 kW (-4000 W). Den ska kapas till -3000.
         await solinteg_battery.apply_action("CHARGE", 4.0)
 
@@ -170,13 +228,16 @@ async def test_apply_action_charge_clamped(solinteg_battery, mock_hass):
 @pytest.mark.asyncio
 async def test_apply_action_discharge_clamped(solinteg_battery, mock_hass):
     """Krav: Urladdning ska begränsas av växelriktarens max-attribut."""
-    with patch("homeassistant.helpers.entity_registry.async_get"), \
-         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+    async def mock_find_entity(domain, partial_keys):
+        if "working_mode" in partial_keys:
+            return "select.solinteg_working_mode"
+        if "power_target" in partial_keys:
+            return "number.solinteg_power_target"
+        return None
 
-        setup_mock_registry(mock_entries)
-        # Sätt max urladdning (max) till 5000 W
-        mock_hass.states.get.return_value = MagicMock(attributes={"min": -5000, "max": 5000})
+    mock_hass.states.get.return_value = MagicMock(attributes={"min": -5000, "max": 5000})
 
+    with patch.object(solinteg_battery, "_find_entity", side_effect=mock_find_entity):
         # Försök ladda ur med 7.0 kW (7000 W). Den ska kapas till 5000.
         await solinteg_battery.apply_action("DISCHARGE", 7.0)
 
@@ -194,12 +255,16 @@ async def test_apply_action_invert_battery(mock_hass):
         invert_battery=True
     )
 
-    with patch("homeassistant.helpers.entity_registry.async_get"), \
-         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries:
+    async def mock_find_entity(domain, partial_keys):
+        if "working_mode" in partial_keys:
+            return "select.solinteg_working_mode"
+        if "power_target" in partial_keys:
+            return "number.solinteg_power_target"
+        return None
 
-        setup_mock_registry(mock_entries)
-        mock_hass.states.get.return_value = MagicMock(attributes={})
+    mock_hass.states.get.return_value = MagicMock(attributes={})
 
+    with patch.object(solinteg_battery_inverted, "_find_entity", side_effect=mock_find_entity):
         # Testa CHARGE (ska normalt bli -3500, men med invert blir det +3500)
         await solinteg_battery_inverted.apply_action("CHARGE", 3.5)
         mock_hass.services.async_call.assert_any_call(
