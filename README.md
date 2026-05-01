@@ -48,17 +48,17 @@ Styr Homevolt-batterier lokalt via Home Assistant.
 Styr Solis-batterier lokalt via Pho3niX90's Solis Modbus-integration.
 *   **Krav:** En fungerande, förkonfigurerad installation av Solis Modbus (HACS).
 *   **Kompatibilitet:** Byggd och optimerad primärt för **Solis S6 Hybrid** (EH-modeller).
-*   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter vid installationen. Den använder växelriktarens "Remote Control" (RC) register för tillförlitlig lokal styrning.
+*   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter vid installationen. Den anpassar sig dessutom dynamiskt till olika språk och versioner av integrationen!
 
 ### 🔋 Sigenergy
 Styr Sigenergy-växelriktare lokalt via Modbus.
 *   **Krav:** En fungerande, förkonfigurerad installation av en Sigenergy Modbus-integration.
-*   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter (t.ex. `select.sigen_plant_remote_ems_control_mode`) vid installationen.
+*   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter vid installationen. Den känner automatiskt av om integrationen använder Watt (W) eller Kilowatt (kW) och sköter all omvandling!
 
 ### 🔌 Solinteg
 Styr Solinteg-växelriktare lokalt via Modbus.
 *   **Krav:** En fungerande, förkonfigurerad installation av en Solinteg-kompatibel Modbus-integration (t.ex. `solax-modbus` med `plugin_solinteg.py`).
-*   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter (t.ex. `select.solinteg_working_mode` och `number.solinteg_battery_charge_discharge_power_target`) vid installationen.
+*   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter oavsett vad de döps till av underliggande Modbus-integration.
 
 ### ☁️ Generic / Light
 För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men sedan styra ditt batteri manuellt via egna automationsflöden. [Se exempel på automation här nere](#-automationer-för-generic--övriga-batterier).
@@ -80,9 +80,11 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
 3. Följ guiden:
     * **Steg 1:** Välj vilken typ av batteri du har (Sonnen, Huawei, Homevolt, Solis Modbus, Sigenergy, Solinteg, Generic).
     * **Steg 2:** Fyll i batterispecifika uppgifter (t.ex. IP och API-token för Sonnen, eller enheter för Huawei).
-    * **Steg 3:** Fyll i din API-nyckel från Dashboarden. Om du valt Sonnen, Huawei, Homevolt eller Solis hittas de flesta mätvärden automatiskt. För **Generic** måste du dock manuellt peka ut dina sensorer för *Batterinivå (SoC)*, *Batteriets effekt (W)* och *Nätutbyte (Grid)*.
+    * **Steg 3:** Fyll i din API-nyckel från Dashboarden. För alla märken utom Generic hittas de flesta mätvärden och styrentiteter automatiskt med Auto-Discovery. För **Generic** måste du dock manuellt peka ut dina sensorer.
     * **Steg 4 (Valfritt):** Peka ut din **Elbilsladdning Sensor** för att aktivera det smarta elbilsstödet.
     * **Steg 5 (Valfritt):** Peka ut en sensor för **Pausa Battery Optimizer** om du använder externa stödtjänster (ex. CheckWatt) som ibland behöver egen kontroll över batteriet.
+
+**Tips:** Du kan när som helst klicka på **"Konfigurera"** på integrationen i Home Assistant för att ändra dina sensorer eller aktivera inställningar som **"Invertera Batteri Sensor"** (användbart om just din växelriktare rapporterar Plus för laddning istället för urladdning).
 
 ---
 
