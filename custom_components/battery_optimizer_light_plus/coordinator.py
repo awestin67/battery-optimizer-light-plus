@@ -304,7 +304,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     if not self.data or "ai_summary" not in self.data:
                         should_fetch_ai = True
                     # 2. Hämta under dagen om vi inte redan fått en ny text idag (börjar kolla kl 06:00 lokal tid)
-                    elif now.hour >= 6:
+                    elif now.hour >= 5:
                         last_fetch = getattr(self, "_last_ai_fetch_day", None)
                         if last_fetch != now.date():
                             should_fetch_ai = True
