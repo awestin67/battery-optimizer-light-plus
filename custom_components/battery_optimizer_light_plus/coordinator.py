@@ -119,8 +119,10 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                 self._last_valid_soc = reported_soc
 
                 is_solar_override = False
+                is_in_maintenance = False
                 if hasattr(self, "peak_guard") and self.peak_guard:
                     is_solar_override = self.peak_guard.is_solar_override
+                    is_in_maintenance = self.peak_guard.in_maintenance
 
                 # --- EV CHARGING SENSOR ---
                 is_ev_charging = False
@@ -223,6 +225,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     "api_key": self.api_key,
                     "soc": reported_soc,
                     "is_solar_override": is_solar_override,
+                    "is_in_maintenance": is_in_maintenance,
                     "is_ev_charging": is_ev_charging,
                     "ha_version": self.version,
                     "current_consumption_kw": current_consumption_kw
@@ -277,7 +280,6 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     data["cloud_target_power_kw"] = target_kw
 
                     # Låt batterihanteraren verkställa beslutet, om inte PeakGuard har tagit över lokalt
-                    is_in_maintenance = hasattr(self, "peak_guard") and self.peak_guard.in_maintenance
                     if (
                         not is_in_maintenance
                         and not is_solar_override

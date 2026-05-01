@@ -448,6 +448,7 @@ async def test_coordinator_sends_solar_override_flag(mock_hass_instance):
     # Mocka PeakGuard och sätt override till True
     peak_guard = MagicMock()
     peak_guard.is_solar_override = True
+    peak_guard.in_maintenance = False
     coordinator.peak_guard = peak_guard
 
     # Mocka aiohttp session och response
@@ -474,6 +475,7 @@ async def test_coordinator_sends_solar_override_flag(mock_hass_instance):
 
 
         assert payload["is_solar_override"] is True
+        assert payload["is_in_maintenance"] is False
         assert payload["soc"] == 50.0
         assert payload["ha_version"] == "1.2.3"
         assert payload["current_consumption_kw"] == 4.5
