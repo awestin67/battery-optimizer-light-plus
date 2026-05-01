@@ -20,7 +20,7 @@ Systemet kombinerar **Molnintelligens** (för prisoptimering och arbitrage) med 
     * *Hysteres:* Inbyggd smart logik förhindrar "fladder" när lasten pendlar runt gränsvärdet.
 * **🤖 Zero-Config Automation:** Integrationen lyssnar automatiskt på beslut från molnet och styr ditt batteri. Inga krångliga YAML-skript eller automationer krävs!
 * **📊 Analys:** Följ dina besparingar och effekttoppar via vår snygga [Web Dashboard](https://battery-prod.awestinconsulting.se).
-* **🚗 Smart Elbilsstöd:** Peka ut en sensor från din laddbox i Home Assistant. När laddning detekteras pausas optimeraren **omedelbart lokalt** (batteriet sätts i `HOLD`) för att förhindra att hembatteriet laddas ur in i elbilen. Samtidigt informeras molnet för att förbättra AI-prognoserna. 
+* **🚗 Smart Elbilsstöd:** Peka ut en sensor från din laddbox i Home Assistant så informeras molnet automatiskt när bilen laddas, vilket förbättrar AI-beslut kring urladdning och sätter batteriet i läge `HOLD`! 
   *(Integrationen känner automatiskt igen tillstånden `on`, `true`, `1`, `charging`, `på`, `charge`, `sant` samt numeriska effektvärden `> 0` W).*
 * **⏸️ Stöd för CheckWatt & Stödtjänster (Extern Paus):** Om ett externt system behöver exklusiv kontroll över batteriet kan du peka ut en Paus-sensor (t.ex. en `input_boolean` eller status-sensor för CheckWatt). 
   *(Integrationen reagerar automatiskt på tillstånden `on`, `true`, `1`, `active`, `yes`, `på` eller `sant`. Då pausas all styrning från Battery Optimizer och batteriet sätts i `IDLE` så att systemen inte slåss om kommandona).*
