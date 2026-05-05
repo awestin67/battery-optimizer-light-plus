@@ -104,7 +104,10 @@ class SonnenBattery(BatteryApi):
     async def get_virtual_load(self) -> float | None:
         data = self.coordinator.data
         if data and "Consumption_W" in data and "Production_W" in data:
-            return float(data["Consumption_W"]) - float(data["Production_W"])
+            try:
+                return float(data["Consumption_W"]) - float(data["Production_W"])
+            except (ValueError, TypeError):
+                pass
         return None
 
     async def get_solar_power(self) -> float | None:
@@ -120,14 +123,20 @@ class SonnenBattery(BatteryApi):
     async def get_battery_power(self) -> float | None:
         data = self.coordinator.data
         if data and "Pac_total_W" in data:
-            return float(data["Pac_total_W"])
+            try:
+                return float(data["Pac_total_W"])
+            except (ValueError, TypeError):
+                pass
         return None
 
     async def get_grid_power(self) -> float | None:
         data = self.coordinator.data
         if data and "GridFeedIn_W" in data:
             # Sonnen: Positiv = Export. PeakGuard förväntar sig Negativ = Export.
-            return -float(data["GridFeedIn_W"])
+            try:
+                return -float(data["GridFeedIn_W"])
+            except (ValueError, TypeError):
+                pass
         return None
 
     async def get_status_text(self) -> str | None:

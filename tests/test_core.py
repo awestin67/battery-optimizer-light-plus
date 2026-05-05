@@ -561,6 +561,34 @@ async def test_coordinator_solar_kw_value_error(mock_hass_instance, mock_battery
         assert "current_solar_kw" not in payload
 
 @pytest.mark.asyncio
+async def test_coordinator_solar_kw_clamps_negative(mock_hass_instance, mock_battery):
+    """Krav: Coordinator ska sätta negativa sol-värden till 0.0 kW."""
+    config = MOCK_CONFIG.copy()
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config, version="1.0.0")
+
+    # Batteriet rapporterar in ett negativt sol-värde (brus/natt)
+    mock_battery.get_solar_power = AsyncMock(return_value=-15.0)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        await coordinator._async_update_data()
+        _, kwargs = mock_session.post.call_args
+        payload = kwargs['json']
+
+        assert payload.get("current_solar_kw") == 0.0
+
+@pytest.mark.asyncio
 async def test_coordinator_respects_hardware_reserve(mock_hass_instance, mock_battery):
     """Krav: Coordinator ska skala SoC för molnet och avbryta DISCHARGE lokalt om SoC <= reserv."""
     coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)

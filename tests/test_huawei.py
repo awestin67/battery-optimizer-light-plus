@@ -160,6 +160,15 @@ async def test_get_calculated_consumption(huawei_battery):
         assert consumption == 1500.0
 
 @pytest.mark.asyncio
+async def test_get_calculated_consumption_unavailable_grid(huawei_battery):
+    """Testar att get_calculated_consumption returnerar None om grid-sensorn är unavailable."""
+    mock_state = MagicMock()
+    mock_state.state = "unavailable"
+    huawei_battery._hass.states.get.return_value = mock_state
+    with patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
+        assert await huawei_battery.get_calculated_consumption() is None
+
+@pytest.mark.asyncio
 async def test_get_solar_power(huawei_battery):
     """Testar att solproduktionen hämtas och summeras korrekt, inklusive omvandling från kW till W."""
     with patch("homeassistant.helpers.entity_registry.async_get"), \
@@ -284,6 +293,32 @@ async def test_apply_action_hold(huawei_battery):
             {"device_id": "test_device_id"},
             blocking=True,
         )
+
+@pytest.mark.asyncio
+async def test_apply_action_hold_already_zero(huawei_battery):
+    """Testar att HOLD inte skickar onödiga set_value=0 om max urladdning redan är 0 (sparar EEPROM)."""
+    with patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get, \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
+        mock_registry = MagicMock()
+        mock_er_get.return_value = mock_registry
+
+        mock_entry = MagicMock()
+        mock_entry.domain = "number"
+        mock_entry.translation_key = "maximum_discharging_power"
+        mock_entry.entity_id = "number.battery_max_discharge"
+        mock_entries.return_value = [mock_entry]
+
+        mock_state = MagicMock()
+        mock_state.state = "0" # Redan 0
+        huawei_battery._hass.states.get.return_value = mock_state
+
+        await huawei_battery.apply_action("HOLD")
+
+        # set_value ska inte anropas för 'number' eftersom gränsen redan är 0
+        calls = huawei_battery._hass.services.async_call.call_args_list
+        for call in calls:
+            assert call[0][0] != "number", "Skickade onödigt set_value kommando trots att gränsen är 0!"
 
 @pytest.mark.asyncio
 async def test_apply_action_idle_restores_discharge(huawei_battery):

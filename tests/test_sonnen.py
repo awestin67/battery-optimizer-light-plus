@@ -163,6 +163,10 @@ async def test_get_virtual_load(sonnen_battery):
     sonnen_battery.coordinator.data = {"Consumption_W": 5000}
     assert await sonnen_battery.get_virtual_load() is None
 
+    # Test ValueError
+    sonnen_battery.coordinator.data = {"Consumption_W": "invalid", "Production_W": 2000}
+    assert await sonnen_battery.get_virtual_load() is None
+
 @pytest.mark.asyncio
 async def test_get_solar_power(sonnen_battery):
     """Testar att solproduktionen hämtas korrekt från Sonnen."""
@@ -187,6 +191,10 @@ async def test_get_battery_power(sonnen_battery):
     sonnen_battery.coordinator.data = {}
     assert await sonnen_battery.get_battery_power() is None
 
+    # Test ValueError
+    sonnen_battery.coordinator.data = {"Pac_total_W": "invalid"}
+    assert await sonnen_battery.get_battery_power() is None
+
 @pytest.mark.asyncio
 async def test_get_grid_power(sonnen_battery):
     """Testar att nätutbyte hämtas korrekt."""
@@ -196,6 +204,10 @@ async def test_get_grid_power(sonnen_battery):
     assert power == -300.0
 
     sonnen_battery.coordinator.data = {}
+    assert await sonnen_battery.get_grid_power() is None
+
+    # Test ValueError
+    sonnen_battery.coordinator.data = {"GridFeedIn_W": "invalid"}
     assert await sonnen_battery.get_grid_power() is None
 
 @pytest.mark.asyncio
