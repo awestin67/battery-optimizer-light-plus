@@ -28,6 +28,10 @@ class BatteryApi(ABC):
         """Returnerar husets rena förbrukning i Watt om det stöds direkt av API:et."""
         return None
 
+    async def get_solar_power(self) -> float | None:
+        """Hämtar solproduktion i Watt om det stöds av batteriadaptern."""
+        return None
+
     @abstractmethod
     async def apply_action(self, action: str, target_kw: float = 0.0):
         """

@@ -67,6 +67,7 @@ def mock_battery():
     mock.get_status_text = AsyncMock(return_value=None)
     mock.apply_action = AsyncMock()
     mock.get_min_soc = AsyncMock(return_value=None)
+    mock.get_solar_power = AsyncMock(return_value=None)
     return mock
 
 @pytest.mark.asyncio
@@ -479,6 +480,85 @@ async def test_coordinator_sends_solar_override_flag(mock_hass_instance):
         assert payload["soc"] == 50.0
         assert payload["ha_version"] == "1.2.3"
         assert payload["current_consumption_kw"] == 4.5
+
+@pytest.mark.asyncio
+async def test_coordinator_sends_solar_kw(mock_hass_instance, mock_battery):
+    """Krav: Coordinator ska hämta solproduktion och skicka med current_solar_kw till backend."""
+    config = MOCK_CONFIG.copy()
+    config["solar_sensor"] = "sensor.solar_production"
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config, version="1.0.0")
+
+    # Låtsas att batteriets interna sökning inte hittar solcellerna (så vi testar config-fallback)
+    mock_battery.get_solar_power = AsyncMock(return_value=None)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    def mock_get_state(entity_id):
+        mock_state = MagicMock()
+        if entity_id == "sensor.soc":
+            mock_state.state = "50"
+        elif entity_id == "sensor.solar_production":
+            mock_state.state = "4200" # 4200 W solproduktion
+        return mock_state
+    mock_hass_instance.states.get.side_effect = mock_get_state
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
+
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        await coordinator._async_update_data()
+
+        _, kwargs = mock_session.post.call_args
+        payload = kwargs['json']
+
+        assert "current_solar_kw" in payload
+        assert payload["current_solar_kw"] == 4.2
+
+@pytest.mark.asyncio
+async def test_coordinator_solar_kw_value_error(mock_hass_instance, mock_battery):
+    """Krav: Coordinator ska hantera ValueError på sol-sensorn snyggt och exkludera fältet."""
+    config = MOCK_CONFIG.copy()
+    config["solar_sensor"] = "sensor.solar_production"
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config, version="1.0.0")
+
+    mock_battery.get_solar_power = AsyncMock(return_value=None)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    def mock_get_state(entity_id):
+        mock_state = MagicMock()
+        if entity_id == "sensor.soc":
+            mock_state.state = "50"
+        elif entity_id == "sensor.solar_production":
+            mock_state.state = "invalid_string" # Ogiltigt värde
+        return mock_state
+    mock_hass_instance.states.get.side_effect = mock_get_state
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        await coordinator._async_update_data()
+        _, kwargs = mock_session.post.call_args
+        payload = kwargs['json']
+
+        assert "current_solar_kw" not in payload
 
 @pytest.mark.asyncio
 async def test_coordinator_respects_hardware_reserve(mock_hass_instance, mock_battery):

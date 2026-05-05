@@ -52,6 +52,7 @@ CONF_BATTERY_STATUS_SENSOR = "battery_status_sensor" # Sensor för driftstatus (
 CONF_BATTERY_STATUS_KEYWORDS = "battery_status_keywords" # Nyckelord för underhållsläge
 CONF_VIRTUAL_LOAD_SENSOR = "virtual_load_sensor" # Virtuell last (Husets netto utan batteri)
 CONF_EV_CHARGING_SENSOR = "ev_charging_sensor" # Sensor för elbilsladdning
+CONF_SOLAR_SENSOR = "solar_sensor" # Sensor för solproduktion (Valfritt)
 CONF_EXTERNAL_CONTROL_SENSOR = "external_control_sensor" # Sensor för CheckWatt/FCR (Pausar systemet)
 CONF_MIN_SOC = "min_soc" # Backup-reserv för Generic-batterier
 CONF_GRAPH_HISTORY_HOURS = "graph_history_hours"

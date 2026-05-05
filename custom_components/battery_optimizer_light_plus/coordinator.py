@@ -218,6 +218,31 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                         "Skickar 0.0 kW till molnet."
                     )
 
+                # --- SOLPRODUKTION ---
+                current_solar_kw = None
+                current_solar_w = None
+
+                if hasattr(self.battery_api, "get_solar_power"):
+                    current_solar_w = await self.battery_api.get_solar_power()
+
+                if current_solar_w is None:
+                    solar_id = self.config.get("solar_sensor")
+                    if solar_id:
+                        solar_state = self.hass.states.get(solar_id)
+                        if solar_state and solar_state.state not in ["unknown", "unavailable"]:
+                            try:
+                                val = float(solar_state.state)
+                                if solar_state.attributes.get("unit_of_measurement") == "kW":
+                                    val *= 1000.0
+                                current_solar_w = val
+                            except ValueError:
+                                pass
+
+                if current_solar_w is not None:
+                    if current_solar_w < 0:
+                        current_solar_w = 0.0
+                    current_solar_kw = round(current_solar_w / 1000.0, 3)
+
                 self.current_load_w = current_load_w
 
                 # 5. Payload (Endast det backend behöver)
@@ -230,6 +255,9 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     "ha_version": self.version,
                     "current_consumption_kw": current_consumption_kw
                 }
+
+                if current_solar_kw is not None:
+                    payload["current_solar_kw"] = current_solar_kw
 
                 _LOGGER.debug(f"Light-Request: {payload}")
 

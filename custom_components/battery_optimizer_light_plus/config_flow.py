@@ -48,6 +48,7 @@ from .const import (
     CONF_BATTERY_STATUS_KEYWORDS,
     CONF_VIRTUAL_LOAD_SENSOR,
     CONF_EV_CHARGING_SENSOR,
+    CONF_SOLAR_SENSOR,
     CONF_EXTERNAL_CONTROL_SENSOR,
     CONF_MIN_SOC,
     DEFAULT_BATTERY_STATUS_KEYWORDS,
@@ -369,6 +370,9 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_EV_CHARGING_SENSOR, get_val(CONF_EV_CHARGING_SENSOR)
             ): EntitySelector(EntitySelectorConfig()),
             _opt(
+                CONF_SOLAR_SENSOR, get_val(CONF_SOLAR_SENSOR)
+            ): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+            _opt(
                 CONF_EXTERNAL_CONTROL_SENSOR, get_val(CONF_EXTERNAL_CONTROL_SENSOR)
             ): EntitySelector(EntitySelectorConfig()),
             vol.Optional("enable_solar_override", default=get_val("enable_solar_override", False)): bool,
@@ -469,6 +473,7 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
                 CONF_VIRTUAL_LOAD_SENSOR,
                 CONF_DEVICE_STATUS_ENTITY,
                 CONF_MAX_DISCHARGE_ENTITY,
+                CONF_SOLAR_SENSOR,
             ]
 
             for key in clearable_keys:
@@ -529,6 +534,9 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             vol.Required(CONF_API_KEY, default=get_default(CONF_API_KEY)): TextSelector(),
             _opt(CONF_EV_CHARGING_SENSOR, get_default(CONF_EV_CHARGING_SENSOR)): EntitySelector(
                 EntitySelectorConfig()
+            ),
+            _opt(CONF_SOLAR_SENSOR, get_default(CONF_SOLAR_SENSOR)): EntitySelector(
+                EntitySelectorConfig(domain="sensor", device_class="power")
             ),
             _opt(CONF_EXTERNAL_CONTROL_SENSOR, get_default(CONF_EXTERNAL_CONTROL_SENSOR)): EntitySelector(
                 EntitySelectorConfig()

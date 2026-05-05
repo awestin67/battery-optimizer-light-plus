@@ -107,6 +107,16 @@ class SonnenBattery(BatteryApi):
             return float(data["Consumption_W"]) - float(data["Production_W"])
         return None
 
+    async def get_solar_power(self) -> float | None:
+        """Hämtar solproduktion i Watt."""
+        data = self.coordinator.data
+        if data and "Production_W" in data:
+            try:
+                return float(data["Production_W"])
+            except (ValueError, TypeError):
+                pass
+        return None
+
     async def get_battery_power(self) -> float | None:
         data = self.coordinator.data
         if data and "Pac_total_W" in data:

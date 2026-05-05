@@ -160,6 +160,73 @@ async def test_get_calculated_consumption(huawei_battery):
         assert consumption == 1500.0
 
 @pytest.mark.asyncio
+async def test_get_solar_power(huawei_battery):
+    """Testar att solproduktionen hämtas och summeras korrekt, inklusive omvandling från kW till W."""
+    with patch("homeassistant.helpers.entity_registry.async_get"), \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
+
+        mock_entry1 = MagicMock()
+        mock_entry1.domain = "sensor"
+        mock_entry1.translation_key = "inverter_input_power"
+        mock_entry1.entity_id = "sensor.huawei_input_power_1"
+
+        mock_entry2 = MagicMock()
+        mock_entry2.domain = "sensor"
+        mock_entry2.translation_key = "pv_power"
+        mock_entry2.entity_id = "sensor.huawei_pv_power_2"
+
+        mock_entries.return_value = [mock_entry1, mock_entry2]
+
+        def get_state_side_effect(entity_id):
+            mock_state = MagicMock()
+            if entity_id == "sensor.huawei_input_power_1":
+                mock_state.state = "2500"
+                mock_state.attributes = {"unit_of_measurement": "W"}
+            elif entity_id == "sensor.huawei_pv_power_2":
+                mock_state.state = "1.5" # 1.5 kW
+                mock_state.attributes = {"unit_of_measurement": "kW"}
+            else:
+                return None
+            return mock_state
+
+        huawei_battery._hass.states.get.side_effect = get_state_side_effect
+
+        solar_power = await huawei_battery.get_solar_power()
+        # 2500 W + 1.5 kW (1500 W) = 4000.0 W
+        assert solar_power == 4000.0
+
+@pytest.mark.asyncio
+async def test_get_solar_power_none(huawei_battery):
+    """Testar att get_solar_power returnerar None om inga sol-sensorer hittas."""
+    with patch("homeassistant.helpers.entity_registry.async_get"), \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
+
+        mock_entries.return_value = []
+        solar_power = await huawei_battery.get_solar_power()
+        assert solar_power is None
+
+@pytest.mark.asyncio
+async def test_get_solar_power_value_error(huawei_battery):
+    """Testar att get_solar_power hanterar ogiltiga värden (ValueError)."""
+    with patch("homeassistant.helpers.entity_registry.async_get"), \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
+        mock_entry = MagicMock()
+        mock_entry.domain = "sensor"
+        mock_entry.translation_key = "pv_power"
+        mock_entry.entity_id = "sensor.huawei_pv_power_error"
+        mock_entries.return_value = [mock_entry]
+
+        mock_state = MagicMock()
+        mock_state.state = "invalid_string"
+        huawei_battery._hass.states.get.return_value = mock_state
+
+        solar_power = await huawei_battery.get_solar_power()
+        assert solar_power is None
+
+@pytest.mark.asyncio
 async def test_apply_action_charge(huawei_battery):
     """Testar att CHARGE översätts till forcible_charge."""
     with patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):

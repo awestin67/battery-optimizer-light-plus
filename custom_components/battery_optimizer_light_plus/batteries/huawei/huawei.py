@@ -76,6 +76,36 @@ class HuaweiBattery(BatteryApi):
                 return str(state.state)
         return None
 
+    async def get_solar_power(self) -> float | None:
+        """Hämtar solproduktion i Watt (DC Input Power)."""
+        from homeassistant.helpers import entity_registry as er
+        er_reg = er.async_get(self._hass)
+        related_devices = self._get_related_devices()
+
+        total_solar_power = 0.0
+        found_solar = False
+
+        for d_id in related_devices:
+            entries = er.async_entries_for_device(er_reg, d_id)
+            for entry in entries:
+                if entry.domain == "sensor" and entry.translation_key in [
+                    "inverter_input_power",
+                    "input_power",
+                    "pv_power",
+                ]:
+                    state = self._hass.states.get(entry.entity_id)
+                    if state and state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                        try:
+                            val = float(state.state)
+                            if state.attributes.get("unit_of_measurement") == "kW":
+                                val *= 1000.0
+                            total_solar_power += val
+                            found_solar = True
+                        except ValueError:
+                            pass
+
+        return total_solar_power if found_solar else None
+
     async def get_house_consumption(self) -> float | None:
         """Försöker hitta Huaweis inbyggda husförbrukningssensor automatiskt tvärs över anläggningen."""
         from homeassistant.helpers import entity_registry as er
