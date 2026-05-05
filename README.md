@@ -319,7 +319,7 @@ series:
       r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const now = new Date().getTime();
-        return (api.history || []).filter(x => x.current_solar_kw !== undefined && new Date(x.timestamp).getTime() <= now).map(x => [new Date(x.timestamp).getTime(), x.current_solar_kw]);
+        return (api.history || []).filter(x => x.solar_kw !== undefined && new Date(x.timestamp).getTime() <= now).map(x => [new Date(x.timestamp).getTime(), x.solar_kw]);
       });
   - entity: sensor.battery_optimizer_graph_data
     name: Sol (Prognos)
