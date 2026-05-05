@@ -1864,7 +1864,7 @@ async def test_coordinator_graph_data_fetch(mock_hass_instance, mock_battery):
         mock_get = mock_session.get.return_value.__aenter__.return_value
         mock_get.status = 200
         mock_get.json = AsyncMock(return_value={
-            "history": [{"timestamp": "2026-04-13T10:00:00Z", "savings_sek": 5.0}],
+            "history": [{"timestamp": "2026-04-13T10:00:00Z", "savings_sek": 5.0, "current_solar_kw": 2.5}],
             "forecast": [{"timestamp": "2026-04-13T12:00:00Z", "soc": 40.0}]
         })
 
@@ -1874,6 +1874,9 @@ async def test_coordinator_graph_data_fetch(mock_hass_instance, mock_battery):
         assert "graph_data" in data
         assert len(data["graph_data"]["history"]) == 1
         assert data["graph_data"]["history"][0]["savings_sek"] == 5.0
+        # Verifiera normalisering av current_solar_kw till solar_kw
+        assert "current_solar_kw" not in data["graph_data"]["history"][0]
+        assert data["graph_data"]["history"][0]["solar_kw"] == 2.5
 
 def test_graph_data_sensor():
     """Testar att graf-sensorn returnerar attributen som förväntat."""

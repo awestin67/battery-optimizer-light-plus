@@ -285,7 +285,12 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                             graph_url, headers={"X-API-Key": self.api_key}, timeout=aiohttp.ClientTimeout(total=30)
                         ) as graph_response:
                             if graph_response.status == 200:
-                                data["graph_data"] = await graph_response.json()
+                                graph_data = await graph_response.json()
+                                # Normalisera current_solar_kw till solar_kw i historiken
+                                for entry in graph_data.get("history", []):
+                                    if "current_solar_kw" in entry:
+                                        entry["solar_kw"] = entry.pop("current_solar_kw")
+                                data["graph_data"] = graph_data
                             else:
                                 _LOGGER.debug("Kunde inte hämta grafdata. Status: %s", graph_response.status)
                                 data["graph_data"] = fallback_graph_data
