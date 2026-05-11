@@ -20,6 +20,7 @@ KEYS_RC_CHARGE_POWER = ["rc_force_charge_power", "rc_charge_power", "charge_powe
 KEYS_RC_DISCHARGE_POWER = ["rc_force_discharge_power", "rc_discharge_power", "discharge_power_limit"]
 KEYS_RC_TIMEOUT = ["rc_timeout", "timeout"]
 KEYS_BATTERY_DISCHARGE_LIMIT = ["battery_discharge_limit_power", "discharge_limit_power"]
+KEYS_SOLAR_POWER = ["pv_total_power", "inverter_dc_power", "total_dc_power", "pv_power"]
 
 class SolisModbusBattery(BatteryApi):
     """A class to interact with the Solis Modbus battery integration."""
@@ -42,6 +43,7 @@ class SolisModbusBattery(BatteryApi):
         self._max_discharge_entity = max_discharge_entity
         self._grid_entity = grid_entity
         self._invert_grid = invert_grid
+        self._entity_cache: dict[str, str] = {}
 
     def _get_related_devices(self) -> set[str]:
         """Hämtar alla relaterade enhets-ID:n inom samma Solis-integration."""
@@ -58,6 +60,10 @@ class SolisModbusBattery(BatteryApi):
 
     async def _find_entity(self, domain: str, partial_keys: list[str]) -> str | None:
         """Hittar en entitet dynamiskt genom att testa flera möjliga nyckelord."""
+        cache_key = f"{domain}_{'-'.join(partial_keys)}"
+        if cache_key in self._entity_cache:
+            return self._entity_cache[cache_key]
+
         from homeassistant.helpers import entity_registry as er
         er_reg = er.async_get(self._hass)
         related_devices = self._get_related_devices()
@@ -74,6 +80,7 @@ class SolisModbusBattery(BatteryApi):
                     for key in partial_keys:
                         if key in name_check:
                             _LOGGER.debug(f"Found entity {entry.entity_id} for key {key}")
+                            self._entity_cache[cache_key] = entry.entity_id
                             return entry.entity_id
 
         _LOGGER.warning(f"Could not find any {domain} entity with keys matching '{partial_keys}'")
@@ -109,6 +116,29 @@ class SolisModbusBattery(BatteryApi):
             except (ValueError, TypeError):
                 _LOGGER.warning(f"Invalid SoC value: {soc_state.state}")
                 return None
+        return None
+
+    async def get_status_text(self) -> str | None:
+        """Hämtar batteriets/växelriktarens driftstatus för underhållsläge."""
+        if self._device_status_entity:
+            state_obj = self._hass.states.get(self._device_status_entity)
+            if state_obj and state_obj.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                return str(state_obj.state)
+        return None
+
+    async def get_solar_power(self) -> float | None:
+        """Hämtar solproduktion i Watt (DC Input Power)."""
+        entity_id = await self._find_entity("sensor", KEYS_SOLAR_POWER)
+        if entity_id:
+            state = self._hass.states.get(entity_id)
+            if state and state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                try:
+                    val = float(state.state)
+                    if state.attributes.get("unit_of_measurement") == "kW":
+                        val *= 1000.0
+                    return val
+                except (ValueError, TypeError):
+                    pass
         return None
 
     async def apply_action(self, action: str, target_kw: float = 0.0):

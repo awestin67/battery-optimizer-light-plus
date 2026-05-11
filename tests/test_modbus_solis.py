@@ -17,6 +17,7 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.exceptions import ServiceNotFound
 
 from custom_components.battery_optimizer_light_plus.batteries.solis_modbus.solis_modbus import SolisModbusBattery
 
@@ -125,6 +126,86 @@ async def test_find_entity(solis_battery, mock_hass):
         entity_id3 = await solis_battery._find_entity("number", ["missing_key"])
         assert entity_id3 is None
 
+def test_get_rc_option(solis_battery):
+    """Krav: _get_rc_option ska välja rätt driftläge oavsett exakt stavning i dropdown-menyn."""
+    mock_state = MagicMock()
+    mock_state.attributes = {
+        "options": [
+            "Solis RC Force Battery Charge",
+            "Solis RC Force Battery Discharge",
+            "Self Use",
+            "Auto",
+            "None"
+        ]
+    }
+    solis_battery._hass.states.get.return_value = mock_state
+
+    opt_charge = solis_battery._get_rc_option("select.dummy", "charge")
+    assert opt_charge == "Solis RC Force Battery Charge"
+
+    opt_discharge = solis_battery._get_rc_option("select.dummy", "discharge")
+    assert opt_discharge == "Solis RC Force Battery Discharge"
+
+    opt_none_1 = solis_battery._get_rc_option("select.dummy", "none")
+    assert opt_none_1 in ("Self Use", "Auto", "None")  # Någon av dessa är acceptabel
+
+    # Testar fallback om sensorn saknas
+    solis_battery._hass.states.get.return_value = None
+    assert solis_battery._get_rc_option("select.dummy", "charge") == "Solis RC Force Battery Charge"
+    assert solis_battery._get_rc_option("select.dummy", "discharge") == "Solis RC Force Battery Discharge"
+    assert solis_battery._get_rc_option("select.dummy", "none") == "None"
+
+@pytest.mark.asyncio
+async def test_get_status_text(solis_battery):
+    """Krav: get_status_text ska hämta rätt värde om device_status_entity är satt."""
+    solis_battery._device_status_entity = "sensor.solis_status"
+    mock_state = MagicMock()
+    mock_state.state = "Working"
+    solis_battery._hass.states.get.return_value = mock_state
+
+    status = await solis_battery.get_status_text()
+    assert status == "Working"
+    solis_battery._hass.states.get.assert_called_with("sensor.solis_status")
+
+@pytest.mark.asyncio
+async def test_get_solar_power(solis_battery, mock_hass):
+    """Krav: Solis solproduktion ska hämtas och returneras i Watt."""
+    mock_state = MagicMock()
+    mock_state.state = "4.2"
+    mock_state.attributes = {"unit_of_measurement": "kW"}
+    mock_hass.states.get.return_value = mock_state
+
+    async def mock_find_entity(domain, partial_keys):
+        if "pv_total_power" in partial_keys:
+            return "sensor.solis_pv_total_power"
+        return None
+
+    with patch.object(solis_battery, "_find_entity", side_effect=mock_find_entity):
+        power = await solis_battery.get_solar_power()
+        assert power == 4200.0
+        mock_hass.states.get.assert_called_once_with("sensor.solis_pv_total_power")
+
+@pytest.mark.asyncio
+async def test_get_solar_power_invalid(solis_battery, mock_hass):
+    """Krav: get_solar_power ska hantera ogiltiga värden snyggt."""
+    mock_state = MagicMock()
+    mock_state.state = "invalid_value"
+    mock_hass.states.get.return_value = mock_state
+
+    with patch.object(solis_battery, "_find_entity", return_value="sensor.solis_pv"):
+        assert await solis_battery.get_solar_power() is None
+
+    # Testa STATE_UNAVAILABLE
+    mock_state.state = STATE_UNAVAILABLE
+    with patch.object(solis_battery, "_find_entity", return_value="sensor.solis_pv"):
+        assert await solis_battery.get_solar_power() is None
+
+@pytest.mark.asyncio
+async def test_get_solar_power_none(solis_battery):
+    """Krav: get_solar_power ska returnera None om sensorn inte hittas."""
+    with patch.object(solis_battery, "_find_entity", return_value=None):
+        power = await solis_battery.get_solar_power()
+        assert power is None
 
 @pytest.mark.asyncio
 async def test_apply_action_charge(solis_battery, mock_hass):
@@ -308,3 +389,21 @@ async def test_apply_action_discharge_clamped(solis_battery, mock_hass):
             {"entity_id": "number.solis_discharge_power", "value": 3000},
             blocking=True
         )
+
+@pytest.mark.asyncio
+async def test_apply_action_service_not_found(solis_battery, mock_hass):
+    """Krav: ServiceNotFound fångas och loggas med en varning istället för att krascha."""
+    mock_hass.services.async_call.side_effect = ServiceNotFound("number", "set_value")
+
+    async def mock_find_entity(domain, partial_keys):
+        if "rc_force_charge_discharge" in partial_keys:
+            return "select.solis_rc_mode"
+        return None
+
+    patch_logger = "custom_components.battery_optimizer_light_plus.batteries.solis_modbus.solis_modbus._LOGGER"
+    with patch(patch_logger) as mock_logger, \
+         patch.object(solis_battery, "_find_entity", side_effect=mock_find_entity):
+
+        await solis_battery.apply_action("IDLE")
+        mock_logger.warning.assert_called_once()
+        assert "Solis service not found" in mock_logger.warning.call_args[0][0]

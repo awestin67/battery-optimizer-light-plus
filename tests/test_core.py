@@ -589,6 +589,42 @@ async def test_coordinator_solar_kw_clamps_negative(mock_hass_instance, mock_bat
         assert payload.get("current_solar_kw") == 0.0
 
 @pytest.mark.asyncio
+async def test_coordinator_excludes_solar_kw_if_missing(mock_hass_instance, mock_battery):
+    """Krav: Coordinator ska exkludera current_solar_kw om solproduktion saknas (både modbus och HA-sensor)."""
+    config = MOCK_CONFIG.copy()
+    config["solar_sensor"] = None
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config, version="1.0.0")
+
+    # Batteriet rapporterar in None (hittar inget värde)
+    mock_battery.get_solar_power = AsyncMock(return_value=None)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    def mock_get_state(entity_id):
+        mock_state = MagicMock()
+        if entity_id == "sensor.soc":
+            mock_state.state = "50"
+        return mock_state
+    mock_hass_instance.states.get.side_effect = mock_get_state
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        await coordinator._async_update_data()
+        _, kwargs = mock_session.post.call_args
+        payload = kwargs['json']
+
+        assert "current_solar_kw" not in payload
+
+@pytest.mark.asyncio
 async def test_coordinator_respects_hardware_reserve(mock_hass_instance, mock_battery):
     """Krav: Coordinator ska skala SoC för molnet och avbryta DISCHARGE lokalt om SoC <= reserv."""
     coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
