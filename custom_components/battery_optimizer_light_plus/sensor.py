@@ -59,6 +59,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
         BatteryLightGraphDataSensor(coordinator),
         BatteryLightDailySavingsSensor(coordinator),
         BatteryLightAISummarySensor(coordinator),
+        BatteryLightNextActionSensor(coordinator),
+        BatteryLightNextActionTimeSensor(coordinator),
     ]
 
     if entry.data.get(CONF_BATTERY_TYPE) != BATTERY_TYPE_SONNEN:
@@ -639,3 +641,31 @@ class BatteryLightAISummarySensor(BatteryOptimizerSensorBase):
                 "summary_text": self.coordinator.data.get("ai_summary", "Ingen AI-sammanfattning tillgänglig ännu.")
             }
         return {}
+
+class BatteryLightNextActionSensor(BatteryOptimizerSensorBase):
+    """Sensor som visar nästa kommande åtgärd från molnet."""
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self._attr_name = "Optimizer Light Next Action"
+        self._attr_unique_id = f"{coordinator.api_key}_light_next_action"
+        self._attr_icon = "mdi:calendar-arrow-right"
+
+    @property
+    def state(self):
+        return (self.coordinator.data or {}).get("next_action", "UNKNOWN")
+
+class BatteryLightNextActionTimeSensor(BatteryOptimizerSensorBase):
+    """Sensor som visar tiden för nästa kommande åtgärd från molnet."""
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self._attr_name = "Optimizer Light Next Action Time"
+        self._attr_unique_id = f"{coordinator.api_key}_light_next_action_time"
+        self._attr_icon = "mdi:clock-outline"
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    @property
+    def state(self):
+        time_str = (self.coordinator.data or {}).get("next_action_time")
+        if not time_str or time_str == "None":
+            return None
+        return dt_util.parse_datetime(time_str)

@@ -29,7 +29,9 @@ from custom_components.battery_optimizer_light_plus.sensor import (
     HuaweiWrapperSensor,
     SonnenInternalSensor,
     SonnenVirtualLoadSensor,
-    BatteryLightAISummarySensor
+    BatteryLightAISummarySensor,
+    BatteryLightNextActionSensor,
+    BatteryLightNextActionTimeSensor
 )
 from custom_components.battery_optimizer_light_plus.const import (
     DOMAIN,
@@ -50,7 +52,7 @@ async def test_sensor_setup_entry_generic():
 
     await async_setup_entry(hass, entry, async_add_entities)
     async_add_entities.assert_called_once()
-    assert len(async_add_entities.call_args[0][0]) == 12
+    assert len(async_add_entities.call_args[0][0]) == 14
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_huawei():
@@ -67,7 +69,7 @@ async def test_sensor_setup_entry_huawei():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 15
+    assert len(async_add_entities.call_args[0][0]) == 17
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_sonnen():
@@ -80,7 +82,7 @@ async def test_sensor_setup_entry_sonnen():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 19
+    assert len(async_add_entities.call_args[0][0]) == 21
 
 def test_basic_sensors():
     coordinator = MagicMock()
@@ -90,7 +92,9 @@ def test_basic_sensors():
         "target_power_kw": 5.5,
         "reason": "Cheap price",
         "min_soc_buffer": 20.0,
-        "peak_power_kw": 10.0
+        "peak_power_kw": 10.0,
+        "next_action": "DISCHARGE",
+        "next_action_time": "2026-05-13T18:00:00+00:00"
     }
 
     action_sensor = BatteryLightActionSensor(coordinator)
@@ -124,6 +128,12 @@ def test_basic_sensors():
     coordinator.current_load_w = 2500.5
     assert BatteryLightHouseConsumptionSensor(coordinator).state == 2500.5
 
+    next_action_time = BatteryLightNextActionTimeSensor(coordinator).state
+    assert BatteryLightNextActionSensor(coordinator).state == "DISCHARGE"
+    assert next_action_time is not None
+    if not isinstance(next_action_time, MagicMock):
+        assert next_action_time.isoformat() == "2026-05-13T18:00:00+00:00"
+
     # Testa felhantering när data är None
     coordinator.data = None
     assert BatteryLightActionSensor(coordinator).state == "UNKNOWN"
@@ -131,6 +141,8 @@ def test_basic_sensors():
     assert BatteryLightPeakSensor(coordinator).state == 12.0
     assert BatteryLightChargeTargetSensor(coordinator).state == 0
     assert BatteryLightDischargeTargetSensor(coordinator).state == 0
+    assert BatteryLightNextActionSensor(coordinator).state == "UNKNOWN"
+    assert BatteryLightNextActionTimeSensor(coordinator).state is None
 
     delattr(coordinator, "current_load_w")
     assert BatteryLightHouseConsumptionSensor(coordinator).state is None
