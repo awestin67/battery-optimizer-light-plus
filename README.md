@@ -148,18 +148,22 @@ template:
           {% set action = states('sensor.optimizer_light_next_action') %}
           {% set time_str = states('sensor.optimizer_light_next_action_time') %}
           
-          {% if action and time_str and action not in ['None', 'unknown', 'unavailable'] %}
-            {% set dt = as_datetime(time_str) %}
-            {% set icon = '⚪' %}
-            {% if action == 'CHARGE' %}{% set icon = '🟢' %}{% endif %}
-            {% if action == 'DISCHARGE' %}{% set icon = '🔴' %}{% endif %}
-            {% if action == 'HOLD' %}{% set icon = '🟠' %}{% endif %}
-            
-            {% set today = now().date() %}
-            {% if dt.date() == today %}
-              ↳ Planerat: {{ icon }} {{ action }} kl {{ dt.strftime('%H:%M') }}
+          {% if action and time_str and action not in ['None', 'unknown', 'unavailable', 'UNKNOWN'] and time_str not in ['None', 'unknown', 'unavailable'] %}
+            {% set dt = time_str | as_datetime | as_local %}
+            {% if dt %}
+              {% set icon = '⚪' %}
+              {% if action == 'CHARGE' %}{% set icon = '🟢' %}{% endif %}
+              {% if action == 'DISCHARGE' %}{% set icon = '🔴' %}{% endif %}
+              {% if action == 'HOLD' %}{% set icon = '🟠' %}{% endif %}
+              
+              {% set today = now().date() %}
+              {% if dt.date() == today %}
+                ↳ Planerat: {{ icon }} {{ action }} kl {{ dt.strftime('%H:%M') }}
+              {% else %}
+                ↳ Planerat: {{ icon }} {{ action }} kl {{ dt.strftime('%d/%m %H:%M') }}
+              {% endif %}
             {% else %}
-              ↳ Planerat: {{ icon }} {{ action }} kl {{ dt.strftime('%d/%m %H:%M') }}
+              ↳ Planerat: Avvaktar (Tidfel)
             {% endif %}
           {% else %}
             ↳ Planerat: Avvaktar

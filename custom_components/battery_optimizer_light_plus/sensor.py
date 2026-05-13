@@ -657,6 +657,7 @@ class BatteryLightNextActionSensor(BatteryOptimizerSensorBase):
     """Sensor som visar nästa kommande åtgärd från molnet."""
     def __init__(self, coordinator):
         super().__init__(coordinator)
+        self.entity_id = "sensor.optimizer_light_next_action"
         self._attr_name = "Optimizer Light Next Action"
         self._attr_unique_id = f"{coordinator.api_key}_light_next_action"
         self._attr_icon = "mdi:calendar-arrow-right"
@@ -669,6 +670,7 @@ class BatteryLightNextActionTimeSensor(BatteryOptimizerSensorBase):
     """Sensor som visar tiden för nästa kommande åtgärd från molnet."""
     def __init__(self, coordinator):
         super().__init__(coordinator)
+        self.entity_id = "sensor.optimizer_light_next_action_time"
         self._attr_name = "Optimizer Light Next Action Time"
         self._attr_unique_id = f"{coordinator.api_key}_light_next_action_time"
         self._attr_icon = "mdi:clock-outline"
