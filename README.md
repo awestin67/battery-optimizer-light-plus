@@ -145,8 +145,8 @@ template:
       - name: "Battery Optimizer Next Action"
         icon: mdi:calendar-arrow-right
         state: >
-          {% set action = states('sensor.optimizer_light_next_action') %}
-          {% set time_str = states('sensor.optimizer_light_next_action_time') %}
+          {% set action = states('sensor.optimizer_light_plus_next_action') %}
+          {% set time_str = states('sensor.optimizer_light_plus_next_action_time') %}
           
           {% if action and time_str and action not in ['None', 'unknown', 'unavailable', 'UNKNOWN'] and time_str not in ['None', 'unknown', 'unavailable'] %}
             {% set dt = time_str | as_datetime | as_local %}
