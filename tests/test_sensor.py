@@ -128,11 +128,13 @@ def test_basic_sensors():
     coordinator.current_load_w = 2500.5
     assert BatteryLightHouseConsumptionSensor(coordinator).state == 2500.5
 
-    next_action_time = BatteryLightNextActionTimeSensor(coordinator).state
+    next_action_time_sensor = BatteryLightNextActionTimeSensor(coordinator)
+    next_action_time = next_action_time_sensor.state
     assert BatteryLightNextActionSensor(coordinator).state == "DISCHARGE"
     assert next_action_time is not None
     if not isinstance(next_action_time, MagicMock):
         assert next_action_time.isoformat() == "2026-05-13T18:00:00+00:00"
+    assert next_action_time_sensor.extra_state_attributes.get("next_action") == "DISCHARGE"
 
     # Testa felhantering när data är None
     coordinator.data = None

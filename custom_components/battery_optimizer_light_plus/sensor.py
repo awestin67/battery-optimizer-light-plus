@@ -301,6 +301,17 @@ class BatteryLightStatusSensor(BatteryOptimizerSensorBase):
             return "mdi:solar-panel"
         return "mdi:shield-search"
 
+    @property
+    def extra_state_attributes(self):
+        data = self.coordinator.data or {}
+        return {
+            "peakguard_status": data.get("peakguard_status"),
+            "is_peak_shaving_active": data.get("is_peak_shaving_active"),
+            "min_soc_buffer": data.get("min_soc_buffer"),
+            "next_action": data.get("next_action"),
+            "next_action_time": data.get("next_action_time"),
+        }
+
 class BatteryLightVirtualLoadSensor(SensorEntity):
     """Sensor som visar den beräknade virtuella lasten (för verifiering)."""
     def __init__(self, coordinator):
@@ -669,3 +680,9 @@ class BatteryLightNextActionTimeSensor(BatteryOptimizerSensorBase):
         if not time_str or time_str == "None":
             return None
         return dt_util.parse_datetime(time_str)
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "next_action": (self.coordinator.data or {}).get("next_action")
+        }
