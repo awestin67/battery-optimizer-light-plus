@@ -25,6 +25,11 @@ Eftersom Home Assistant fungerar som en "Edge"-klient, är exekveringen uppdelad
 *   Om husets totala last överskrider användarens inställda gräns (`LIMIT_ENTITY`), avbryts molnets plan omedelbart, och batteriet beordras tvingande till `DISCHARGE`.
 *   När lasten sjunker under gränsen (`safe_limit`), släpper `PeakGuard` kontrollen och återgår till det senaste kommandot från molnet.
 
+### C. Passivt Läge (Read-Only)
+*   Om molnet returnerar `client_mode = "PASSIVE"` (exempelvis om användaren har valt Edge-donglen som sin primära styrenhet), upphör Home Assistant att skicka styrsignaler.
+*   Lokal styrning och PeakGuard pausas, och inga Modbus-skrivningar görs. Home Assistant agerar enbart informationspanel (Read-Only) så att dashboards fortsätter visa aktuell status.
+*   Vid ett eventuellt nätverksbortfall blockeras fallback-kommandot (`IDLE`) så att integrationen inte oavsiktligt nollställer ett batteri som för tillfället styrs av Edge-donglen.
+
 ## 3. Säkerhetsmekanismer & Filter
 För att garantera fysisk säkerhet och förhindra slitage på reläer implementerar integrationen flera lokala skydd:
 

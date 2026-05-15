@@ -14,7 +14,7 @@ This covers critical system invariants, physical safety constraints (e.g., hardw
 * **Non-Blocking I/O:** All nätverkstrafik MÅSTE gå via `aiohttp` och `asyncio`. Blockerande anrop (t.ex. `requests.get()`, `time.sleep()`) i Home Assistants huvudtråd är strikt förbjudna.
 
 ## 3. Moln-Synk & Resiliens (Coordinator)
-* **Krasch-säkerhet (Fallback till IDLE):** Om uppkopplingen till molnet bryts (efter max 3 försök med 500-fel eller timeouts), eller om API-nyckeln avvisas (401 Unauthorized), MÅSTE koordinatorn kasta `UpdateFailed` och skicka kommandot `IDLE` (Auto) till batteriet. Batteriet får *aldrig* lämnas låst i ett tvingat `HOLD` eller `CHARGE` vid långvariga nätverksbortfall.
+* **Krasch-säkerhet (Fallback till IDLE):** Om uppkopplingen till molnet bryts (efter max 3 försök med 500-fel eller timeouts), eller om API-nyckeln avvisas (401 Unauthorized), MÅSTE koordinatorn kasta `UpdateFailed` och skicka kommandot `IDLE` (Auto) till batteriet. Batteriet får *aldrig* lämnas låst i ett tvingat `HOLD` eller `CHARGE` vid långvariga nätverksbortfall. **Undantag:** Om integrationen är i `PASSIVE`-läge (eftersom en Edge-klient sköter styrningen) får *inget* kommando skickas vid nätverksavbrott.
 * **Hårdvarureserv (EM_USOC / Min SoC):** Integrationen måste strikt respektera den fysiska reservnivån (t.ex. Sonnens Backup-reserv). Den skickade SoC-nivån måste skalas lokalt så att molnet alltid ser 0% när batteriet fysiskt når användarens reservgräns. Urladdningar begärda av molnet ska avbrytas (översättas till `IDLE`) om denna reservnivå nås.
 
 ## 4. Säkerhet & Loggning

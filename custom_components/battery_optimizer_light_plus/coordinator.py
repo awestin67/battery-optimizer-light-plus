@@ -49,6 +49,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
         self.unsub_timer = None
         self.current_load_w = None
+        self._is_passive_mode = False
 
     def setup_timer(self):
         """Startar schemaläggaren.
@@ -300,6 +301,9 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                     action = data.get("action", "IDLE")
 
+                    client_mode = data.get("client_mode", "ACTIVE")
+                    self._is_passive_mode = (client_mode == "PASSIVE")
+
                     try:
                         target_kw = float(data.get("target_power_kw", 0.0))
                         # Om backend skickar värdet i Watt istället för kW (t.ex. 1800)
@@ -313,7 +317,9 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     data["cloud_target_power_kw"] = target_kw
 
                     # Låt batterihanteraren verkställa beslutet, om inte PeakGuard har tagit över lokalt
-                    if (
+                    if self._is_passive_mode:
+                        _LOGGER.debug("Passive mode active. Not applying actions to battery from cloud.")
+                    elif (
                         not is_in_maintenance
                         and not is_solar_override
                         and not (hasattr(self, "peak_guard") and self.peak_guard.is_active)
@@ -398,7 +404,10 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     _LOGGER.exception("Light-Error after 3 attempts")
                     # Släpp batteriet till Auto-läge om vi tappar kontakten helt
                     try:
-                        await self.battery_api.apply_action("IDLE")
+                        if getattr(self, "_is_passive_mode", False):
+                            _LOGGER.debug("Passive mode active. Skipping fallback to IDLE on connection error.")
+                        else:
+                            await self.battery_api.apply_action("IDLE")
                     except Exception as fallback_err:
                         _LOGGER.error(f"Failed to set battery to IDLE on connection error: {fallback_err}")
                     raise UpdateFailed(

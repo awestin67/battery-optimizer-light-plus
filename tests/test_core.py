@@ -2246,3 +2246,211 @@ async def test_peak_guard_updates_coordinator_data_for_generic(mock_hass_instanc
     assert coordinator.data["action"] == "DISCHARGE"
     assert coordinator.data["target_power_kw"] == 2.0
     coordinator.async_update_listeners.assert_called()
+
+@pytest.mark.asyncio
+async def test_peak_guard_handles_unavailable_sensors(mock_hass_instance, mock_battery):
+    """Krav: PeakGuard ska inte krascha eller agera felaktigt om sensorer är 'unavailable' eller 'unknown'."""
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
+
+    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
+
+    # Simulera att anslutningen till växelriktaren/mätaren är nere
+    limit_state = MagicMock()
+    limit_state.state = "unavailable"
+
+    load_state = MagicMock()
+    load_state.state = "unknown"
+
+    soc_state = MagicMock()
+    soc_state.state = "unavailable"
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        return None
+
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    # Kör logiken
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+    # Verifiera att inga oönskade/farliga styrsignaler skickades under nätverksfelet
+    mock_battery.apply_action.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_coordinator_passive_mode(mock_hass_instance, mock_battery):
+    """Krav: Om client_mode är PASSIVE ska HA inte styra batteriet via molnbeslut."""
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "CHARGE", "target_power_kw": 2.0, "client_mode": "PASSIVE"})
+
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        await coordinator._async_update_data()
+
+        mock_battery.apply_action.assert_not_called()
+        assert getattr(coordinator, "_is_passive_mode", False) is True
+
+@pytest.mark.asyncio
+async def test_coordinator_passive_mode_fallback(mock_hass_instance, mock_battery):
+    """Krav: Om integrationen är i PASSIVE mode och tappar nätverket ska den inte tvinga fram IDLE."""
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
+    coordinator.battery_api = mock_battery
+    coordinator._is_passive_mode = True  # Senast kända status var passiv
+    mock_battery.get_current_soc.return_value = 50.0
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    patch_sleep = "custom_components.battery_optimizer_light_plus.coordinator.asyncio.sleep"
+
+    with patch(patch_target) as mock_get_session, patch(patch_sleep):
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_fail = MagicMock()
+        mock_fail.__aenter__.return_value = mock_fail
+        mock_fail.status = 500
+        mock_fail.text = AsyncMock(return_value="Server Error")
+
+        mock_session.post.return_value = mock_fail
+
+        with pytest.raises(UpdateFailed):
+            await coordinator._async_update_data()
+
+        # Det lokala batteriet får inte röras!
+        mock_battery.apply_action.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_peak_guard_aborts_in_passive_mode(mock_hass_instance, mock_battery):
+    """Krav: PeakGuard ska inte trigga eller skicka Modbus-anrop när client_mode = PASSIVE."""
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+        "client_mode": "PASSIVE"
+    }
+
+    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
+
+    # Setup av sensorvärden som normalt skulle trigga PeakGuard
+    limit_state = MagicMock()
+    limit_state.state = "5.0"
+    load_state = MagicMock()
+    load_state.state = "7000"
+    soc_state = MagicMock()
+    soc_state.state = "50"
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        return None
+
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+    # Kontrollera att PeakGuard avbröt tidigt och inte anropade apply_action
+    mock_battery.apply_action.assert_not_called()
+    assert guard.is_active is False
+
+@pytest.mark.asyncio
+async def test_peak_guard_clears_state_when_switching_to_passive_mode(mock_hass_instance, mock_battery):
+    """Krav: Om integrationen växlar till PASSIVE mode ska PeakGuard återställa sina lokala flaggor."""
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+        "client_mode": "PASSIVE"
+    }
+    coordinator.async_update_listeners = MagicMock()
+
+    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
+
+    # Sätt PeakGuard i ett "smutsigt" läge där den tidigare var aktiv med olika åtgärder
+    guard._has_reported = True
+    guard._is_solar_override = True
+    guard._in_maintenance = True
+    guard._maintenance_reason = "Test Override"
+
+    # Kör update (vi skickar in mockade sensorer även om PeakGuard kommer avbryta tidigt)
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+    # Verifiera att flaggorna omedelbart återställdes för att inte störa HA-dashboards
+    assert guard.is_active is False
+    assert guard.is_solar_override is False
+    assert guard.in_maintenance is False
+    assert guard.maintenance_reason is None
+
+    # Verifiera att lyssnarna uppdaterades (så att de grafiska sensorerna ritas om i Home Assistant)
+    assert coordinator.async_update_listeners.call_count >= 1
+
+@pytest.mark.asyncio
+async def test_coordinator_transitions_between_active_and_passive(mock_hass_instance, mock_battery):
+    """Krav: Koordinatorn ska kunna växla mellan ACTIVE och PASSIVE dynamiskt vid varje uppdatering."""
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        # Steg 1: Anrop 1 ger ACTIVE (Standard)
+        mock_post.json = AsyncMock(
+            return_value={"action": "CHARGE", "target_power_kw": 2.0, "client_mode": "ACTIVE"}
+        )
+        await coordinator._async_update_data()
+        assert getattr(coordinator, "_is_passive_mode", False) is False
+        mock_battery.apply_action.assert_called_with("CHARGE", 2.0)
+
+        # Steg 2: Anrop 2 ger PASSIVE (Edge tog över)
+        mock_battery.apply_action.reset_mock()
+        mock_post.json = AsyncMock(
+            return_value={"action": "DISCHARGE", "target_power_kw": 3.0, "client_mode": "PASSIVE"}
+        )
+        await coordinator._async_update_data()
+        assert getattr(coordinator, "_is_passive_mode", False) is True
+        mock_battery.apply_action.assert_not_called()  # Ska INTE utföras lokalt!
+
+        # Steg 3: Anrop 3 ger ACTIVE igen (Edge-klienten togs bort)
+        mock_post.json = AsyncMock(
+            return_value={"action": "HOLD", "target_power_kw": 0.0, "client_mode": "ACTIVE"}
+        )
+        await coordinator._async_update_data()
+        assert getattr(coordinator, "_is_passive_mode", False) is False
+        mock_battery.apply_action.assert_called_with("HOLD", 0.0)

@@ -223,6 +223,7 @@ class PeakGuard:
         try:
             # 0. Kontrollera om Peak Shaving är aktivt
             is_active = True
+            client_mode = "ACTIVE"
             if self.coordinator.data:
                 def _parse_bool(val, default=False):
                     if val is None:
@@ -238,11 +239,26 @@ class PeakGuard:
                 global_active = _parse_bool(self.coordinator.data.get("is_active"), True)
                 is_active = _parse_bool(self.coordinator.data.get("is_peak_shaving_active"), True)
                 pg_status = self.coordinator.data.get("peakguard_status")
+                client_mode = self.coordinator.data.get("client_mode", "ACTIVE")
 
                 if not global_active:
                     is_active = False
                 elif pg_status and pg_status.strip().lower() not in ("active", "monitoring"):
                     is_active = False
+
+            if client_mode == "PASSIVE":
+                # Om vi är i passivt läge låter vi Edge-enheten sköta all lokal styrning.
+                # Återställ lokala flaggor så de inte stör dashboards.
+                if self.is_active:
+                    self._set_reported_state(False)
+                if self._is_solar_override:
+                    self._is_solar_override = False
+                    self.coordinator.async_update_listeners()
+                if self._in_maintenance:
+                    self._in_maintenance = False
+                    self._maintenance_reason = None
+                    self.coordinator.async_update_listeners()
+                return
 
             # Om Peak Shaving är inaktiverat från backend, avbryter vi bara lastkapningen.
             if not is_active:
