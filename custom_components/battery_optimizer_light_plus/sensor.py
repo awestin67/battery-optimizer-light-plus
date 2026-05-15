@@ -231,6 +231,10 @@ class BatteryLightStatusSensor(BatteryOptimizerSensorBase):
         # Hämtar data från coordinator och lokal peak_guard instans. Först säkerställ att data finns.
         data = self.coordinator.data or {}
 
+        client_mode = data.get("client_mode", "ACTIVE")
+        if client_mode == "PASSIVE":
+            return "Passive (Read-Only)"
+
         def _parse_bool(val, default=False):
             if val is None:
                 return default
@@ -289,6 +293,8 @@ class BatteryLightStatusSensor(BatteryOptimizerSensorBase):
     def icon(self):
         """Returnerar en dynamisk ikon baserat på status."""
         status = self.state
+        if status == "Passive (Read-Only)":
+            return "mdi:eye-outline"
         if status == "Disabled" or status == "Off":
             return "mdi:shield-off"
         if "Paused" in status:
@@ -305,6 +311,7 @@ class BatteryLightStatusSensor(BatteryOptimizerSensorBase):
     def extra_state_attributes(self):
         data = self.coordinator.data or {}
         return {
+            "client_mode": data.get("client_mode", "ACTIVE"),
             "peakguard_status": data.get("peakguard_status"),
             "is_peak_shaving_active": data.get("is_peak_shaving_active"),
             "min_soc_buffer": data.get("min_soc_buffer"),
