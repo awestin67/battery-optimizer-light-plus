@@ -20,6 +20,7 @@ Systemet kombinerar **Molnintelligens** (för prisoptimering och arbitrage) med 
     * *Hysteres:* Inbyggd smart logik förhindrar "fladder" när lasten pendlar runt gränsvärdet.
 * **🤖 Zero-Config Automation:** Integrationen lyssnar automatiskt på beslut från molnet och styr ditt batteri. Inga krångliga YAML-skript eller automationer krävs!
 * **📊 Analys:** Följ dina besparingar och effekttoppar via vår snygga [Web Dashboard](https://battery-prod.awestinconsulting.se).
+* **🚫 Zero Export (Skydd vid negativa priser):** Tar emot en dynamisk exportgräns (kW) från molnet. Används för att förhindra att systemet förlorar pengar på att sälja solel när spotpriset plus din nätnytta understiger noll.
 * **🚗 Smart Elbilsstöd:** Peka ut en sensor från din laddbox i Home Assistant så informeras molnet automatiskt när bilen laddas, vilket förhindrar att ditt hembatteri oavsiktligt töms in i elbilen (sätter batteriet i `HOLD`). **Men det är ännu smartare:** Om systemet känner av att solcellerna producerar mer el än vad huset och elbilen konsumerar tillsammans, övergår det automatiskt till `IDLE` så att hembatteriet kan passa på att laddas upp av det kvarvarande solelöverskottet!
   *(Integrationen känner automatiskt igen tillstånden `on`, `true`, `1`, `charging`, `på`, `charge`, `sant` samt numeriska effektvärden `> 0` W).*
 * **⏸️ Stöd för CheckWatt & Stödtjänster (Extern Paus):** Om ett externt system behöver exklusiv kontroll över batteriet kan du peka ut en Paus-sensor (t.ex. en `input_boolean` eller status-sensor för CheckWatt). 
@@ -115,6 +116,7 @@ När systemet är igång skapas en mängd sensorer för att hjälpa dig övervak
 * 📉 **`sensor.battery_optimizer_graph_data`**: Innehåller all grafdata (historik och framtida prognos) dold i sina JSON-attribut (används för ApexCharts nedan).
 * ⏭️ **`sensor.optimizer_light_next_action`**: Nästa kommande molnbeslut (t.ex. `CHARGE` eller `DISCHARGE`).
 * 🕒 **`sensor.optimizer_light_next_action_time`**: Tiden då nästa beslut förväntas inträffa.
+* 🚫 **`sensor.optimizer_light_dynamic_export_limit`**: Visar den dynamiska exportgränsen i kW (t.ex. `0.0` vid Zero Export, eller "Okänd"/"Unkown" om molnet inte begränsar). Statusen finns även tydligt utskriven i sensorns attribut.
 
 ---
 
@@ -174,7 +176,7 @@ Gå sedan till **Utvecklarverktyg (Developer Tools)** -> **YAML** och klicka på
 
 ---
 
-## � ApexCharts Exempel (Dashboard)
+## 📈 ApexCharts Exempel (Dashboard)
 
 Med hjälp av komponenten ApexCharts Card (installeras via HACS) kan du bygga upp en komplett översikt för ditt batteri. Nedan finns tre exempel på grafer.
 
