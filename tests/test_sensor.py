@@ -31,7 +31,8 @@ from custom_components.battery_optimizer_light_plus.sensor import (
     SonnenVirtualLoadSensor,
     BatteryLightAISummarySensor,
     BatteryLightNextActionSensor,
-    BatteryLightNextActionTimeSensor
+    BatteryLightNextActionTimeSensor,
+    BatteryLightDynamicExportLimitSensor
 )
 from custom_components.battery_optimizer_light_plus.const import (
     DOMAIN,
@@ -52,7 +53,7 @@ async def test_sensor_setup_entry_generic():
 
     await async_setup_entry(hass, entry, async_add_entities)
     async_add_entities.assert_called_once()
-    assert len(async_add_entities.call_args[0][0]) == 14
+    assert len(async_add_entities.call_args[0][0]) == 15
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_huawei():
@@ -69,7 +70,7 @@ async def test_sensor_setup_entry_huawei():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 17
+    assert len(async_add_entities.call_args[0][0]) == 18
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_sonnen():
@@ -82,7 +83,7 @@ async def test_sensor_setup_entry_sonnen():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 21
+    assert len(async_add_entities.call_args[0][0]) == 22
 
 def test_basic_sensors():
     coordinator = MagicMock()
@@ -263,3 +264,51 @@ def test_ai_summary_sensor():
     coordinator.data = None
     assert sensor.state == "Väntar på data"
     assert sensor.extra_state_attributes == {}
+
+def test_dynamic_export_limit_sensor_none():
+    """Testa att sensorn hanterar None (Molnet lägger sig inte i) korrekt."""
+    coordinator = MagicMock()
+    coordinator.api_key = "test_key"
+    coordinator.data = {"dynamic_export_limit_kw": None}
+
+    sensor = BatteryLightDynamicExportLimitSensor(coordinator)
+
+    assert sensor.state is None
+    assert sensor.extra_state_attributes["limit_active"] is False
+    assert sensor.extra_state_attributes["status_text"] == "Unlimited"
+
+def test_dynamic_export_limit_sensor_zero():
+    """Testa att sensorn hanterar 0.0 (Zero Export) korrekt."""
+    coordinator = MagicMock()
+    coordinator.api_key = "test_key"
+    coordinator.data = {"dynamic_export_limit_kw": 0.0}
+
+    sensor = BatteryLightDynamicExportLimitSensor(coordinator)
+
+    assert sensor.state == 0.0
+    assert sensor.extra_state_attributes["limit_active"] is True
+    assert sensor.extra_state_attributes["status_text"] == "0.0 kW"
+
+def test_dynamic_export_limit_sensor_value():
+    """Testa att sensorn hanterar ett reellt värde korrekt (Partiell gräns)."""
+    coordinator = MagicMock()
+    coordinator.api_key = "test_key"
+    coordinator.data = {"dynamic_export_limit_kw": 2.5}
+
+    sensor = BatteryLightDynamicExportLimitSensor(coordinator)
+
+    assert sensor.state == 2.5
+    assert sensor.extra_state_attributes["limit_active"] is True
+    assert sensor.extra_state_attributes["status_text"] == "2.5 kW"
+
+def test_dynamic_export_limit_sensor_empty_data():
+    """Testa att sensorn inte kraschar om data saknas."""
+    coordinator = MagicMock()
+    coordinator.api_key = "test_key"
+    coordinator.data = None
+
+    sensor = BatteryLightDynamicExportLimitSensor(coordinator)
+
+    assert sensor.state is None
+    assert sensor.extra_state_attributes["limit_active"] is False
+    assert sensor.extra_state_attributes["status_text"] == "Unlimited"

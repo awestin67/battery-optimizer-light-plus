@@ -61,6 +61,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         BatteryLightAISummarySensor(coordinator),
         BatteryLightNextActionSensor(coordinator),
         BatteryLightNextActionTimeSensor(coordinator),
+        BatteryLightDynamicExportLimitSensor(coordinator),
     ]
 
     if entry.data.get(CONF_BATTERY_TYPE) != BATTERY_TYPE_SONNEN:
@@ -694,4 +695,33 @@ class BatteryLightNextActionTimeSensor(BatteryOptimizerSensorBase):
     def extra_state_attributes(self):
         return {
             "next_action": (self.coordinator.data or {}).get("next_action")
+        }
+
+class BatteryLightDynamicExportLimitSensor(BatteryOptimizerSensorBase):
+    """Sensor som visar dynamisk exportgräns (Zero Export) i kW."""
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self.entity_id = "sensor.optimizer_light_dynamic_export_limit"
+        self._attr_name = "Optimizer Light Dynamic Export Limit"
+        self._attr_unique_id = f"{coordinator.api_key}_light_dynamic_export_limit"
+        self._attr_unit_of_measurement = "kW"
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_icon = "mdi:transmission-tower-off"
+
+    @property
+    def state(self):
+        val = (self.coordinator.data or {}).get("dynamic_export_limit_kw")
+        if val is None:
+            return None
+        try:
+            return round(float(val), 2)
+        except (ValueError, TypeError):
+            return None
+
+    @property
+    def extra_state_attributes(self):
+        val = (self.coordinator.data or {}).get("dynamic_export_limit_kw")
+        return {
+            "limit_active": val is not None,
+            "status_text": "Unlimited" if val is None else f"{val} kW"
         }
