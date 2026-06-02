@@ -246,6 +246,16 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                 self.current_load_w = current_load_w
 
+                # --- OFFGRID STATUS ---
+                is_offgrid = False
+
+                # 1. Check if battery API implements is_offgrid natively
+                if hasattr(self.battery_api, "is_offgrid"):
+                    if asyncio.iscoroutinefunction(self.battery_api.is_offgrid):
+                        is_offgrid = await self.battery_api.is_offgrid()
+                    else:
+                        is_offgrid = self.battery_api.is_offgrid()
+
                 # 5. Payload (Endast det backend behöver)
                 payload = {
                     "api_key": self.api_key,
@@ -253,6 +263,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     "is_solar_override": is_solar_override,
                     "is_in_maintenance": is_in_maintenance,
                     "is_ev_charging": is_ev_charging,
+                    "is_offgrid": is_offgrid,
                     "ha_version": self.version,
                     "current_consumption_kw": current_consumption_kw
                 }

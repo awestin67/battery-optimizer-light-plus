@@ -41,6 +41,18 @@ class BatteryApi(ABC):
         """
         pass
 
+    async def is_offgrid(self) -> bool:
+        """Standardmetod för att kolla offgrid-status via den konfigurerade sensorn."""
+        hass = getattr(self, "_hass", getattr(self, "hass", None))
+        offgrid_sensor = getattr(self, "_offgrid_sensor", None)
+        if hass and offgrid_sensor:
+            state = hass.states.get(offgrid_sensor)
+            if state and state.state not in ["unknown", "unavailable"]:
+                val = state.state.lower()
+                if val in ["on", "true", "1", "yes", "offgrid", "backup", "sant", "på"]:
+                    return True
+        return False
+
     # --- Bekvämlighetsmetoder för PeakGuard och Tjänster ---
     # Du behöver inte skriva över dessa i dina batteriklasser,
     # de dirigerar automatiskt vidare till apply_action!

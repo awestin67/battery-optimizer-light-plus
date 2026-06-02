@@ -221,6 +221,37 @@ async def test_get_status_text(sonnen_battery):
     assert await sonnen_battery.get_status_text() is None
 
 @pytest.mark.asyncio
+async def test_is_offgrid_from_api(sonnen_battery):
+    """Testar att is_offgrid använder Sonnen API:ets SystemStatus primärt."""
+    sonnen_battery.coordinator.data = {"SystemStatus": "OffGrid"}
+    assert await sonnen_battery.is_offgrid() is True
+
+    sonnen_battery.coordinator.data = {"SystemStatus": "OnGrid"}
+    assert await sonnen_battery.is_offgrid() is False
+
+    # Testar okända värden
+    sonnen_battery.coordinator.data = {"SystemStatus": "Backup"}
+    assert await sonnen_battery.is_offgrid() is True
+
+@pytest.mark.asyncio
+async def test_is_offgrid_fallback_sensor(sonnen_battery):
+    """Testar att is_offgrid faller tillbaka på HA-sensorn om API-data saknas."""
+    # Data saknar SystemStatus
+    sonnen_battery.coordinator.data = {}
+    sonnen_battery._offgrid_sensor = "binary_sensor.my_offgrid"
+
+    mock_state = MagicMock()
+    mock_state.state = "on"
+    sonnen_battery._hass.states.get.return_value = mock_state
+
+    assert await sonnen_battery.is_offgrid() is True
+    sonnen_battery._hass.states.get.assert_called_once_with("binary_sensor.my_offgrid")
+
+    # Testa avstängd sensor
+    mock_state.state = "off"
+    assert await sonnen_battery.is_offgrid() is False
+
+@pytest.mark.asyncio
 async def test_sonnen_api_methods():
     """Testar att SonnenAPI sätter ihop och skickar korrekta HTTP-anrop."""
     mock_session = MagicMock()

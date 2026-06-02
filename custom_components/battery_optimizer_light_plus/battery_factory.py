@@ -55,16 +55,16 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
             token=config[CONF_API_TOKEN],
             session=session,
         )
-        return SonnenBattery(
+        battery = SonnenBattery(
             hass=hass,
             api=sonnen_api,
             soc_entity=config.get(CONF_SOC_SENSOR),
         )
 
-    if battery_type == BATTERY_TYPE_HUAWEI:
+    elif battery_type == BATTERY_TYPE_HUAWEI:
         from .batteries.huawei.huawei import HuaweiBattery
 
-        return HuaweiBattery(
+        battery = HuaweiBattery(
             hass=hass,
             device_id=config[CONF_BATTERY_DEVICE_ID],
             soc_entity=config[CONF_SOC_SENSOR],
@@ -74,10 +74,10 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
             invert_grid=config.get(CONF_GRID_SENSOR_INVERT, False),
         )
 
-    if battery_type == BATTERY_TYPE_HOMEVOLT:
+    elif battery_type == BATTERY_TYPE_HOMEVOLT:
         from .batteries.homevolt.homevolt import HomevoltBattery
 
-        return HomevoltBattery(
+        battery = HomevoltBattery(
             hass=hass,
             device_id=config[CONF_BATTERY_DEVICE_ID],
             soc_entity=config[CONF_SOC_SENSOR],
@@ -87,10 +87,10 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
             status_entity=config.get(CONF_DEVICE_STATUS_ENTITY),
         )
 
-    if battery_type == BATTERY_TYPE_SOLIS_MODBUS:
+    elif battery_type == BATTERY_TYPE_SOLIS_MODBUS:
         from .batteries.solis_modbus.solis_modbus import SolisModbusBattery
 
-        return SolisModbusBattery(
+        battery = SolisModbusBattery(
             hass=hass,
             device_id=config[CONF_BATTERY_DEVICE_ID],
             soc_entity=config.get(CONF_SOC_SENSOR),
@@ -100,10 +100,10 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
             invert_grid=config.get(CONF_GRID_SENSOR_INVERT, False),
         )
 
-    if battery_type == BATTERY_TYPE_SIGENERGY:
+    elif battery_type == BATTERY_TYPE_SIGENERGY:
         from .batteries.sigenergy.sigenergy import SigenergyBattery
 
-        return SigenergyBattery(
+        battery = SigenergyBattery(
             hass=hass,
             device_id=config[CONF_BATTERY_DEVICE_ID],
             soc_entity=config.get(CONF_SOC_SENSOR),
@@ -113,10 +113,10 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
             invert_grid=config.get(CONF_GRID_SENSOR_INVERT, False),
         )
 
-    if battery_type == BATTERY_TYPE_SOLINTEG:
+    elif battery_type == BATTERY_TYPE_SOLINTEG:
         from .batteries.solinteg.solinteg import SolintegBattery
 
-        return SolintegBattery(
+        battery = SolintegBattery(
             hass=hass,
             device_id=config[CONF_BATTERY_DEVICE_ID],
             soc_entity=config.get(CONF_SOC_SENSOR),
@@ -126,6 +126,9 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
             invert_grid=config.get(CONF_GRID_SENSOR_INVERT, False),
             invert_battery=config.get(CONF_BATTERY_SENSOR_INVERT, False),
         )
+    else:
+        from .batteries.generic import GenericBattery
+        battery = GenericBattery(hass, config.get(CONF_SOC_SENSOR))
 
-    from .batteries.generic import GenericBattery
-    return GenericBattery(hass, config.get(CONF_SOC_SENSOR))
+    battery._offgrid_sensor = config.get("offgrid_sensor")
+    return battery

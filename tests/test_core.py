@@ -2454,3 +2454,31 @@ async def test_coordinator_transitions_between_active_and_passive(mock_hass_inst
         await coordinator._async_update_data()
         assert getattr(coordinator, "_is_passive_mode", False) is False
         mock_battery.apply_action.assert_called_with("HOLD", 0.0)
+
+@pytest.mark.asyncio
+async def test_base_battery_is_offgrid():
+    """Testar att BatteryApi:s grundläggande is_offgrid-metod fungerar med en HA-sensor."""
+    from custom_components.battery_optimizer_light_plus.batteries.generic import GenericBattery
+
+    hass = MagicMock()
+    battery = GenericBattery(hass, "sensor.soc")
+
+    # 1. Om offgrid_sensor saknas helt
+    assert await battery.is_offgrid() is False
+
+    # 2. Med konfigurerad sensor som returnerar 'on'
+    battery._offgrid_sensor = "binary_sensor.offgrid"
+    mock_state = MagicMock()
+    mock_state.state = "on"
+    hass.states.get.return_value = mock_state
+
+    assert await battery.is_offgrid() is True
+    hass.states.get.assert_called_with("binary_sensor.offgrid")
+
+    # 3. Med konfigurerad sensor som returnerar 'off'
+    mock_state.state = "off"
+    assert await battery.is_offgrid() is False
+
+    # 4. Med sensor som är 'unavailable'
+    mock_state.state = "unavailable"
+    assert await battery.is_offgrid() is False

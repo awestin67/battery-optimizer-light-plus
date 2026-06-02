@@ -144,3 +144,14 @@ class SonnenBattery(BatteryApi):
         if data and "SystemStatus" in data:
             return str(data["SystemStatus"])
         return None
+
+    async def is_offgrid(self) -> bool:
+        """Kollar offgrid-status för Sonnen."""
+        data = self.coordinator.data
+        if data and "SystemStatus" in data:
+            system_status = data.get("SystemStatus")
+            if system_status and str(system_status).strip().lower() != "ongrid":
+                return True
+
+        # Fallback to generic offgrid sensor logic
+        return await super().is_offgrid()
