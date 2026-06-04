@@ -25,6 +25,7 @@ Systemet kombinerar **Molnintelligens** (för prisoptimering och arbitrage) med 
   *(Integrationen känner automatiskt igen tillstånden `on`, `true`, `1`, `charging`, `på`, `charge`, `sant` samt numeriska effektvärden `> 0` W).*
 * **⏸️ Stöd för CheckWatt & Stödtjänster (Extern Paus):** Om ett externt system behöver exklusiv kontroll över batteriet kan du peka ut en Paus-sensor (t.ex. en `input_boolean` eller status-sensor för CheckWatt). 
   *(Integrationen reagerar automatiskt på tillstånden `on`, `true`, `1`, `active`, `yes`, `på` eller `sant`. Då pausas all styrning från Battery Optimizer och batteriet sätts i `IDLE` så att systemen inte slåss om kommandona).*
+* **🔌 Off-grid & Strömavbrottsskydd:** Peka ut en sensor som visar om huset är i off-grid-läge (t.ex. vid strömavbrott). Optimeraren pausas automatiskt tills nätströmmen är tillbaka. *(För Sonnen detekteras detta automatiskt via batteriets eget API).*
 
 ---
 
@@ -84,6 +85,7 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
     * **Steg 3:** Fyll i din API-nyckel från Dashboarden. För alla märken utom Generic hittas de flesta mätvärden och styrentiteter automatiskt med Auto-Discovery. För **Generic** måste du dock manuellt peka ut dina sensorer.
     * **Steg 4 (Valfritt):** Peka ut din **Elbilsladdning Sensor** för att aktivera det smarta elbilsstödet.
     * **Steg 5 (Valfritt):** Peka ut en sensor för **Pausa Battery Optimizer** om du använder externa stödtjänster (ex. CheckWatt) som ibland behöver egen kontroll över batteriet.
+    * **Steg 6 (Valfritt):** Peka ut en sensor för **Off-grid / Strömavbrott** för att tillfälligt pausa optimeraren vid nätbortfall.
 
 **Tips:** Du kan när som helst klicka på **"Konfigurera"** på integrationen i Home Assistant för att ändra dina sensorer eller aktivera inställningar som **"Invertera Batteri Sensor"** (användbart om just din växelriktare rapporterar Plus för laddning istället för urladdning).
 
