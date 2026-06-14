@@ -75,7 +75,7 @@ class SolintegBattery(BatteryApi):
                 if entry.domain == domain:
                     name_check = (
                         f"{entry.translation_key or ''} "
-                        f"{entry.object_id or ''} "
+                        f"{entry.entity_id or ''} "
                         f"{entry.unique_id or ''}"
                     ).lower()
                     for key in partial_keys:
