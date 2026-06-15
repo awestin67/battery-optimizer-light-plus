@@ -2524,4 +2524,4 @@ async def test_coordinator_uses_virtual_load_sensor(mock_hass_instance, mock_bat
         payload = kwargs['json']
 
         assert payload["current_consumption_kw"] == 6.2
-
+        assert payload["inverter_brand"] == "unknown"

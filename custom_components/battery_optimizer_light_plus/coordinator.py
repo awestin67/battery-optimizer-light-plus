@@ -265,7 +265,8 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     "is_ev_charging": is_ev_charging,
                     "is_offgrid": is_offgrid,
                     "ha_version": self.version,
-                    "current_consumption_kw": current_consumption_kw
+                    "current_consumption_kw": current_consumption_kw,
+                    "inverter_brand": self.config.get("battery_type", "unknown")
                 }
 
                 if current_solar_kw is not None:

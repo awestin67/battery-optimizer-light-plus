@@ -43,18 +43,18 @@ Styr Huawei-batterier via den officiella Home Assistant-integrationen.
 
 ### ⚡ Homevolt
 Styr Homevolt-batterier lokalt via Home Assistant.
-*   **Krav:** Integrationen Homevolt Local (finns att ladda ner via HACS) måste vara installerad och konfigurerad först.
+*   **Krav:** Integrationen [Homevolt Local](https://github.com/JohNan/homeassistant-homevolt-local) (finns att ladda ner via HACS) måste vara installerad och konfigurerad först.
 *   **Notera:** Integrationen stöder *Auto-Discovery* och hittar automatiskt dina sensorer för SoC, Batteri, Nät och Huslast vid installationen!
 
 ### 🔌 Solis Modbus
 Styr Solis-batterier lokalt via Pho3niX90's Solis Modbus-integration.
-*   **Krav:** En fungerande, förkonfigurerad installation av Solis Modbus (HACS).
+*   **Krav:** En fungerande, förkonfigurerad installation av [Solis Modbus](https://github.com/hultenvp/solis-sensor) (HACS).
 *   **Kompatibilitet:** Byggd och optimerad primärt för **Solis S6 Hybrid** (EH-modeller).
 *   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter vid installationen. Den anpassar sig dessutom dynamiskt till olika språk och versioner av integrationen!
 
 ### 🔋 Sigenergy
 Styr Sigenergy-växelriktare lokalt via Modbus.
-*   **Krav:** En fungerande, förkonfigurerad installation av en Sigenergy Modbus-integration.
+*   **Krav:** En fungerande, förkonfigurerad installation av [Sigenergy-Local-Modbus](https://github.com/TypQxQ/Sigenergy-Local-Modbus) (via HACS).
 *   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter vid installationen. Den känner automatiskt av om integrationen använder Watt (W) eller Kilowatt (kW) och sköter all omvandling!
 
 ### 🔋 Solinteg
