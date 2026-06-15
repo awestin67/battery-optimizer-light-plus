@@ -2515,6 +2515,7 @@ async def test_coordinator_uses_virtual_load_sensor(mock_hass_instance, mock_bat
         mock_post.status = 200
         mock_post.json = AsyncMock(return_value={"action": "IDLE"})
 
+
         mock_get = mock_session.get.return_value.__aenter__.return_value
         mock_get.status = 200
         mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
@@ -2524,4 +2525,32 @@ async def test_coordinator_uses_virtual_load_sensor(mock_hass_instance, mock_bat
         payload = kwargs['json']
 
         assert payload["current_consumption_kw"] == 6.2
-        assert payload["inverter_brand"] == "unknown"
+
+@pytest.mark.asyncio
+async def test_coordinator_payload_includes_inverter_brand(mock_hass_instance, mock_battery):
+    """Krav: Coordinator ska skicka med inverter_brand i payloaden till molnet."""
+    config = MOCK_CONFIG.copy()
+    config["battery_type"] = "generic"
+
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config, version="1.0.0")
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
+
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        await coordinator._async_update_data()
+        _, kwargs = mock_session.post.call_args
+        payload = kwargs['json']
+
+        assert payload["inverter_brand"] == "generic"
