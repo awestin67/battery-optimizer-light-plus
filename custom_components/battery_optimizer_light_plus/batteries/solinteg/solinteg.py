@@ -87,16 +87,20 @@ class SolintegBattery(BatteryApi):
         """Hittar rätt driftläge i dropdown-menyn oavsett integrationens version."""
         state = self._hass.states.get(entity_id)
         options = state.attributes.get("options", []) if state else []
-        for opt in options:
-            opt_lower = opt.lower()
-            if mode == "auto" and ("self" in opt_lower or "auto" in opt_lower):
-                return opt
-            if mode == "manual" and (
-                "charge" in opt_lower or "discharge" in opt_lower or
-                "manual" in opt_lower or "ems" in opt_lower
-            ):
-                return opt
-        return "Self Use" if mode == "auto" else "Charge-Discharge"
+
+        if mode == "auto":
+            for opt in options:
+                opt_lower = opt.lower()
+                if opt_lower == "general" or opt_lower == "self use" or opt_lower == "auto":
+                    return opt
+            return "General"
+
+        if mode == "manual":
+            for opt in options:
+                opt_lower = opt.lower()
+                if "battctrl" in opt_lower or "manual" in opt_lower or "charge" in opt_lower:
+                    return opt
+            return "EMS BattCtrl"
 
     async def apply_action(self, action: str, target_kw: float = 0.0):
         """Verkställer ett beslut från molnet eller lokalt."""
@@ -121,6 +125,17 @@ class SolintegBattery(BatteryApi):
         mode = opt_auto
         target_val = 0
 
+        # Kolla vilken enhet Number-entiteten förväntar sig (W eller kW)
+        unit = "W"
+        if power_target_entity:
+            target_state = self._hass.states.get(power_target_entity)
+            if target_state:
+                unit = target_state.attributes.get("unit_of_measurement", "W")
+
+        target_power_for_entity = power_w
+        if unit == "kW":
+            target_power_for_entity = target_kw
+
         if action == "IDLE":
             mode = opt_auto
         elif action == "HOLD":
@@ -128,10 +143,10 @@ class SolintegBattery(BatteryApi):
             target_val = 0
         elif action == "CHARGE":
             mode = opt_manual
-            target_val = power_w if self._invert_battery else -power_w
+            target_val = target_power_for_entity if self._invert_battery else -target_power_for_entity
         elif action == "DISCHARGE":
             mode = opt_manual
-            target_val = -power_w if self._invert_battery else power_w
+            target_val = -target_power_for_entity if self._invert_battery else target_power_for_entity
 
         # Kontrollera och begränsa effekten utifrån växelriktarens gränser (min/max)
         if power_target_entity and action in ["CHARGE", "DISCHARGE"]:

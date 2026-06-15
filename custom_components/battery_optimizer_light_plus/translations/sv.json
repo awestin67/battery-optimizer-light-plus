@@ -85,7 +85,7 @@
                     "api_url": "API URL",
                     "api_key": "API Nyckel (från Dashboard)",
                     "soc_sensor": "Batteri SoC Sensor (%)",
-                    "grid_sensor": "Grid Sensor (W) - Husets totala effekt",
+                    "grid_sensor": "Grid Sensor (W) - Husets Nätutbyte",
                     "grid_sensor_invert": "Invertera Grid Sensor? (Välj om positivt värde = Export)",
                     "battery_power_sensor": "Batteri Effekt Sensor (W)",
                     "battery_sensor_invert": "Invertera Batteri Sensor? (Välj om positivt värde = Laddar)",

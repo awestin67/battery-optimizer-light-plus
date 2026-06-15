@@ -85,7 +85,7 @@
                     "api_url": "API URL",
                     "api_key": "API Key (from Dashboard)",
                     "soc_sensor": "Battery SoC Sensor (%)",
-                    "grid_sensor": "Grid Sensor (W) - Total house power",
+                    "grid_sensor": "Grid Sensor (W) - Grid Exchange",
                     "grid_sensor_invert": "Invert Grid Sensor? (Check if positive value = Export)",
                     "battery_power_sensor": "Battery Power Sensor (W)",
                     "battery_sensor_invert": "Invert Battery Sensor? (Check if positive value = Charging)",

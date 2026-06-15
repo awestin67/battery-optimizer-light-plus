@@ -185,6 +185,20 @@ def async_auto_discover_solinteg_entities(hass, device_id: str) -> dict:
     entries = er.async_entries_for_device(registry, device_id)
     found_entities = {}
 
+    # SolaX Modbus unika ID:n för bl.a. Solinteg
+    discovery_map = {
+        CONF_SOC_SENSOR: ["_battery_capacity", "_battery_soc"],
+        CONF_GRID_SENSOR: ["_measured_power", "_grid_power_net", "_grid_power"],
+        CONF_BATTERY_POWER_SENSOR: ["_battery_power_charge", "_battery_power", "_battery_power_combined"],
+        CONF_DEVICE_STATUS_ENTITY: ["_inverter_status"],
+    }
+
+    for conf_key, unique_ids in discovery_map.items():
+        for entry in entries:
+            if any(uid in entry.unique_id for uid in unique_ids):
+                found_entities[conf_key] = entry.entity_id
+                break
+
     for entry in entries:
         ent_id = entry.entity_id
         if CONF_SOC_SENSOR not in found_entities and "soc" in ent_id and "sensor." in ent_id:

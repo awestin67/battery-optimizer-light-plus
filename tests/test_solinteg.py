@@ -113,7 +113,7 @@ async def test_apply_action_charge(solinteg_battery, mock_hass):
         mock_hass.services.async_call.assert_any_call(
             "select",
             "select_option",
-            {"entity_id": "select.solinteg_working_mode", "option": "Charge-Discharge"},
+            {"entity_id": "select.solinteg_working_mode", "option": "EMS BattCtrl"},
             blocking=True,
         )
         mock_hass.services.async_call.assert_any_call(
@@ -141,7 +141,7 @@ async def test_apply_action_discharge(solinteg_battery, mock_hass):
         mock_hass.services.async_call.assert_any_call(
             "select",
             "select_option",
-            {"entity_id": "select.solinteg_working_mode", "option": "Charge-Discharge"},
+            {"entity_id": "select.solinteg_working_mode", "option": "EMS BattCtrl"},
             blocking=True,
         )
         mock_hass.services.async_call.assert_any_call(
@@ -169,7 +169,7 @@ async def test_apply_action_hold(solinteg_battery, mock_hass):
         mock_hass.services.async_call.assert_any_call(
             "select",
             "select_option",
-            {"entity_id": "select.solinteg_working_mode", "option": "Charge-Discharge"},
+            {"entity_id": "select.solinteg_working_mode", "option": "EMS BattCtrl"},
             blocking=True,
         )
         mock_hass.services.async_call.assert_any_call(
@@ -197,7 +197,7 @@ async def test_apply_action_idle(solinteg_battery, mock_hass):
         mock_hass.services.async_call.assert_any_call(
             "select",
             "select_option",
-            {"entity_id": "select.solinteg_working_mode", "option": "Self Use"},
+            {"entity_id": "select.solinteg_working_mode", "option": "General"},
             blocking=True,
         )
         # Verifiera att number.set_value ALDRIG anropades!
@@ -275,4 +275,28 @@ async def test_apply_action_invert_battery(mock_hass):
         await solinteg_battery_inverted.apply_action("DISCHARGE", 3.5)
         mock_hass.services.async_call.assert_any_call(
             "number", "set_value", {"entity_id": "number.solinteg_power_target", "value": -3500}, blocking=True
+        )
+
+@pytest.mark.asyncio
+async def test_apply_action_charge_kw(solinteg_battery, mock_hass):
+    """Krav: Om Number-entiteten förväntar sig kW ska target_kw användas."""
+    async def mock_find_entity(domain, partial_keys):
+        if "working_mode" in partial_keys:
+            return "select.solinteg_working_mode"
+        if "power_target" in partial_keys:
+            return "number.solinteg_power_target"
+        return None
+
+    # MOCKA ATT ENHETEN ÄR kW!
+    mock_hass.states.get.return_value = MagicMock(attributes={"unit_of_measurement": "kW"})
+
+    with patch.object(solinteg_battery, "_find_entity", side_effect=mock_find_entity):
+        # target_kw = 3.5
+        await solinteg_battery.apply_action("CHARGE", 3.5)
+
+        mock_hass.services.async_call.assert_any_call(
+            "number",
+            "set_value",
+            {"entity_id": "number.solinteg_power_target", "value": -3.5},
+            blocking=True,
         )

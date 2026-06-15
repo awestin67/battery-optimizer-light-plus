@@ -343,7 +343,13 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                             )
                             action = "IDLE"
 
-                        await self.battery_api.apply_action(action, target_kw)
+                        try:
+                            await self.battery_api.apply_action(action, target_kw)
+                        except Exception as local_err:
+                            _LOGGER.error(
+                                f"Lokalt fel vid styrning av batteriet (påverkar ej molnet): {local_err}",
+                                exc_info=True,
+                            )
 
                     # --- Hämta AI Sammanfattning (Endast vid uppstart och 04:15) ---
                     now = dt_util.now()

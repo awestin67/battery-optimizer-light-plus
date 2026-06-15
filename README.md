@@ -57,10 +57,10 @@ Styr Sigenergy-växelriktare lokalt via Modbus.
 *   **Krav:** En fungerande, förkonfigurerad installation av en Sigenergy Modbus-integration.
 *   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter vid installationen. Den känner automatiskt av om integrationen använder Watt (W) eller Kilowatt (kW) och sköter all omvandling!
 
-### 🔌 Solinteg
+### 🔋 Solinteg
 Styr Solinteg-växelriktare lokalt via Modbus.
-*   **Krav:** En fungerande, förkonfigurerad installation av en Solinteg-kompatibel Modbus-integration (t.ex. `solax-modbus` med `plugin_solinteg.py`).
-*   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter oavsett vad de döps till av underliggande Modbus-integration.
+*   **Viktigt Krav:** Du *måste* använda integrationen [SolaX Inverter Modbus](https://github.com/wills106/homeassistant-solax-modbus) (via HACS) för att ansluta din Solinteg-växelriktare till Home Assistant. Även fast den heter SolaX, så har den inbyggt stöd för Solinteg. Andra Solinteg-integrationer stöds ej i dagsläget då de saknar standardiserade styrentiteter.
+*   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter från SolaX-integrationen.
 
 ### ☁️ Generic / Light
 För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men sedan styra ditt batteri manuellt via egna automationsflöden. [Se exempel på automation här nere](#-automationer-för-generic--övriga-batterier).
