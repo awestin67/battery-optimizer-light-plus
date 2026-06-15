@@ -2482,3 +2482,46 @@ async def test_base_battery_is_offgrid():
     # 4. Med sensor som är 'unavailable'
     mock_state.state = "unavailable"
     assert await battery.is_offgrid() is False
+
+@pytest.mark.asyncio
+async def test_coordinator_uses_virtual_load_sensor(mock_hass_instance, mock_battery):
+    """Krav: Coordinator ska använda virtual_load_sensor som prio 2 för husets förbrukning."""
+    config = MOCK_CONFIG.copy()
+    config["virtual_load_sensor"] = "sensor.my_custom_house_load"
+
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config, version="1.0.0")
+
+    # Batteriet rapporterar in None för förbrukning
+    if hasattr(mock_battery, "get_calculated_consumption"):
+        del mock_battery.get_calculated_consumption
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    def mock_get_state(entity_id):
+        mock_state = MagicMock()
+        if entity_id == "sensor.soc":
+            mock_state.state = "50"
+        elif entity_id == "sensor.my_custom_house_load":
+            mock_state.state = "6200" # 6200 W
+        return mock_state
+    mock_hass_instance.states.get.side_effect = mock_get_state
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
+
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        await coordinator._async_update_data()
+        _, kwargs = mock_session.post.call_args
+        payload = kwargs['json']
+
+        assert payload["current_consumption_kw"] == 6.2
+

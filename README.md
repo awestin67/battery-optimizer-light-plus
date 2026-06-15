@@ -83,9 +83,10 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
     * **Steg 1:** Välj vilken typ av batteri du har (Sonnen, Huawei, Homevolt, Solis Modbus, Sigenergy, Solinteg, Generic).
     * **Steg 2:** Fyll i batterispecifika uppgifter (t.ex. IP och API-token för Sonnen, eller enheter för Huawei).
     * **Steg 3:** Fyll i din API-nyckel från Dashboarden. För alla märken utom Generic hittas de flesta mätvärden och styrentiteter automatiskt med Auto-Discovery. För **Generic** måste du dock manuellt peka ut dina sensorer.
-    * **Steg 4 (Valfritt):** Peka ut din **Elbilsladdning Sensor** för att aktivera det smarta elbilsstödet.
-    * **Steg 5 (Valfritt):** Peka ut en sensor för **Pausa Battery Optimizer** om du använder externa stödtjänster (ex. CheckWatt) som ibland behöver egen kontroll över batteriet.
-    * **Steg 6 (Valfritt):** Peka ut en sensor för **Off-grid / Strömavbrott** för att tillfälligt pausa optimeraren vid nätbortfall.
+    * **Steg 4 (Valfritt):** Peka ut **Husets totala förbrukning**. Om du saknar en pålitlig nätutbytes-sensor ("Grid Sensor (W) - Husets Nätutbyte") men istället har en sensor som visar husets totala last (t.ex. "House Total Load"), kan du välja den här. Lämna då fältet för Grid Sensor helt tomt!
+    * **Steg 5 (Valfritt):** Peka ut din **Elbilsladdning Sensor** för att aktivera det smarta elbilsstödet.
+    * **Steg 6 (Valfritt):** Peka ut en sensor för **Pausa Battery Optimizer** om du använder externa stödtjänster (ex. CheckWatt) som ibland behöver egen kontroll över batteriet.
+    * **Steg 7 (Valfritt):** Peka ut en sensor för **Off-grid / Strömavbrott** för att tillfälligt pausa optimeraren vid nätbortfall.
 
 **Tips:** Du kan när som helst klicka på **"Konfigurera"** på integrationen i Home Assistant för att ändra dina sensorer eller aktivera inställningar som **"Invertera Batteri Sensor"** (användbart om just din växelriktare rapporterar Plus för laddning istället för urladdning).
 

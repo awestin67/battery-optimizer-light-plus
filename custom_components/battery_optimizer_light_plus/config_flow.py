@@ -427,11 +427,11 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_BATTERY_STATUS_KEYWORDS, get_val(CONF_BATTERY_STATUS_KEYWORDS, DEFAULT_BATTERY_STATUS_KEYWORDS)
             )] = TextSelector(TextSelectorConfig(multiline=True))
 
-            if battery_type == BATTERY_TYPE_GENERIC:
-                schema_dict[_opt(
-                    CONF_VIRTUAL_LOAD_SENSOR, get_val(CONF_VIRTUAL_LOAD_SENSOR)
-                )] = EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power"))
+            schema_dict[_opt(
+                CONF_VIRTUAL_LOAD_SENSOR, get_val(CONF_VIRTUAL_LOAD_SENSOR)
+            )] = EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power"))
 
+            if battery_type == BATTERY_TYPE_GENERIC:
                 schema_dict[vol.Optional(
                     CONF_MIN_SOC, default=get_val(CONF_MIN_SOC, 0.0)
                 )] = selector.NumberSelector(
@@ -554,6 +554,9 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             ),
             _opt(CONF_EXTERNAL_CONTROL_SENSOR, get_default(CONF_EXTERNAL_CONTROL_SENSOR)): EntitySelector(
                 EntitySelectorConfig()
+            ),
+            _opt(CONF_VIRTUAL_LOAD_SENSOR, get_default(CONF_VIRTUAL_LOAD_SENSOR)): EntitySelector(
+                EntitySelectorConfig(domain="sensor", device_class="power")
             ),
             vol.Optional("enable_solar_override", default=get_default("enable_solar_override", False)): bool,
             vol.Optional(CONF_GRAPH_HISTORY_HOURS, default=get_default(CONF_GRAPH_HISTORY_HOURS, "24")): selector.SelectSelector(
