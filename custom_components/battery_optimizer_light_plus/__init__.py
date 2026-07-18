@@ -58,7 +58,9 @@ BATTERY_DISCHARGE_THRESHOLD_W = 200.0 # Gräns för att anse att batteriet ladda
 
 async def async_setup_entry(hass: HomeAssistant, entry):
     """Set up from a config entry."""
-    config = entry.data
+    config = dict(entry.data)
+    if entry.options:
+        config.update(entry.options)
 
     integration = await async_get_integration(hass, DOMAIN)
     version = str(integration.version)
@@ -148,6 +150,37 @@ async def async_setup_entry(hass: HomeAssistant, entry):
         await peak_guard.update(v_load, limit)
 
     hass.services.async_register(DOMAIN, "run_peak_guard", handle_run_peak_guard)
+
+    async def handle_plan_ev_charging(call: ServiceCall):
+        car_id = call.data.get("car_id", "all")
+        _LOGGER.info(f"Triggering EV Smart Charging plan for {car_id}")
+        await coordinator.async_plan_ev_charging(car_id)
+
+    hass.services.async_register(DOMAIN, "plan_ev_charging", handle_plan_ev_charging)
+
+    # Lyssna på ev_cable_connected för automatiskt anrop
+    from .const import CONF_EV_C1_CABLE_CONNECTED, CONF_EV_C2_CABLE_CONNECTED
+
+    async def _on_ev_connected(event):
+        new_state = event.data.get("new_state")
+        if new_state and new_state.state == "on":
+            ent_id = event.data.get("entity_id")
+            _LOGGER.info(f"EV Cable Connected detected on {ent_id}, generating plan...")
+            if ent_id == config.get(CONF_EV_C1_CABLE_CONNECTED):
+                await coordinator.async_plan_ev_charging("car1")
+            elif ent_id == config.get(CONF_EV_C2_CABLE_CONNECTED):
+                await coordinator.async_plan_ev_charging("car2")
+
+    ev_triggers = []
+    if config.get(CONF_EV_C1_CABLE_CONNECTED):
+        ev_triggers.append(config.get(CONF_EV_C1_CABLE_CONNECTED))
+    if config.get(CONF_EV_C2_CABLE_CONNECTED):
+        ev_triggers.append(config.get(CONF_EV_C2_CABLE_CONNECTED))
+
+    if ev_triggers:
+        entry.async_on_unload(
+            async_track_state_change_event(hass, ev_triggers, _on_ev_connected)
+        )
 
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "binary_sensor", "switch"])
     entry.async_on_unload(entry.add_update_listener(update_listener))
@@ -889,6 +922,8 @@ async def async_unload_entry(hass, entry):
         coordinator = hass.data[DOMAIN].pop(entry.entry_id)
         if hasattr(coordinator, "unsub_timer") and callable(coordinator.unsub_timer):
             coordinator.unsub_timer()
+        if hasattr(coordinator, "unsub_ev_timer") and callable(coordinator.unsub_ev_timer):
+            coordinator.unsub_ev_timer()
     return unload_ok
 
 class BatteryOptimizerGraphView(HomeAssistantView):

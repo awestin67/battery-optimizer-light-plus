@@ -57,6 +57,24 @@ CONF_EXTERNAL_CONTROL_SENSOR = "external_control_sensor" # Sensor för CheckWatt
 CONF_MIN_SOC = "min_soc" # Backup-reserv för Generic-batterier
 CONF_GRAPH_HISTORY_HOURS = "graph_history_hours"
 
+# EV Smart Charging - Car 1
+CONF_EV_C1_NAME = "ev_c1_name"
+CONF_EV_C1_TARGET_KWH = "ev_c1_target_kwh"
+CONF_EV_C1_DEPART_TIME = "ev_c1_depart_time"
+CONF_EV_C1_MAX_KW = "ev_c1_max_kw"
+CONF_EV_C1_SWITCH = "ev_c1_switch"
+CONF_EV_C1_CABLE_CONNECTED = "ev_c1_cable_connected"
+CONF_EV_C1_IS_CHARGING = "ev_c1_is_charging"
+
+# EV Smart Charging - Car 2
+CONF_EV_C2_NAME = "ev_c2_name"
+CONF_EV_C2_TARGET_KWH = "ev_c2_target_kwh"
+CONF_EV_C2_DEPART_TIME = "ev_c2_depart_time"
+CONF_EV_C2_MAX_KW = "ev_c2_max_kw"
+CONF_EV_C2_SWITCH = "ev_c2_switch"
+CONF_EV_C2_CABLE_CONNECTED = "ev_c2_cable_connected"
+CONF_EV_C2_IS_CHARGING = "ev_c2_is_charging"
+
 DEFAULT_API_URL = "https://battery-light-production.up.railway.app"
 DEFAULT_BATTERY_STATUS_KEYWORDS = (
     "battery_care, puls_orange, calibration, firmware_update, "

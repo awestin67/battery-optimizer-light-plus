@@ -157,7 +157,21 @@
                     "device_status_entity": "Device Status (Entity)",
                     "max_discharge_entity": "Max Discharge (Entity)",
                     "enable_solar_override": "Enable Solar Override",
-                    "graph_history_hours": "Graph History"
+                    "graph_history_hours": "Graph History",
+                    "ev_c1_name": "Car 1 Name",
+                    "ev_c1_target_kwh": "Target kWh (Car 1)",
+                    "ev_c1_depart_time": "Departure Time (Car 1)",
+                    "ev_c1_max_kw": "Max Charge Rate kW (Car 1)",
+                    "ev_c1_switch": "Charger Switch (Car 1)",
+                    "ev_c1_cable_connected": "Cable Connected Sensor (Car 1)",
+                    "ev_c1_is_charging": "Is Charging Sensor (Car 1)",
+                    "ev_c2_name": "Car 2 Name",
+                    "ev_c2_target_kwh": "Target kWh (Car 2)",
+                    "ev_c2_depart_time": "Departure Time (Car 2)",
+                    "ev_c2_max_kw": "Max Charge Rate kW (Car 2)",
+                    "ev_c2_switch": "Charger Switch (Car 2)",
+                    "ev_c2_cable_connected": "Cable Connected Sensor (Car 2)",
+                    "ev_c2_is_charging": "Is Charging Sensor (Car 2)"
                 },
                 "data_description": {
                     "api_url": "Leave the default value unless you are connecting to a custom test server.",
@@ -179,7 +193,21 @@
                     "device_status_entity": "Select the status sensor (e.g., 'sensor.inverter_device_status').",
                     "max_discharge_entity": "Select the Number entity for Maximum Discharging Power. Leave empty for auto-discovery.",
                     "enable_solar_override": "Check this to automatically pause PeakGuard and cloud discharging when exporting a large amount of solar power.",
-                    "graph_history_hours": "Select the amount of history to fetch for the graph data sensor."
+                    "graph_history_hours": "Select the amount of history to fetch for the graph data sensor.",
+                    "ev_c1_name": "Optional name for the car in the web interface.",
+                    "ev_c1_target_kwh": "Input Number for how much energy to charge (kWh).",
+                    "ev_c1_depart_time": "Input Datetime (time only) when the car should be ready.",
+                    "ev_c1_max_kw": "Input Number for max charging power in kW.",
+                    "ev_c1_switch": "The Switch entity to turn the charger on/off.",
+                    "ev_c1_cable_connected": "Sensor showing 'on' when cable is connected (Triggers schedule generation).",
+                    "ev_c1_is_charging": "Sensor showing 'on' when car is drawing power (Sent in heartbeat).",
+                    "ev_c2_name": "Optional name for the car in the web interface.",
+                    "ev_c2_target_kwh": "Input Number for how much energy to charge (kWh).",
+                    "ev_c2_depart_time": "Input Datetime (time only) when the car should be ready.",
+                    "ev_c2_max_kw": "Input Number for max charging power in kW.",
+                    "ev_c2_switch": "The Switch entity to turn the charger on/off.",
+                    "ev_c2_cable_connected": "Sensor showing 'on' when cable is connected (Triggers schedule generation).",
+                    "ev_c2_is_charging": "Sensor showing 'on' when car is drawing power (Sent in heartbeat)."
                 }
             }
         }

@@ -157,7 +157,21 @@
                     "device_status_entity": "Device Status (Entitet)",
                     "max_discharge_entity": "Max Urladdning (Entitet)",
                     "enable_solar_override": "Aktivera Solar Override",
-                    "graph_history_hours": "Graf-historik"
+                    "graph_history_hours": "Graf-historik",
+                    "ev_c1_name": "Namn på Bil 1",
+                    "ev_c1_target_kwh": "Mål kWh (Bil 1)",
+                    "ev_c1_depart_time": "Avresetid (Bil 1)",
+                    "ev_c1_max_kw": "Max Laddhastighet kW (Bil 1)",
+                    "ev_c1_switch": "Laddbox Switch (Bil 1)",
+                    "ev_c1_cable_connected": "Kabel Ansluten Sensor (Bil 1)",
+                    "ev_c1_is_charging": "Laddar Sensor (Bil 1)",
+                    "ev_c2_name": "Namn på Bil 2",
+                    "ev_c2_target_kwh": "Mål kWh (Bil 2)",
+                    "ev_c2_depart_time": "Avresetid (Bil 2)",
+                    "ev_c2_max_kw": "Max Laddhastighet kW (Bil 2)",
+                    "ev_c2_switch": "Laddbox Switch (Bil 2)",
+                    "ev_c2_cable_connected": "Kabel Ansluten Sensor (Bil 2)",
+                    "ev_c2_is_charging": "Laddar Sensor (Bil 2)"
                 },
                 "data_description": {
                     "api_url": "Låt stå kvar på standardvärdet om du inte kör mot en egen test-server.",
@@ -179,7 +193,21 @@
                     "device_status_entity": "Peka ut sensorn för status (t.ex. 'sensor.inverter_device_status').",
                     "max_discharge_entity": "Peka ut Number-entiteten för Maximal Urladdningseffekt. Lämna tom för automatisk sökning.",
                     "enable_solar_override": "Kryssa i denna för att automatiskt pausa PeakGuard och moln-urladdning när du har ett stort överskott av solel.",
-                    "graph_history_hours": "Välj hur mycket historik som ska hämtas för graf-sensorn."
+                    "graph_history_hours": "Välj hur mycket historik som ska hämtas för graf-sensorn.",
+                    "ev_c1_name": "Valfritt namn för bilen i webbgränssnittet.",
+                    "ev_c1_target_kwh": "Input Number för hur mycket energi som ska laddas (kWh).",
+                    "ev_c1_depart_time": "Input Datetime (endast tid) när bilen ska vara klar.",
+                    "ev_c1_max_kw": "Input Number för max laddeffekt i kW.",
+                    "ev_c1_switch": "Switch-entiteten för att slå av/på laddboxen.",
+                    "ev_c1_cable_connected": "Sensor som visar 'on' när kabeln ansluts (Triggar laddplanering).",
+                    "ev_c1_is_charging": "Sensor som visar 'on' när bilen drar ström (Skickas i hjärtslag).",
+                    "ev_c2_name": "Valfritt namn för bilen i webbgränssnittet.",
+                    "ev_c2_target_kwh": "Input Number för hur mycket energi som ska laddas (kWh).",
+                    "ev_c2_depart_time": "Input Datetime (endast tid) när bilen ska vara klar.",
+                    "ev_c2_max_kw": "Input Number för max laddeffekt i kW.",
+                    "ev_c2_switch": "Switch-entiteten för att slå av/på laddboxen.",
+                    "ev_c2_cable_connected": "Sensor som visar 'on' när kabeln ansluts (Triggar laddplanering).",
+                    "ev_c2_is_charging": "Sensor som visar 'on' när bilen drar ström (Skickas i hjärtslag)."
                 }
             }
         }

@@ -66,6 +66,15 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             second=30
         )
 
+        async def _ev_interval(now):
+            await self.check_ev_schedules()
+
+        self.unsub_ev_timer = async_track_time_change(
+            self.hass,
+            _ev_interval,
+            second=0
+        )
+
     async def _async_update_data(self):
         """Körs var 5:e minut."""
         session = async_get_clientsession(self.hass)
@@ -127,20 +136,28 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                 # --- EV CHARGING SENSOR ---
                 is_ev_charging = False
-                ev_charging_entity = self.config.get("ev_charging_sensor")
-                if ev_charging_entity:
-                    ev_state = self.hass.states.get(ev_charging_entity)
-                    if ev_state and ev_state.state not in ["unknown", "unavailable"]:
-                        val = ev_state.state.lower()
-                        # Hantera Binary Sensor, specifik status eller numeriskt effektvärde (>0W)
-                        if val in ["on", "true", "charging", "1", "på", "charge", "sant"]:
-                            is_ev_charging = True
-                        else:
-                            try:
-                                if float(val) > 0:
-                                    is_ev_charging = True
-                            except ValueError:
-                                pass
+
+                from .const import CONF_EV_C1_IS_CHARGING, CONF_EV_C2_IS_CHARGING
+                ev_sensors = [
+                    self.config.get("ev_charging_sensor"),
+                    self.config.get(CONF_EV_C1_IS_CHARGING),
+                    self.config.get(CONF_EV_C2_IS_CHARGING)
+                ]
+
+                for entity_id in ev_sensors:
+                    if entity_id:
+                        ev_state = self.hass.states.get(entity_id)
+                        if ev_state and ev_state.state not in ["unknown", "unavailable"]:
+                            val = ev_state.state.lower()
+                            # Hantera Binary Sensor, specifik status eller numeriskt effektvärde (>0W)
+                            if val in ["on", "true", "charging", "1", "på", "charge", "sant"]:
+                                is_ev_charging = True
+                            else:
+                                try:
+                                    if float(val) > 0:
+                                        is_ev_charging = True
+                                except ValueError:
+                                    pass
 
                 current_consumption_kw = 0.0
                 current_load_w = None
@@ -431,3 +448,128 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     raise UpdateFailed(
                         f"Update error after 3 attempts: {type(err).__name__}: {error_detail}"
                     ) from err
+
+    async def async_plan_ev_charging(self, car_id="all"):
+        """Anropar API för att få laddschema baserat på konfigurerade HA-helpers."""
+        from .const import (
+            CONF_EV_C1_NAME,
+            CONF_EV_C1_TARGET_KWH,
+            CONF_EV_C1_DEPART_TIME,
+            CONF_EV_C1_MAX_KW,
+            CONF_EV_C2_NAME,
+            CONF_EV_C2_TARGET_KWH,
+            CONF_EV_C2_DEPART_TIME,
+            CONF_EV_C2_MAX_KW,
+        )
+
+        cars_payload = []
+
+        def build_car_payload(cid, name_key, target_key, depart_key, max_kw_key):
+            target = self.hass.states.get(self.config.get(target_key, ""))
+            depart = self.hass.states.get(self.config.get(depart_key, ""))
+            max_kw = self.hass.states.get(self.config.get(max_kw_key, ""))
+
+            if target and depart and max_kw and target.state not in ("unknown", "unavailable"):
+                try:
+                    cname = self.config.get(name_key, f"Bil {cid}")
+                    return {
+                        "id": cname,
+                        "target_kwh": float(target.state),
+                        "departure_time": depart.state,
+                        "max_charge_kw": float(max_kw.state)
+                    }
+                except ValueError:
+                    pass
+            return None
+
+        if car_id in ("car1", "all"):
+            c1 = build_car_payload(
+                "1", CONF_EV_C1_NAME, CONF_EV_C1_TARGET_KWH, CONF_EV_C1_DEPART_TIME, CONF_EV_C1_MAX_KW
+            )
+            if c1:
+                cars_payload.append(c1)
+
+        if car_id in ("car2", "all"):
+            c2 = build_car_payload(
+                "2", CONF_EV_C2_NAME, CONF_EV_C2_TARGET_KWH, CONF_EV_C2_DEPART_TIME, CONF_EV_C2_MAX_KW
+            )
+            if c2:
+                cars_payload.append(c2)
+
+        if not cars_payload:
+            _LOGGER.warning(
+                "Kunde inte bygga EV-payload, kontrollera att dina Helpers är korrekt "
+                "ifyllda och konfigurerade."
+            )
+            return
+
+        payload = {
+            "api_key": self.api_key,
+            "cars": cars_payload
+        }
+
+        url = self.config["api_url"].rstrip('/') + "/api/ev/plan"
+        _LOGGER.debug(f"Hämtar EV-laddplan från {url}: {payload}")
+
+        session = async_get_clientsession(self.hass)
+        try:
+            async with session.post(url, json=payload, timeout=20) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    schedules = data.get("schedules", {})
+                    _LOGGER.info(f"Mottog ny EV-laddplan: {schedules}")
+                    if not hasattr(self, "ev_schedules"):
+                        self.ev_schedules = {}
+                    self.ev_schedules.update(schedules)
+                else:
+                    _LOGGER.error(f"Fel vid hämtning av EV-laddplan: {resp.status} {await resp.text()}")
+        except Exception as e:
+            _LOGGER.error(f"Kunde inte anropa EV-API: {e}")
+
+    async def check_ev_schedules(self):
+        """Körs varje minut för att starta/stoppa laddboxar enligt schema."""
+        if not hasattr(self, "ev_schedules") or not self.ev_schedules:
+            return
+
+        from .const import CONF_EV_C1_NAME, CONF_EV_C1_SWITCH, CONF_EV_C2_NAME, CONF_EV_C2_SWITCH
+
+        now = dt_util.now()
+
+        def process_car(name_key, switch_key, default_name):
+            car_name = self.config.get(name_key, default_name)
+            switch_id = self.config.get(switch_key)
+            if not switch_id:
+                return
+
+            car_schedule = self.ev_schedules.get(car_name)
+            if not car_schedule:
+                return
+
+            should_be_on = False
+            for step in car_schedule:
+                try:
+                    start_dt = dt_util.parse_datetime(step["start_time"])
+                    end_dt = dt_util.parse_datetime(step["end_time"])
+                    if start_dt and end_dt and start_dt <= now < end_dt:
+                        should_be_on = True
+                        break
+                except Exception as e:
+                    _LOGGER.debug(f"Kunde inte parsa datum i ev schema: {e}")
+
+            switch_state = self.hass.states.get(switch_id)
+            if not switch_state:
+                return
+
+            if should_be_on and switch_state.state != "on":
+                _LOGGER.info(f"Startar laddbox {switch_id} enligt EV-schema för {car_name}")
+                self.hass.async_create_task(
+                    self.hass.services.async_call("switch", "turn_on", {"entity_id": switch_id}, blocking=False)
+                )
+            elif not should_be_on and switch_state.state == "on":
+                _LOGGER.info(f"Stoppar laddbox {switch_id} enligt EV-schema för {car_name}")
+                self.hass.async_create_task(
+                    self.hass.services.async_call("switch", "turn_off", {"entity_id": switch_id}, blocking=False)
+                )
+
+        process_car(CONF_EV_C1_NAME, CONF_EV_C1_SWITCH, "Bil 1")
+        process_car(CONF_EV_C2_NAME, CONF_EV_C2_SWITCH, "Bil 2")

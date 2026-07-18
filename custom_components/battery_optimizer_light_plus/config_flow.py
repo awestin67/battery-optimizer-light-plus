@@ -60,6 +60,20 @@ from .const import (
     CONF_DEVICE_STATUS_ENTITY,
     CONF_MAX_DISCHARGE_ENTITY,
     CONF_GRAPH_HISTORY_HOURS,
+    CONF_EV_C1_NAME,
+    CONF_EV_C1_TARGET_KWH,
+    CONF_EV_C1_DEPART_TIME,
+    CONF_EV_C1_MAX_KW,
+    CONF_EV_C1_SWITCH,
+    CONF_EV_C1_CABLE_CONNECTED,
+    CONF_EV_C1_IS_CHARGING,
+    CONF_EV_C2_NAME,
+    CONF_EV_C2_TARGET_KWH,
+    CONF_EV_C2_DEPART_TIME,
+    CONF_EV_C2_MAX_KW,
+    CONF_EV_C2_SWITCH,
+    CONF_EV_C2_CABLE_CONNECTED,
+    CONF_EV_C2_IS_CHARGING,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -456,13 +470,11 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(step_id="common", data_schema=vol.Schema(schema_dict))
 
-
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
         """Get the options flow for this handler."""
         return BatteryOptimizerLightOptionsFlow()
-
 
 class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
     """Handle an options flow for Battery Optimizer Light."""
@@ -488,6 +500,20 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
                 CONF_DEVICE_STATUS_ENTITY,
                 CONF_MAX_DISCHARGE_ENTITY,
                 CONF_SOLAR_SENSOR,
+                CONF_EV_C1_NAME,
+                CONF_EV_C1_TARGET_KWH,
+                CONF_EV_C1_DEPART_TIME,
+                CONF_EV_C1_MAX_KW,
+                CONF_EV_C1_SWITCH,
+                CONF_EV_C1_CABLE_CONNECTED,
+                CONF_EV_C1_IS_CHARGING,
+                CONF_EV_C2_NAME,
+                CONF_EV_C2_TARGET_KWH,
+                CONF_EV_C2_DEPART_TIME,
+                CONF_EV_C2_MAX_KW,
+                CONF_EV_C2_SWITCH,
+                CONF_EV_C2_CABLE_CONNECTED,
+                CONF_EV_C2_IS_CHARGING,
             ]
 
             for key in clearable_keys:
@@ -657,5 +683,26 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
                     selector.NumberSelectorConfig(min=0, max=100, step=1, mode=selector.NumberSelectorMode.BOX, unit_of_measurement="%")
                 ),
             })
+
+        # Lägg till EV fält oavsett batterityp
+        schema_fields.update({
+            # Car 1
+            _opt(CONF_EV_C1_NAME, get_default(CONF_EV_C1_NAME)): selector.TextSelector(selector.TextSelectorConfig()),
+            _opt(CONF_EV_C1_TARGET_KWH, get_default(CONF_EV_C1_TARGET_KWH)): EntitySelector(EntitySelectorConfig(domain="input_number")),
+            _opt(CONF_EV_C1_DEPART_TIME, get_default(CONF_EV_C1_DEPART_TIME)): EntitySelector(EntitySelectorConfig(domain="input_datetime")),
+            _opt(CONF_EV_C1_MAX_KW, get_default(CONF_EV_C1_MAX_KW)): EntitySelector(EntitySelectorConfig(domain="input_number")),
+            _opt(CONF_EV_C1_SWITCH, get_default(CONF_EV_C1_SWITCH)): EntitySelector(EntitySelectorConfig(domain="switch")),
+            _opt(CONF_EV_C1_CABLE_CONNECTED, get_default(CONF_EV_C1_CABLE_CONNECTED)): EntitySelector(EntitySelectorConfig(domain="binary_sensor")),
+            _opt(CONF_EV_C1_IS_CHARGING, get_default(CONF_EV_C1_IS_CHARGING)): EntitySelector(EntitySelectorConfig(domain="binary_sensor")),
+
+            # Car 2
+            _opt(CONF_EV_C2_NAME, get_default(CONF_EV_C2_NAME)): selector.TextSelector(selector.TextSelectorConfig()),
+            _opt(CONF_EV_C2_TARGET_KWH, get_default(CONF_EV_C2_TARGET_KWH)): EntitySelector(EntitySelectorConfig(domain="input_number")),
+            _opt(CONF_EV_C2_DEPART_TIME, get_default(CONF_EV_C2_DEPART_TIME)): EntitySelector(EntitySelectorConfig(domain="input_datetime")),
+            _opt(CONF_EV_C2_MAX_KW, get_default(CONF_EV_C2_MAX_KW)): EntitySelector(EntitySelectorConfig(domain="input_number")),
+            _opt(CONF_EV_C2_SWITCH, get_default(CONF_EV_C2_SWITCH)): EntitySelector(EntitySelectorConfig(domain="switch")),
+            _opt(CONF_EV_C2_CABLE_CONNECTED, get_default(CONF_EV_C2_CABLE_CONNECTED)): EntitySelector(EntitySelectorConfig(domain="binary_sensor")),
+            _opt(CONF_EV_C2_IS_CHARGING, get_default(CONF_EV_C2_IS_CHARGING)): EntitySelector(EntitySelectorConfig(domain="binary_sensor")),
+        })
 
         return self.async_show_form(step_id="init", data_schema=vol.Schema(schema_fields))
