@@ -1505,7 +1505,7 @@ async def test_coordinator_scheduling_and_cleanup(mock_hass_instance):
 
         # 1. Verifiera att timern sattes upp korrekt
         coordinator = mock_hass_instance.data[DOMAIN][entry.entry_id]
-        assert mock_track_change.call_count == 2
+        assert mock_track_change.call_count == 1
         args, kwargs = mock_track_change.call_args_list[0]
 
         # args[0] är hass, args[1] är callback
@@ -1523,8 +1523,8 @@ async def test_coordinator_scheduling_and_cleanup(mock_hass_instance):
         mock_hass_instance.config_entries.async_unload_platforms.return_value = True
         await async_unload_entry(mock_hass_instance, entry)
 
-        # unsub_timer() ska ha anropats för båda timers
-        assert mock_unsub.call_count == 2
+        # unsub_timer() ska ha anropats för timer
+        assert mock_unsub.call_count == 1
 
 @pytest.mark.asyncio
 async def test_peak_guard_fallback_to_ha_sensors(mock_hass_instance):

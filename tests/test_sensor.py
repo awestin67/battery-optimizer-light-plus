@@ -53,7 +53,7 @@ async def test_sensor_setup_entry_generic():
 
     await async_setup_entry(hass, entry, async_add_entities)
     async_add_entities.assert_called_once()
-    assert len(async_add_entities.call_args[0][0]) == 15
+    assert len(async_add_entities.call_args[0][0]) == 16
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_huawei():
@@ -70,7 +70,7 @@ async def test_sensor_setup_entry_huawei():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 18
+    assert len(async_add_entities.call_args[0][0]) == 19
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_sonnen():
@@ -83,7 +83,7 @@ async def test_sensor_setup_entry_sonnen():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 22
+    assert len(async_add_entities.call_args[0][0]) == 23
 
 def test_basic_sensors():
     coordinator = MagicMock()

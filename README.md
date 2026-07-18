@@ -23,10 +23,10 @@ Systemet kombinerar **Molnintelligens** (för prisoptimering och arbitrage) med 
 * **🚫 Zero Export (Skydd vid negativa priser):** Tar emot en dynamisk exportgräns (kW) från molnet. Används för att förhindra att systemet förlorar pengar på att sälja solel när spotpriset plus din nätnytta understiger noll.
 * **🚗 Smart Elbilsstöd (Basic):** Peka ut en sensor från din laddbox i Home Assistant så informeras molnet automatiskt när bilen laddas, vilket förhindrar att ditt hembatteri oavsiktligt töms in i elbilen (sätter batteriet i `HOLD`). **Men det är ännu smartare:** Om systemet känner av att solcellerna producerar mer el än vad huset och elbilen konsumerar tillsammans, övergår det automatiskt till `IDLE` så att hembatteriet kan passa på att laddas upp av det kvarvarande solelöverskottet!
   *(Integrationen känner automatiskt igen tillstånden `on`, `true`, `1`, `charging`, `på`, `charge`, `sant` samt numeriska effektvärden `> 0` W).*
-* **🚗 Smart Elbilsstöd (V2 - Avancerat):** Styr din elbilsladdning automatiskt baserat på elpriset (stöd för upp till 2 bilar)!
-    * Peka ut Helpers i Home Assistant (Target kWh, Max kW, Avresetid) och din laddbox-switch. Integrationen schemalägger automatiskt laddningen till de absolut billigaste timmarna på natten.
-    * När du sätter i kabeln räknar molnet automatiskt ut när laddningen ska starta och stoppa.
-    * Battery Optimizer övervakar givetvis laddningen (via hjärtslag) för att förhindra att hembatteriet laddas ur under tiden.
+* **🚗 Smart Elbilsstöd (V2 - Sensor-based):** Styr din elbilsladdning automatiskt baserat på elpriset (stöd för upp till 2 bilar)!
+    * Peka ut Helpers i Home Assistant (Target kWh, Max kW, Avresetid) och din "cable connected"-sensor.
+    * När du sätter i kabeln räknar molnet automatiskt ut när laddningen ska starta och stoppa och exponerar en tidslinje som JSON på en sensor (`sensor.optimizer_light_ev_schedule`).
+    * **Hur det fungerar:** Du skapar en egen automation i Home Assistant som läser av tidslinjen och skickar "Start" eller "Stop" till din specifika laddbox (Easee, Zaptec, Tesla, etc) vid rätt tillfälle.
 * **⏸️ Stöd för CheckWatt & Stödtjänster (Extern Paus):** Om ett externt system behöver exklusiv kontroll över batteriet kan du peka ut en Paus-sensor (t.ex. en `input_boolean` eller status-sensor för CheckWatt). 
   *(Integrationen reagerar automatiskt på tillstånden `on`, `true`, `1`, `active`, `yes`, `på` eller `sant`. Då pausas all styrning från Battery Optimizer och batteriet sätts i `IDLE` så att systemen inte slåss om kommandona).*
 * **🔌 Off-grid & Strömavbrottsskydd:** Peka ut en sensor som visar om huset är i off-grid-läge (t.ex. vid strömavbrott). Optimeraren pausas automatiskt tills nätströmmen är tillbaka. *(För Sonnen detekteras detta automatiskt via batteriets eget API).*
@@ -98,8 +98,15 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
 
 ## 🤖 Användning & Automation
 
-### Automatisk Styrning (Zero-Config)
+### Automatisk Styrning av Hembatteriet (Zero-Config)
 Integrationen är skapad för att fungera direkt ur lådan. Den lyssnar automatiskt på beslut från molnet och styr ditt batteri utan att du behöver bygga några egna skript eller automationer!
+
+### Smart Elbilsladdning (Sensor-baserad)
+För elbilsladdning hanterar du dock start/stopp-automationerna själv, eftersom olika laddboxar fungerar olika.
+1. **Anslutning:** Du sätter i kabeln i bilen. Din `cable_connected` sensor slår över till `on`.
+2. **Planering:** Integrationen anropar moln-API:et och bygger en laddplan baserad på inställd räckvidd och avresetid.
+3. **Exponerar Data:** Molnet returnerar ett schema med de absolut billigaste timmarna under natten. Integrationen sparar denna data som JSON i attributet på sensorn `sensor.optimizer_light_ev_schedule`.
+4. **Användar-automation:** Du skapar en enkel automation i Home Assistant som läser av tidslinjen från sensorn och slår på/av din specifika laddbox (Easee, Zaptec, Tesla, etc) vid rätt tidpunkt. Fullständig guide och kodexempel finns i `docs/HA_SMART_EV_INTEGRATION.md`.
 
 ---
 

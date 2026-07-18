@@ -922,8 +922,6 @@ async def async_unload_entry(hass, entry):
         coordinator = hass.data[DOMAIN].pop(entry.entry_id)
         if hasattr(coordinator, "unsub_timer") and callable(coordinator.unsub_timer):
             coordinator.unsub_timer()
-        if hasattr(coordinator, "unsub_ev_timer") and callable(coordinator.unsub_ev_timer):
-            coordinator.unsub_ev_timer()
     return unload_ok
 
 class BatteryOptimizerGraphView(HomeAssistantView):

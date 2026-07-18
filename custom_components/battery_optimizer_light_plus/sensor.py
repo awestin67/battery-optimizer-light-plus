@@ -62,6 +62,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         BatteryLightNextActionSensor(coordinator),
         BatteryLightNextActionTimeSensor(coordinator),
         BatteryLightDynamicExportLimitSensor(coordinator),
+        BatteryLightEVScheduleSensor(coordinator),
     ]
 
     if entry.data.get(CONF_BATTERY_TYPE) != BATTERY_TYPE_SONNEN:
@@ -724,4 +725,27 @@ class BatteryLightDynamicExportLimitSensor(BatteryOptimizerSensorBase):
         return {
             "limit_active": val is not None,
             "status_text": "Unlimited" if val is None else f"{val} kW"
+        }
+
+class BatteryLightEVScheduleSensor(BatteryOptimizerSensorBase):
+    """Sensor som exponerar molnets tidslinje för EV-laddning så användaren kan skapa automations."""
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self.entity_id = "sensor.optimizer_light_ev_schedule"
+        self._attr_name = "Optimizer Light EV Schedule"
+        self._attr_unique_id = f"{coordinator.api_key}_ev_schedule"
+        self._attr_icon = "mdi:ev-station"
+
+    @property
+    def state(self):
+        schedules = getattr(self.coordinator, "ev_schedules", {})
+        if not schedules:
+            return "Inga scheman"
+        return f"{len(schedules)} bilar planerade"
+
+    @property
+    def extra_state_attributes(self):
+        schedules = getattr(self.coordinator, "ev_schedules", {})
+        return {
+            "schedules": schedules
         }

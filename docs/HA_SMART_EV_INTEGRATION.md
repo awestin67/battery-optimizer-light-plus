@@ -109,14 +109,16 @@ Molnet kommer svara direkt med den billigaste och mest optimerade tidslinjen:
 Denna tidslinje garanterar att din bil får önskad energi till lägsta möjliga pris, utan att överbelasta din huvudsäkring! 
 *(Schemat sparas även automatiskt i molnets databas och visas read-only i webbgränssnittet under "Elbilsladdning och Effektvakt").*
 
-**I Home Assistant-integrationen:**
-Integrationen tar emot detta svar och exekverar det lokalt. Den övervakar tiderna och aktiverar (Start) laddboxen när klockan når `start`, och stänger av den (Stop) när klockan når `end`.
+**I Home Assistant:**
+Integrationen tar emot detta svar och gör tidslinjen tillgänglig för dig i Home Assistant (exempelvis som ett attribut på en sensor). Eftersom det är du som har bäst koll på din specifika laddbox (eller bil), är det **du som användare som hanterar själva styrningen**. 
+
+Du skapar en automation i Home Assistant som läser av tidslinjen och skickar "Start" eller "Stop" till din laddbox när klockan når de angivna tiderna i schemat.
 
 ---
 
 ## Steg 3: Ordinarie Hjärtslag (VIKTIGT!)
 Ditt existerande 5-minuters hjärtslag från integrationen mot molnet (`POST /v2/signal`) ska rulla på precis som vanligt.
-När integrationen *väl* slår på laddboxen enligt tidslinjen under natten, ser den till att skicka med `"is_ev_charging": true` i payloaden för detta hjärtslag.
+När din lokala automation *väl* slår på laddboxen enligt tidslinjen under natten, måste hjärtslaget skicka med `"is_ev_charging": true` i payloaden.
 
 Det är detta som informerar molnet i realtid att *"Nu drar bilen ström"*, varpå molnet automatiskt låser husbatteriet (`action = "HOLD"`) så att ditt dyra husbatteri inte oavsiktligt laddas ur rakt in i elbilen.
 

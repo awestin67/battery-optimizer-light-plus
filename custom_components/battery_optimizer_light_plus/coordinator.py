@@ -66,15 +66,6 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             second=30
         )
 
-        async def _ev_interval(now):
-            await self.check_ev_schedules()
-
-        self.unsub_ev_timer = async_track_time_change(
-            self.hass,
-            _ev_interval,
-            second=0
-        )
-
     async def _async_update_data(self):
         """Körs var 5:e minut."""
         session = async_get_clientsession(self.hass)
@@ -521,55 +512,10 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     if not hasattr(self, "ev_schedules"):
                         self.ev_schedules = {}
                     self.ev_schedules.update(schedules)
+                    self.async_set_updated_data(self.data)
                 else:
                     _LOGGER.error(f"Fel vid hämtning av EV-laddplan: {resp.status} {await resp.text()}")
         except Exception as e:
             _LOGGER.error(f"Kunde inte anropa EV-API: {e}")
 
-    async def check_ev_schedules(self):
-        """Körs varje minut för att starta/stoppa laddboxar enligt schema."""
-        if not hasattr(self, "ev_schedules") or not self.ev_schedules:
-            return
 
-        from .const import CONF_EV_C1_NAME, CONF_EV_C1_SWITCH, CONF_EV_C2_NAME, CONF_EV_C2_SWITCH
-
-        now = dt_util.now()
-
-        def process_car(name_key, switch_key, default_name):
-            car_name = self.config.get(name_key, default_name)
-            switch_id = self.config.get(switch_key)
-            if not switch_id:
-                return
-
-            car_schedule = self.ev_schedules.get(car_name)
-            if not car_schedule:
-                return
-
-            should_be_on = False
-            for step in car_schedule:
-                try:
-                    start_dt = dt_util.parse_datetime(step["start_time"])
-                    end_dt = dt_util.parse_datetime(step["end_time"])
-                    if start_dt and end_dt and start_dt <= now < end_dt:
-                        should_be_on = True
-                        break
-                except Exception as e:
-                    _LOGGER.debug(f"Kunde inte parsa datum i ev schema: {e}")
-
-            switch_state = self.hass.states.get(switch_id)
-            if not switch_state:
-                return
-
-            if should_be_on and switch_state.state != "on":
-                _LOGGER.info(f"Startar laddbox {switch_id} enligt EV-schema för {car_name}")
-                self.hass.async_create_task(
-                    self.hass.services.async_call("switch", "turn_on", {"entity_id": switch_id}, blocking=False)
-                )
-            elif not should_be_on and switch_state.state == "on":
-                _LOGGER.info(f"Stoppar laddbox {switch_id} enligt EV-schema för {car_name}")
-                self.hass.async_create_task(
-                    self.hass.services.async_call("switch", "turn_off", {"entity_id": switch_id}, blocking=False)
-                )
-
-        process_car(CONF_EV_C1_NAME, CONF_EV_C1_SWITCH, "Bil 1")
-        process_car(CONF_EV_C2_NAME, CONF_EV_C2_SWITCH, "Bil 2")

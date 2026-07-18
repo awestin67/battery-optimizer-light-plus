@@ -64,14 +64,12 @@ from .const import (
     CONF_EV_C1_TARGET_KWH,
     CONF_EV_C1_DEPART_TIME,
     CONF_EV_C1_MAX_KW,
-    CONF_EV_C1_SWITCH,
     CONF_EV_C1_CABLE_CONNECTED,
     CONF_EV_C1_IS_CHARGING,
     CONF_EV_C2_NAME,
     CONF_EV_C2_TARGET_KWH,
     CONF_EV_C2_DEPART_TIME,
     CONF_EV_C2_MAX_KW,
-    CONF_EV_C2_SWITCH,
     CONF_EV_C2_CABLE_CONNECTED,
     CONF_EV_C2_IS_CHARGING,
 )
@@ -469,7 +467,6 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 })
 
         return self.async_show_form(step_id="common", data_schema=vol.Schema(schema_dict))
-
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
@@ -504,14 +501,12 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
                 CONF_EV_C1_TARGET_KWH,
                 CONF_EV_C1_DEPART_TIME,
                 CONF_EV_C1_MAX_KW,
-                CONF_EV_C1_SWITCH,
                 CONF_EV_C1_CABLE_CONNECTED,
                 CONF_EV_C1_IS_CHARGING,
                 CONF_EV_C2_NAME,
                 CONF_EV_C2_TARGET_KWH,
                 CONF_EV_C2_DEPART_TIME,
                 CONF_EV_C2_MAX_KW,
-                CONF_EV_C2_SWITCH,
                 CONF_EV_C2_CABLE_CONNECTED,
                 CONF_EV_C2_IS_CHARGING,
             ]
@@ -691,7 +686,6 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             _opt(CONF_EV_C1_TARGET_KWH, get_default(CONF_EV_C1_TARGET_KWH)): EntitySelector(EntitySelectorConfig(domain="input_number")),
             _opt(CONF_EV_C1_DEPART_TIME, get_default(CONF_EV_C1_DEPART_TIME)): EntitySelector(EntitySelectorConfig(domain="input_datetime")),
             _opt(CONF_EV_C1_MAX_KW, get_default(CONF_EV_C1_MAX_KW)): EntitySelector(EntitySelectorConfig(domain="input_number")),
-            _opt(CONF_EV_C1_SWITCH, get_default(CONF_EV_C1_SWITCH)): EntitySelector(EntitySelectorConfig(domain="switch")),
             _opt(CONF_EV_C1_CABLE_CONNECTED, get_default(CONF_EV_C1_CABLE_CONNECTED)): EntitySelector(EntitySelectorConfig(domain="binary_sensor")),
             _opt(CONF_EV_C1_IS_CHARGING, get_default(CONF_EV_C1_IS_CHARGING)): EntitySelector(EntitySelectorConfig(domain="binary_sensor")),
 
@@ -700,7 +694,6 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             _opt(CONF_EV_C2_TARGET_KWH, get_default(CONF_EV_C2_TARGET_KWH)): EntitySelector(EntitySelectorConfig(domain="input_number")),
             _opt(CONF_EV_C2_DEPART_TIME, get_default(CONF_EV_C2_DEPART_TIME)): EntitySelector(EntitySelectorConfig(domain="input_datetime")),
             _opt(CONF_EV_C2_MAX_KW, get_default(CONF_EV_C2_MAX_KW)): EntitySelector(EntitySelectorConfig(domain="input_number")),
-            _opt(CONF_EV_C2_SWITCH, get_default(CONF_EV_C2_SWITCH)): EntitySelector(EntitySelectorConfig(domain="switch")),
             _opt(CONF_EV_C2_CABLE_CONNECTED, get_default(CONF_EV_C2_CABLE_CONNECTED)): EntitySelector(EntitySelectorConfig(domain="binary_sensor")),
             _opt(CONF_EV_C2_IS_CHARGING, get_default(CONF_EV_C2_IS_CHARGING)): EntitySelector(EntitySelectorConfig(domain="binary_sensor")),
         })
