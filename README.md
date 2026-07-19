@@ -616,6 +616,9 @@ Gå sedan till **Inställningar** -> **System** -> **Loggar** i Home Assistant f
 
 ## 🤖 Automationer för Generic / Övriga batterier
 
+> [!TIP]
+> Om du vill ha en mer detaljerad steg-för-steg-instruktion kring hur du förbereder sensorerna och bygger upp Generic-stödet, kika i den dedikerade guiden: **[`docs/GENERIC_BATTERY_SETUP.md`](docs/GENERIC_BATTERY_SETUP.md)**.
+
 Om du har valt **Generic / Light** vid installationen styrs inte din växelriktare automatiskt av integrationen. Istället lyssnar integrationen på molnet och exponerar optimeringsbesluten via sensorer. 
 
 För att faktiskt styra ditt batteri behöver du bygga en egen automation i Home Assistant (t.ex. i `automations.yaml`) som lyssnar på dessa sensorer och skickar rätt kommandon till just din växelriktare.
