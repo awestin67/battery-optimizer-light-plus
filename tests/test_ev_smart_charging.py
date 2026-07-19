@@ -122,4 +122,4 @@ async def test_async_clear_ev_charging(mock_hass_instance):
         mock_session.delete.assert_called_once()
         args, kwargs = mock_session.delete.call_args
         assert "Testbil" in args[0]
-        assert coordinator.ev_schedules["Testbil"] == []
+        assert "Testbil" not in coordinator.ev_schedules

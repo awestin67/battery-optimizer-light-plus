@@ -739,9 +739,10 @@ class BatteryLightEVScheduleSensor(BatteryOptimizerSensorBase):
     @property
     def state(self):
         schedules = getattr(self.coordinator, "ev_schedules", {})
-        if not schedules:
+        active_count = sum(1 for plan in schedules.values() if plan)
+        if active_count == 0:
             return "Inga scheman"
-        return f"{len(schedules)} bilar planerade"
+        return f"{active_count} bilar planerade"
 
     @property
     def extra_state_attributes(self):

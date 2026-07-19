@@ -513,6 +513,8 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                         self.ev_schedules = {}
                     self.ev_schedules.update(schedules)
                     self.async_set_updated_data(self.data)
+                    # Tvinga fram en uppdatering av grafdatan
+                    await self.async_request_refresh()
                 else:
                     _LOGGER.error(f"Fel vid hämtning av EV-laddplan: {resp.status} {await resp.text()}")
         except Exception as e:
@@ -533,7 +535,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
         # 1. Rensa sensorn lokalt
         if hasattr(self, "ev_schedules") and cname in self.ev_schedules:
-            self.ev_schedules[cname] = []
+            self.ev_schedules.pop(cname, None)
             self.async_set_updated_data(self.data)
             _LOGGER.info(f"Nollställde EV-schemat lokalt för {cname}")
 
@@ -546,6 +548,8 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             async with session.delete(url, params=params, timeout=10) as resp:
                 if resp.status == 200:
                     _LOGGER.info(f"Schemat för {cname} raderades i molnet.")
+                    # Tvinga fram en uppdatering av grafdatan
+                    await self.async_request_refresh()
                 else:
                     _LOGGER.error(f"Kunde inte radera EV-schema i molnet: {resp.status} {await resp.text()}")
         except Exception as e:
