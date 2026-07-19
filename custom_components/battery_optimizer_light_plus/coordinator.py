@@ -466,7 +466,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     return {
                         "id": cname,
                         "target_kwh": float(target.state),
-                        "departure_time": depart.state,
+                        "departure_time": depart.state[:5], # Cloud expects HH:MM
                         "max_charge_kw": float(max_kw.state)
                     }
                 except ValueError:
@@ -518,4 +518,35 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         except Exception as e:
             _LOGGER.error(f"Kunde inte anropa EV-API: {e}")
 
+    async def async_clear_ev_charging(self, car_id):
+        """Avbryter EV-laddning och nollställer molnet samt den lokala sensorn."""
+        from .const import CONF_EV_C1_NAME, CONF_EV_C2_NAME
 
+        cname = None
+        if car_id == "car1":
+            cname = self.config.get(CONF_EV_C1_NAME, "Bil 1")
+        elif car_id == "car2":
+            cname = self.config.get(CONF_EV_C2_NAME, "Bil 2")
+
+        if not cname:
+            return
+
+        # 1. Rensa sensorn lokalt
+        if hasattr(self, "ev_schedules") and cname in self.ev_schedules:
+            self.ev_schedules[cname] = []
+            self.async_set_updated_data(self.data)
+            _LOGGER.info(f"Nollställde EV-schemat lokalt för {cname}")
+
+        # 2. Skicka DELETE till backend
+        url = self.config["api_url"].rstrip('/') + f"/api/ev/plan/{cname}"
+        params = {"api_key": self.api_key}
+        session = async_get_clientsession(self.hass)
+
+        try:
+            async with session.delete(url, params=params, timeout=10) as resp:
+                if resp.status == 200:
+                    _LOGGER.info(f"Schemat för {cname} raderades i molnet.")
+                else:
+                    _LOGGER.error(f"Kunde inte radera EV-schema i molnet: {resp.status} {await resp.text()}")
+        except Exception as e:
+            _LOGGER.error(f"Fel vid radering av EV-schema i molnet: {e}")

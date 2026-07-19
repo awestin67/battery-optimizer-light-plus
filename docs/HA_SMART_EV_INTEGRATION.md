@@ -114,6 +114,18 @@ Integrationen tar emot detta svar och gör tidslinjen tillgänglig för dig i Ho
 
 Du skapar en automation i Home Assistant som läser av tidslinjen och skickar "Start" eller "Stop" till din laddbox när klockan når de angivna tiderna i schemat.
 
+### Best Practice: Hämta ett nytt schema när nya elpriser släpps
+Vår molntjänst är "stateless", vilket betyder att det är **din Home Assistant** som äger informationen om bilens faktiska behov just nu.
+Om du anslöt kabeln klockan 09:00, byggdes schemat ovan med uppskattade "dummy-priser" för natten, eftersom morgondagens sanna elpriser inte släpps från Nordpool förrän ca 13:00.
+
+För att få det absolut sista, millimeterexakta schemat, rekommenderas du att skapa en enkel automation i Home Assistant som tvingar integrationen att be om en ny plan på eftermiddagen:
+
+**Exempel på HA-automation (Re-optimering):**
+- **Trigger:** Klockan blir 13:30 (eller när sensorn `nordpool_kwh_se3_sek` får attributet `tomorrow_valid: true`).
+- **Condition:** Kabeln är fortfarande ansluten (`binary_sensor.ev_cable_connected` är `on`).
+- **Action:** Anropa integrationens tjänst för att hämta ny laddplan. 
+*(Eftersom det anropet läser bilens uppdaterade batterinivå, kommer `target_kwh` automatiskt vara lägre om bilen av misstag råkat ladda något under förmiddagen!)*
+
 ---
 
 ## Steg 3: Ordinarie Hjärtslag (VIKTIGT!)

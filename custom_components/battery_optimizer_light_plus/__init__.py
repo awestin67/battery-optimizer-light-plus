@@ -163,13 +163,20 @@ async def async_setup_entry(hass: HomeAssistant, entry):
 
     async def _on_ev_connected(event):
         new_state = event.data.get("new_state")
-        if new_state and new_state.state == "on":
+        if new_state:
             ent_id = event.data.get("entity_id")
-            _LOGGER.info(f"EV Cable Connected detected on {ent_id}, generating plan...")
-            if ent_id == config.get(CONF_EV_C1_CABLE_CONNECTED):
-                await coordinator.async_plan_ev_charging("car1")
-            elif ent_id == config.get(CONF_EV_C2_CABLE_CONNECTED):
-                await coordinator.async_plan_ev_charging("car2")
+            if new_state.state == "on":
+                _LOGGER.info(f"EV Cable Connected detected on {ent_id}, generating plan...")
+                if ent_id == config.get(CONF_EV_C1_CABLE_CONNECTED):
+                    await coordinator.async_plan_ev_charging("car1")
+                elif ent_id == config.get(CONF_EV_C2_CABLE_CONNECTED):
+                    await coordinator.async_plan_ev_charging("car2")
+            elif new_state.state == "off":
+                _LOGGER.info(f"EV Cable Disconnected detected on {ent_id}, clearing plan...")
+                if ent_id == config.get(CONF_EV_C1_CABLE_CONNECTED):
+                    await coordinator.async_clear_ev_charging("car1")
+                elif ent_id == config.get(CONF_EV_C2_CABLE_CONNECTED):
+                    await coordinator.async_clear_ev_charging("car2")
 
     ev_triggers = []
     if config.get(CONF_EV_C1_CABLE_CONNECTED):
