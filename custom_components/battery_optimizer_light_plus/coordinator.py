@@ -50,6 +50,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         self.unsub_timer = None
         self.current_load_w = None
         self._is_passive_mode = False
+        self._ev_lock = asyncio.Lock()
 
     def setup_timer(self):
         """Startar schemaläggaren.
@@ -441,6 +442,11 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     ) from err
 
     async def async_plan_ev_charging(self, car_id="all"):
+        """Wrapper för att förhindra race conditions vid multipla laddkablar."""
+        async with self._ev_lock:
+            await self._async_plan_ev_charging_locked(car_id)
+
+    async def _async_plan_ev_charging_locked(self, car_id="all"):
         """Anropar API för att få laddschema baserat på konfigurerade HA-helpers."""
         from .const import (
             CONF_EV_C1_NAME,
@@ -521,6 +527,11 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             _LOGGER.error(f"Kunde inte anropa EV-API: {e}")
 
     async def async_clear_ev_charging(self, car_id):
+        """Wrapper för att förhindra race conditions."""
+        async with self._ev_lock:
+            await self._async_clear_ev_charging_locked(car_id)
+
+    async def _async_clear_ev_charging_locked(self, car_id):
         """Avbryter EV-laddning och nollställer molnet samt den lokala sensorn."""
         from .const import CONF_EV_C1_NAME, CONF_EV_C2_NAME
 
