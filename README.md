@@ -102,11 +102,100 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
 Integrationen är skapad för att fungera direkt ur lådan. Den lyssnar automatiskt på beslut från molnet och styr ditt batteri utan att du behöver bygga några egna skript eller automationer!
 
 ### Smart Elbilsladdning (Sensor-baserad)
-För elbilsladdning hanterar du dock start/stopp-automationerna själv, eftersom olika laddboxar fungerar olika.
-1. **Anslutning:** Du sätter i kabeln i bilen. Din `cable_connected` sensor slår över till `on`.
-2. **Planering:** Integrationen anropar moln-API:et och bygger en laddplan baserad på inställd räckvidd och avresetid.
-3. **Exponerar Data:** Molnet returnerar ett schema med de absolut billigaste timmarna under natten. Integrationen sparar denna data som JSON i attributet på sensorn `sensor.optimizer_light_ev_schedule`.
-4. **Användar-automation:** Du skapar en enkel automation i Home Assistant som läser av tidslinjen från sensorn och slår på/av din specifika laddbox (Easee, Zaptec, Tesla, etc) vid rätt tidpunkt. Fullständig guide och kodexempel finns i `docs/HA_SMART_EV_INTEGRATION.md`.
+Integrationen stöder prissmart schemaläggning för **upp till två bilar samtidigt**, vilket garanterar att dina bilar laddas på dygnets billigaste timmar utan att överbelasta din huvudsäkring. Du hanterar själv start/stopp-automationerna i Home Assistant (eftersom olika laddboxar fungerar olika).
+
+#### Steg-för-steg Guide (1 eller 2 bilar)
+
+**Steg 1: Skapa Hjälpare (Helpers)**
+Skapa följande Helpers i Home Assistant (*Inställningar -> Enheter och tjänster -> Hjälpare*) för att definiera dina laddbehov. För två bilar skapar du helt enkelt dubbla uppsättningar (t.ex. med ändelsen `_car1` och `_car2`):
+- `input_number` för önskat mål i kWh (t.ex. `input_number.ev_target_kwh_car1`). Skala: 0-100.
+- `input_number` för bilens maxeffekt i kW (t.ex. `input_number.ev_max_kw_car1`). Skala: 0-22.
+- `input_datetime` för önskad avresetid (t.ex. `input_datetime.ev_depart_time_car1`). Ska endast visa Tid (Time).
+
+**Steg 2: Koppla i Integrationen**
+1. Gå till *Inställningar -> Enheter och tjänster*.
+2. Klicka på **Konfigurera** på Battery Optimizer Light Plus.
+3. Välj dina skapade Helpers från rullistorna för **Bil 1**. Ange även din `cable_connected`-sensor och din `is_charging`-sensor från din laddbox.
+4. *(Har du en andra bil?)* Fyll i motsvarande rullistor för **Bil 2** längre ner på samma sida.
+
+**Steg 3: Så här fungerar det i praktiken**
+1. **Du pluggar in kabeln:** Din `cable_connected`-sensor slår om till `on`. 
+2. **Schemat skapas:** Integrationen läser av dina Helpers och beräknar den billigaste tidslinjen. Om du pluggar in båda bilarna, skapas ett optimerat körschema för båda samtidigt!
+3. **Data exponeras:** Schemat sparas i sensorn `sensor.optimizer_light_ev_schedule`. Attributet `schedules` innehåller start- och stopptider för dina bilar.
+
+**Steg 4: Din Automation (Exempel)**
+Skapa en automation i Home Assistant för respektive bil. Använd `Template` i din trigger för att trigga på starttiden, och passa även på att ställa in laddboxens effekt (`charge_kw`) till det värde som molnet har räknat ut är optimalt!
+
+> **Tips:** Gå till *Automationer -> Skapa ny automation -> Klicka på de tre prickarna uppe till höger och välj "Redigera som YAML"*. Klistra sedan in koden nedan.
+
+I templaten nedan anger du **samma namn för bilen** som du skrev in när du konfigurerade integrationen.
+
+```yaml
+# ==========================================
+# AUTOMATION 1: Starta laddbox (Bil 1)
+# ==========================================
+alias: "EV: Starta laddning Bil 1"
+trigger:
+  - platform: template
+    value_template: >-
+      {% set car_name = 'Min första bil' %}  # Byt ut mot exakt det namn du gav bilen i integrationen
+      {% set schedules = state_attr('sensor.optimizer_light_ev_schedule', 'schedules') %}
+      {% if schedules and car_name in schedules and schedules[car_name]|length > 0 %}
+        {% set start_time = as_timestamp(schedules[car_name][0]['start']) %}
+        {{ now().timestamp() >= start_time }}
+      {% else %}
+        false
+      {% endif %}
+action:
+  # 1. Ställ in laddboxens effekt baserat på molnets optimering
+  - service: number.set_value
+    target:
+      # Byt ut mot din laddbox entitet för strömgräns (t.ex. number.easee_dynamic_circuit_limit eller Zaptecs motsvarighet)
+      entity_id: number.din_laddbox_effekt_car1
+    data:
+      value: >-
+        {% set car_name = 'Min första bil' %}
+        {{ state_attr('sensor.optimizer_light_ev_schedule', 'schedules')[car_name][0]['charge_kw'] }}
+  # 2. Slå på strömmen
+  - service: switch.turn_on
+    target:
+      # Byt ut mot din laddbox entitet för start/stopp (t.ex. switch.easee_is_enabled eller liknande strömbrytare)
+      entity_id: switch.din_laddbox_car1
+
+# ==========================================
+# AUTOMATION 2: Starta laddbox (Bil 2)
+# ==========================================
+alias: "EV: Starta laddning Bil 2"
+trigger:
+  - platform: template
+    value_template: >-
+      {% set car_name = 'Min andra bil' %}  # Byt ut mot exakt det namn du gav bilen i integrationen
+      {% set schedules = state_attr('sensor.optimizer_light_ev_schedule', 'schedules') %}
+      {% if schedules and car_name in schedules and schedules[car_name]|length > 0 %}
+        {% set start_time = as_timestamp(schedules[car_name][0]['start']) %}
+        {{ now().timestamp() >= start_time }}
+      {% else %}
+        false
+      {% endif %}
+action:
+  # 1. Ställ in laddboxens effekt
+  - service: number.set_value
+    target:
+      # Byt ut mot entiteten för laddbox nummer 2
+      entity_id: number.din_laddbox_effekt_car2
+    data:
+      value: >-
+        {% set car_name = 'Min andra bil' %}
+        {{ state_attr('sensor.optimizer_light_ev_schedule', 'schedules')[car_name][0]['charge_kw'] }}
+  # 2. Slå på strömmen
+  - service: switch.turn_on
+    target:
+      # Byt ut mot start-entiteten för laddbox nummer 2
+      entity_id: switch.din_laddbox_car2
+```
+
+> [!IMPORTANT]
+> **Automatiskt Pausat Husbatteri:** Se till att du har angett en sensor för "Bilen laddar" (t.ex. din laddbox effekt-mätare) i integrationens inställningar. När laddboxen börjar dra ström känner integrationen av det och signalerar till molnet. Detta säkerställer att ditt husbatteri automatiskt **pausas** och inte slösas bort på elbilen!
 
 ---
 
