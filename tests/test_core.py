@@ -589,6 +589,50 @@ async def test_coordinator_solar_kw_clamps_negative(mock_hass_instance, mock_bat
         assert payload.get("current_solar_kw") == 0.0
 
 @pytest.mark.asyncio
+async def test_coordinator_converts_kw_units(mock_hass_instance, mock_battery):
+    """Krav: Coordinator ska konvertera enheter från kW till W för virtuell last."""
+    config = MOCK_CONFIG.copy()
+    config["virtual_load_sensor"] = "sensor.virtual_load"
+
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config, version="1.0.0")
+
+    # Använd inte get_calculated_consumption så vi faller tillbaka till sensorer
+    mock_battery.get_calculated_consumption = AsyncMock(return_value=None)
+    mock_battery.get_current_soc.return_value = 50.0
+    coordinator.battery_api = mock_battery
+
+    def mock_get_state(entity_id):
+        mock_state = MagicMock()
+        mock_state.attributes = {}
+        if entity_id == "sensor.soc":
+            mock_state.state = "50"
+        elif entity_id == "sensor.virtual_load":
+            mock_state.state = "15.0" # 15 kW
+            mock_state.attributes["unit_of_measurement"] = "kW"
+        return mock_state
+    mock_hass_instance.states.get.side_effect = mock_get_state
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
+
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        await coordinator._async_update_data()
+
+        _, kwargs = mock_session.post.call_args
+        payload = kwargs['json']
+
+        assert payload["current_consumption_kw"] == 15.0
+
+@pytest.mark.asyncio
 async def test_coordinator_excludes_solar_kw_if_missing(mock_hass_instance, mock_battery):
     """Krav: Coordinator ska exkludera current_solar_kw om solproduktion saknas (både modbus och HA-sensor)."""
     config = MOCK_CONFIG.copy()

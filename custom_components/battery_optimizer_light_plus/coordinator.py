@@ -175,7 +175,11 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                         state = self.hass.states.get(virtual_load_id)
                         if state and state.state not in ["unknown", "unavailable"]:
                             try:
-                                current_load_w = float(state.state)
+                                val = float(state.state)
+                                unit = state.attributes.get("unit_of_measurement")
+                                if unit and unit.lower() in ["kw", "kilowatt"]:
+                                    val *= 1000.0
+                                current_load_w = val
                             except ValueError:
                                 pass
 
@@ -194,6 +198,9 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                             if grid_state and grid_state.state not in ["unknown", "unavailable"]:
                                 try:
                                     g_val = float(grid_state.state)
+                                    unit = grid_state.attributes.get("unit_of_measurement")
+                                    if unit and unit.lower() in ["kw", "kilowatt"]:
+                                        g_val *= 1000.0
                                     if self.config.get("grid_sensor_invert", False):
                                         g_val = -g_val
                                 except ValueError:
@@ -204,6 +211,9 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                             if bat_state and bat_state.state not in ["unknown", "unavailable"]:
                                 try:
                                     b_val = float(bat_state.state)
+                                    unit = bat_state.attributes.get("unit_of_measurement")
+                                    if unit and unit.lower() in ["kw", "kilowatt"]:
+                                        b_val *= 1000.0
                                     if self.config.get("battery_sensor_invert", False):
                                         b_val = -b_val
                                 except ValueError:
@@ -242,7 +252,8 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                         if solar_state and solar_state.state not in ["unknown", "unavailable"]:
                             try:
                                 val = float(solar_state.state)
-                                if solar_state.attributes.get("unit_of_measurement") == "kW":
+                                unit = solar_state.attributes.get("unit_of_measurement")
+                                if unit and unit.lower() in ["kw", "kilowatt"]:
                                     val *= 1000.0
                                 current_solar_w = val
                             except ValueError:
