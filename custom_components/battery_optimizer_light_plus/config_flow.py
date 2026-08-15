@@ -372,6 +372,12 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_common(self, user_input=None):
         """Handle the common configuration step for all battery types."""
         if user_input is not None:
+            if CONF_API_URL in user_input and user_input[CONF_API_URL]:
+                url = str(user_input[CONF_API_URL]).strip()
+                if url and not (url.startswith("http://") or url.startswith("https://")):
+                    url = f"https://{url}"
+                user_input[CONF_API_URL] = url
+
             self.data.update(user_input)
             _strip_none_values(self.data)
 
@@ -514,6 +520,12 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             for key in clearable_keys:
                 if key in new_data and key not in user_input:
                     new_data.pop(key)
+
+            if CONF_API_URL in user_input and user_input[CONF_API_URL]:
+                url = str(user_input[CONF_API_URL]).strip()
+                if url and not (url.startswith("http://") or url.startswith("https://")):
+                    url = f"https://{url}"
+                user_input[CONF_API_URL] = url
 
             new_data.update(user_input)
 

@@ -36,7 +36,11 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             _LOGGER,
             name="Battery Optimizer Light Plus",
         )
-        self.api_url = f"{config['api_url'].rstrip('/')}/signal"
+        raw_url = str(config.get("api_url", "")).strip().rstrip("/")
+        if raw_url and not (raw_url.startswith("http://") or raw_url.startswith("https://")):
+            raw_url = f"https://{raw_url}"
+        self.base_api_url = raw_url
+        self.api_url = f"{raw_url}/signal"
         self.api_key = config['api_key']
         self.version = version
         self.config = config
@@ -324,7 +328,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     fallback_graph_data = self.data.get("graph_data", {}) if self.data else {}
                     try:
                         history_hours = int(self.config.get("graph_history_hours", 24))
-                        base_api_url = self.config.get("api_url", "").rstrip("/")
+                        base_api_url = getattr(self, "base_api_url", self.config.get("api_url", "").rstrip("/"))
                         graph_url = f"{base_api_url}/ha_graph_data?history_hours={history_hours}"
 
                         async with session.get(
@@ -403,7 +407,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                     if should_fetch_ai:
                         try:
-                            base_api_url = self.config.get("api_url", "").rstrip("/")
+                            base_api_url = getattr(self, "base_api_url", self.config.get("api_url", "").rstrip("/"))
                             ai_url = f"{base_api_url}/ha_ai_summary"
                             async with session.get(
                                 ai_url,
@@ -529,7 +533,8 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             "cars": cars_payload
         }
 
-        url = self.config["api_url"].rstrip('/') + "/api/ev/plan"
+        base_url = getattr(self, "base_api_url", self.config.get("api_url", "").rstrip("/"))
+        url = f"{base_url}/api/ev/plan"
         _LOGGER.debug(f"Hämtar EV-laddplan från {url}: {payload}")
 
         session = async_get_clientsession(self.hass)
@@ -575,7 +580,8 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             _LOGGER.info(f"Nollställde EV-schemat lokalt för {cname}")
 
         # 2. Skicka DELETE till backend
-        url = self.config["api_url"].rstrip('/') + f"/api/ev/plan/{cname}"
+        base_url = getattr(self, "base_api_url", self.config.get("api_url", "").rstrip("/"))
+        url = f"{base_url}/api/ev/plan/{cname}"
         params = {"api_key": self.api_key}
         session = async_get_clientsession(self.hass)
 

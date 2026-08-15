@@ -844,9 +844,16 @@ class PeakGuard:
         finally:
             self._is_updating = False
 
+    @property
+    def _base_api_url(self) -> str:
+        raw_url = str(self.config.get(CONF_API_URL, "")).strip().rstrip("/")
+        if raw_url and not (raw_url.startswith("http://") or raw_url.startswith("https://")):
+            raw_url = f"https://{raw_url}"
+        return raw_url
+
     async def _report_peak(self, grid_w, limit_w):
         try:
-            api_url = f"{self.config[CONF_API_URL].rstrip('/')}/report_peak"
+            api_url = f"{self._base_api_url}/report_peak"
             payload = {
                 "api_key": self.config[CONF_API_KEY],
                 "grid_power_kw": round(grid_w / 1000.0, 2),
@@ -861,7 +868,7 @@ class PeakGuard:
 
     async def _report_peak_clear(self, grid_w, limit_w):
         try:
-            api_url = f"{self.config[CONF_API_URL].rstrip('/')}/report_peak_clear"
+            api_url = f"{self._base_api_url}/report_peak_clear"
             payload = {
                 "api_key": self.config[CONF_API_KEY],
                 "grid_power_kw": round(grid_w / 1000.0, 2),
@@ -876,7 +883,7 @@ class PeakGuard:
 
     async def _report_peak_failure(self, grid_w, limit_w):
         try:
-            api_url = f"{self.config[CONF_API_URL].rstrip('/')}/report_peak_failure"
+            api_url = f"{self._base_api_url}/report_peak_failure"
             payload = {
                 "api_key": self.config[CONF_API_KEY],
                 "grid_power_kw": round(grid_w / 1000.0, 2),
@@ -891,7 +898,7 @@ class PeakGuard:
 
     async def _report_solar_override(self, grid_w, limit_w):
         try:
-            api_url = f"{self.config[CONF_API_URL].rstrip('/')}/report_solar_override"
+            api_url = f"{self._base_api_url}/report_solar_override"
             payload = {
                 "api_key": self.config[CONF_API_KEY],
                 "grid_power_kw": round(grid_w / 1000.0, 2),
@@ -906,7 +913,7 @@ class PeakGuard:
 
     async def _report_solar_override_clear(self, grid_w, limit_w):
         try:
-            api_url = f"{self.config[CONF_API_URL].rstrip('/')}/report_solar_override_clear"
+            api_url = f"{self._base_api_url}/report_solar_override_clear"
             payload = {
                 "api_key": self.config[CONF_API_KEY],
                 "grid_power_kw": round(grid_w / 1000.0, 2),
