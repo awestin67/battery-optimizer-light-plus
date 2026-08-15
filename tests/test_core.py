@@ -1792,6 +1792,8 @@ async def test_setup_sonnen_listener(mock_hass_instance):
         callback_func = mock_coord.battery_api.coordinator.async_add_listener.call_args[0][0]
         callback_func()
         mock_hass_instance.async_create_task.assert_called_once()
+        coro = mock_hass_instance.async_create_task.call_args[0][0]
+        coro.close()
 
 @pytest.mark.asyncio
 async def test_peakguard_reporting_methods(mock_hass_instance, mock_battery):
@@ -2656,4 +2658,70 @@ def test_peakguard_url_normalization(mock_hass_instance, mock_battery):
     peak_guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
 
     assert peak_guard._base_api_url == "https://battery-optimizer-light-development.up.railway.app"
+
+@pytest.mark.asyncio
+async def test_water_heater_switch_automatic_control(mock_hass_instance):
+    """Testar att water_heater_switch styrs automatiskt vid start och cloud update."""
+    from custom_components.battery_optimizer_light_plus.const import CONF_WATER_HEATER_SWITCH
+
+    entry = MagicMock()
+    entry.data = MOCK_CONFIG.copy()
+    entry.data[CONF_WATER_HEATER_SWITCH] = "switch.ivt_plusvarme"
+    entry.entry_id = "test_vh"
+
+    # Mocka initial switch state: off
+    mock_switch_state = MagicMock()
+    mock_switch_state.state = "off"
+    mock_hass_instance.states.get.return_value = mock_switch_state
+
+    patch_int = "custom_components.battery_optimizer_light_plus.async_get_integration"
+    patch_coord = "custom_components.battery_optimizer_light_plus.BatteryOptimizerLightCoordinator"
+    with patch(patch_int, new_callable=AsyncMock) as mock_get_int, patch(patch_coord) as mock_coord_class:
+        mock_get_int.return_value = MagicMock()
+        mock_coord = mock_coord_class.return_value
+        mock_coord.async_config_entry_first_refresh = AsyncMock()
+        mock_coord.data = {
+            "water_heater_boost": True,
+            "water_heater_reason": "Solöverskott"
+        }
+
+        # Setup entry
+        assert await async_setup_entry(mock_hass_instance, entry) is True
+
+        # Ska ha anropat switch.turn_on
+        mock_hass_instance.services.async_call.assert_called_with(
+            "switch",
+            "turn_on",
+            {"entity_id": "switch.ivt_plusvarme"},
+            blocking=False,
+        )
+
+        # När switchen redan är on och molnet uppdateras till on ska inte nytt anrop ske
+        mock_hass_instance.services.async_call.reset_mock()
+        mock_switch_state.state = "on"
+
+        # Hämta _cloud_updated listener
+        assert mock_coord.async_add_listener.call_count >= 1
+        cloud_listener = mock_coord.async_add_listener.call_args[0][0]
+
+        # Trigga uppdatering när boost=False
+        mock_coord.data["water_heater_boost"] = False
+
+        # Utför task skapad av cloud listener
+        with patch.object(mock_hass_instance, "async_create_task") as mock_create_task:
+            cloud_listener()
+            # Kör uppgiften som skapades
+            assert mock_create_task.call_count == 2
+            coro_peakguard = mock_create_task.call_args_list[0][0][0]
+            coro_peakguard.close()
+            coro_vvb = mock_create_task.call_args_list[1][0][0]
+            await coro_vvb
+
+            mock_hass_instance.services.async_call.assert_called_with(
+                "switch",
+                "turn_off",
+                {"entity_id": "switch.ivt_plusvarme"},
+                blocking=False,
+            )
+
 

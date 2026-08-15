@@ -56,6 +56,8 @@ CONF_SOLAR_SENSOR = "solar_sensor" # Sensor för solproduktion (Valfritt)
 CONF_EXTERNAL_CONTROL_SENSOR = "external_control_sensor" # Sensor för CheckWatt/FCR (Pausar systemet)
 CONF_MIN_SOC = "min_soc" # Backup-reserv för Generic-batterier
 CONF_GRAPH_HISTORY_HOURS = "graph_history_hours"
+CONF_WATER_HEATER_SWITCH = "water_heater_switch" # Switch för VVB/Plusvärme (Valfritt)
+
 
 # EV Smart Charging - Car 1
 CONF_EV_C1_NAME = "ev_c1_name"

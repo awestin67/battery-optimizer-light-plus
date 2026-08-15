@@ -204,6 +204,16 @@ När integrationen körs skapas automatiskt två entiteter för smart varmvatten
 * `binary_sensor.battery_optimizer_water_heater_boost`: Slår om till `on` när optimeraren beordrar extra varmvattenuppvärmning (t.ex. vid billiga eltimmar eller vid solöverskott när hembatteriet är fulladdat).
 * `sensor.battery_optimizer_water_heater_reason`: Visar den aktuella orsaken i klartext (t.ex. *"Solöverskott (1.4 kW) | Batteri 94%"*).
 
+#### Styra din VVB / Värmepump:
+
+Det finns två sätt att koppla din hårdvara:
+
+* **Alternativ 1 (Enklast – Direkt i inställningarna):**
+  Gå till *Inställningar -> Enheter och tjänster -> Battery Optimizer Light Plus -> Konfigurera* och välj din switch under **Varmvattenberedare / Plusvärme Switch**. Integrationen slår då automatiskt på och av switchen åt dig i realtid utan att du behöver skapa någon egen automation!
+
+* **Alternativ 2 (Via Automation):**
+  Om du har avancerade villkor eller vill styra via scripts/klimatenheter kan du lämna inställningsfältet tomt och istället skapa en vanlig Home Assistant-automation mot signalen `binary_sensor.battery_optimizer_water_heater_boost`:
+
 #### 1. Automation: IVT / Värmepump (Plusvärme / SG Ready)
 Koppla signalen till din värmepumps Plusvärme-switch eller SG Ready-ingång:
 

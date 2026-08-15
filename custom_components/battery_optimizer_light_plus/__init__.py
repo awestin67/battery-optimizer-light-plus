@@ -44,6 +44,7 @@ from .const import (
     CONF_VIRTUAL_LOAD_SENSOR,
     DEFAULT_BATTERY_STATUS_KEYWORDS,
     CONF_EXTERNAL_CONTROL_SENSOR,
+    CONF_WATER_HEATER_SWITCH,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -92,11 +93,47 @@ async def async_setup_entry(hass: HomeAssistant, entry):
         # Låt Sonnen-uppdateringar trigga PeakGuard blixtsnabbt!
         coordinator.battery_api.coordinator.async_add_listener(_sonnen_updated)
 
+    # Smart VVB: Hantera automatisk styrning av VVB-switch om användaren pekat ut en sådan
+    water_heater_switch = config.get(CONF_WATER_HEATER_SWITCH)
+
+    async def _handle_water_heater_control():
+        if not water_heater_switch or not coordinator.data:
+            return
+
+        boost = bool(coordinator.data.get("water_heater_boost", False))
+        current_state = hass.states.get(water_heater_switch)
+        target_state = "on" if boost else "off"
+
+        if current_state is None or current_state.state != target_state:
+            service_name = "turn_on" if boost else "turn_off"
+            domain = water_heater_switch.split(".")[0] if "." in water_heater_switch else "homeassistant"
+            if domain not in ("switch", "input_boolean"):
+                domain = "homeassistant"
+
+            _LOGGER.info(
+                f"Smart VVB: Sätter {water_heater_switch} till {target_state.upper()} "
+                f"(Orsak: {coordinator.data.get('water_heater_reason', 'Ingen orsak')})"
+            )
+            try:
+                await hass.services.async_call(
+                    domain,
+                    service_name,
+                    {"entity_id": water_heater_switch},
+                    blocking=False,
+                )
+            except Exception as err:
+                _LOGGER.error(f"Kunde inte styra VVB-switch {water_heater_switch}: {err}")
+
     # Kör första uppdateringen mot molnet NU, när det lokala batteriet är redo att svara med SoC
     await coordinator.async_config_entry_first_refresh()
 
+    if water_heater_switch:
+        await _handle_water_heater_control()
+
     def _cloud_updated():
         hass.async_create_task(peak_guard.update(virtual_load_entity, LIMIT_ENTITY))
+        if water_heater_switch:
+            hass.async_create_task(_handle_water_heater_control())
 
     coordinator.async_add_listener(_cloud_updated)
 

@@ -562,3 +562,45 @@ async def test_options_flow_api_url_normalization():
     saved_data = flow.hass.config_entries.async_update_entry.call_args[1]["data"]
     assert saved_data["api_url"] == "https://battery-optimizer-light-development.up.railway.app"
 
+@pytest.mark.asyncio
+async def test_config_flow_water_heater_switch():
+    """Testar att water_heater_switch sparas vid installation."""
+    from custom_components.battery_optimizer_light_plus.const import CONF_WATER_HEATER_SWITCH
+
+    flow = BatteryOptimizerLightConfigFlow()
+    flow.hass = MagicMock()
+    await flow.async_step_generic()
+
+    result = await flow.async_step_common({
+        "api_key": "123",
+        "api_url": "https://test",
+        CONF_WATER_HEATER_SWITCH: "switch.ivt_extra_varmvatten",
+    })
+
+    assert result["type"] == "create_entry"
+    assert result["data"][CONF_WATER_HEATER_SWITCH] == "switch.ivt_extra_varmvatten"
+
+@pytest.mark.asyncio
+async def test_options_flow_water_heater_switch():
+    """Testar att water_heater_switch kan uppdateras eller tas bort i inställningarna."""
+    from custom_components.battery_optimizer_light_plus.const import CONF_WATER_HEATER_SWITCH
+
+    flow = BatteryOptimizerLightOptionsFlow()
+    flow.config_entry = MagicMock(data={
+        CONF_BATTERY_TYPE: BATTERY_TYPE_GENERIC,
+        "api_url": "https://test",
+        CONF_WATER_HEATER_SWITCH: "switch.old_switch"
+    })
+    flow.hass = MagicMock()
+
+    # Uppdatera till ny switch
+    await flow.async_step_init({
+        "api_key": "new_key",
+        "api_url": "https://test",
+        CONF_WATER_HEATER_SWITCH: "switch.shelly_extra_vvb",
+    })
+
+    saved_data = flow.hass.config_entries.async_update_entry.call_args[1]["data"]
+    assert saved_data[CONF_WATER_HEATER_SWITCH] == "switch.shelly_extra_vvb"
+
+
