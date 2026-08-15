@@ -2598,3 +2598,62 @@ async def test_coordinator_payload_includes_inverter_brand(mock_hass_instance, m
         payload = kwargs['json']
 
         assert payload["inverter_brand"] == "generic"
+
+@pytest.mark.asyncio
+async def test_coordinator_url_normalization(mock_hass_instance, mock_battery):
+    """Krav: Coordinator ska automatiskt lägga till https:// om användaren angav URL utan protokoll."""
+    config = MOCK_CONFIG.copy()
+    config["api_url"] = "battery-optimizer-light-development.up.railway.app"
+
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config, version="1.0.0")
+    assert coordinator.base_api_url == "https://battery-optimizer-light-development.up.railway.app"
+    assert coordinator.api_url == "https://battery-optimizer-light-development.up.railway.app/signal"
+
+@pytest.mark.asyncio
+async def test_coordinator_water_heater_signal_data(mock_hass_instance, mock_battery):
+    """Krav: Coordinator ska ta emot och spara water_heater_boost och water_heater_reason från molnet."""
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 94.0
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={
+            "action": "HOLD",
+            "reason": "Väntar på kvällstopp",
+            "target_power_kw": 0.0,
+            "water_heater_boost": True,
+            "water_heater_reason": "Solöverskott (1.4 kW) | Batteri 94%"
+        })
+
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        data = await coordinator._async_update_data()
+
+        assert data["water_heater_boost"] is True
+        assert data["water_heater_reason"] == "Solöverskott (1.4 kW) | Batteri 94%"
+
+def test_coordinator_device_info(mock_hass_instance):
+    """Krav: Coordinator ska exponera giltig device_info för integrationen."""
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
+    dev_info = coordinator.device_info
+    assert dev_info["identifiers"] == {(DOMAIN, "12345")}
+    assert dev_info["name"] == "Battery Optimizer Light Plus"
+
+def test_peakguard_url_normalization(mock_hass_instance, mock_battery):
+    """Krav: PeakGuard ska normalisera URL om https:// saknas."""
+    config = MOCK_CONFIG.copy()
+    config["api_url"] = "battery-optimizer-light-development.up.railway.app"
+
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config)
+    peak_guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+
+    assert peak_guard._base_api_url == "https://battery-optimizer-light-development.up.railway.app"
+

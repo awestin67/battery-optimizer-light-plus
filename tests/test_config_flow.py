@@ -531,3 +531,34 @@ async def test_options_flow_enable_solar_override():
 
     saved_data = flow.hass.config_entries.async_update_entry.call_args[1]["data"]
     assert saved_data["enable_solar_override"] is True
+
+@pytest.mark.asyncio
+async def test_config_flow_api_url_normalization():
+    """Testar att URL utan protokoll automatiskt får https:// i config flow."""
+    flow = BatteryOptimizerLightConfigFlow()
+    flow.hass = MagicMock()
+    await flow.async_step_generic()
+
+    result = await flow.async_step_common({
+        "api_key": "123",
+        "api_url": "battery-optimizer-light-development.up.railway.app",
+    })
+
+    assert result["type"] == "create_entry"
+    assert result["data"]["api_url"] == "https://battery-optimizer-light-development.up.railway.app"
+
+@pytest.mark.asyncio
+async def test_options_flow_api_url_normalization():
+    """Testar att URL utan protokoll automatiskt får https:// i options flow."""
+    flow = BatteryOptimizerLightOptionsFlow()
+    flow.config_entry = MagicMock(data={CONF_BATTERY_TYPE: BATTERY_TYPE_GENERIC, "api_url": "https://old.url"})
+    flow.hass = MagicMock()
+
+    await flow.async_step_init({
+        "api_key": "new_key",
+        "api_url": "battery-optimizer-light-development.up.railway.app",
+    })
+
+    saved_data = flow.hass.config_entries.async_update_entry.call_args[1]["data"]
+    assert saved_data["api_url"] == "https://battery-optimizer-light-development.up.railway.app"
+
