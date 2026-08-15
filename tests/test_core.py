@@ -2725,3 +2725,59 @@ async def test_water_heater_switch_automatic_control(mock_hass_instance):
             )
 
 
+@pytest.mark.asyncio
+async def test_water_heater_temp_sensor_payload(mock_hass_instance, mock_battery):
+    """Testar att coordinatorn skickar med water_heater_temp till /signal när sensorn är angiven."""
+    from custom_components.battery_optimizer_light_plus.coordinator import BatteryOptimizerLightCoordinator
+
+    config = {
+        "api_url": "https://test.app",
+        "api_key": "test_key",
+        "battery_type": "generic",
+        "soc_sensor": "sensor.soc",
+        "water_heater_temp_sensor": "sensor.ivt_vvb_temp",
+    }
+
+    mock_soc = MagicMock()
+    mock_soc.state = "85"
+    mock_temp = MagicMock()
+    mock_temp.state = "56.4"
+
+    def get_state(entity_id):
+        if entity_id == "sensor.soc":
+            return mock_soc
+        if entity_id == "sensor.ivt_vvb_temp":
+            return mock_temp
+        return None
+
+    mock_hass_instance.states.get.side_effect = get_state
+
+    coord = BatteryOptimizerLightCoordinator(mock_hass_instance, config, version="0.14.2")
+    coord.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 85.0
+    mock_battery.get_min_soc.return_value = 0.0
+
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.json = AsyncMock(return_value={
+        "action": "IDLE",
+        "target_power_kw": 0.0,
+        "water_heater_boost": True,
+        "water_heater_reason": "Solöverskott"
+    })
+
+    mock_session = MagicMock()
+    mock_session.post.return_value.__aenter__.return_value = mock_resp
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target, return_value=mock_session):
+        data = await coord._async_update_data()
+        assert data["water_heater_boost"] is True
+
+        call_kwargs = mock_session.post.call_args[1]
+        sent_payload = call_kwargs["json"]
+        assert sent_payload["water_heater_temp"] == 56.4
+
+
+
+

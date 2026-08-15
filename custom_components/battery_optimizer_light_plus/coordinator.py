@@ -293,6 +293,17 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     else:
                         is_offgrid = self.battery_api.is_offgrid()
 
+                # --- VARMVATTEN TEMPERATUR ---
+                water_heater_temp_id = self.config.get("water_heater_temp_sensor")
+                water_heater_temp = None
+                if water_heater_temp_id:
+                    vh_temp_state = self.hass.states.get(water_heater_temp_id)
+                    if vh_temp_state and vh_temp_state.state not in ["unknown", "unavailable"]:
+                        try:
+                            water_heater_temp = round(float(vh_temp_state.state), 1)
+                        except (ValueError, TypeError):
+                            pass
+
                 # 5. Payload (Endast det backend behöver)
                 payload = {
                     "api_key": self.api_key,
@@ -308,6 +319,9 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                 if current_solar_kw is not None:
                     payload["current_solar_kw"] = current_solar_kw
+
+                if water_heater_temp is not None:
+                    payload["water_heater_temp"] = water_heater_temp
 
                 _LOGGER.debug(f"Light-Request: {payload}")
 

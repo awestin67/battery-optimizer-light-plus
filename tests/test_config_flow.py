@@ -604,3 +604,45 @@ async def test_options_flow_water_heater_switch():
     assert saved_data[CONF_WATER_HEATER_SWITCH] == "switch.shelly_extra_vvb"
 
 
+@pytest.mark.asyncio
+async def test_config_flow_water_heater_temp_sensor():
+    """Testar att water_heater_temp_sensor kan konfigureras i common-steget och options flow."""
+    from custom_components.battery_optimizer_light_plus.const import (
+        CONF_SOC_SENSOR,
+        CONF_WATER_HEATER_TEMP_SENSOR,
+    )
+
+    flow = BatteryOptimizerLightConfigFlow()
+    flow.hass = MagicMock()
+    flow.data = {CONF_BATTERY_TYPE: BATTERY_TYPE_GENERIC}
+
+    result = await flow.async_step_common({
+        "api_url": "https://test.app",
+        "api_key": "testkey",
+        CONF_SOC_SENSOR: "sensor.battery_soc",
+        CONF_WATER_HEATER_TEMP_SENSOR: "sensor.ivt_varmvattentemperatur",
+    })
+
+    assert result["type"] == "create_entry"
+    assert result["data"][CONF_WATER_HEATER_TEMP_SENSOR] == "sensor.ivt_varmvattentemperatur"
+
+    # Testa Options Flow
+    options_flow = BatteryOptimizerLightOptionsFlow()
+    options_flow.config_entry = MagicMock(data={
+        CONF_BATTERY_TYPE: BATTERY_TYPE_GENERIC,
+        "api_url": "https://test",
+        CONF_WATER_HEATER_TEMP_SENSOR: "sensor.ivt_varmvattentemperatur"
+    })
+    options_flow.hass = MagicMock()
+
+    await options_flow.async_step_init({
+        "api_key": "new_key",
+        "api_url": "https://test",
+        CONF_WATER_HEATER_TEMP_SENSOR: "sensor.shelly_vvb_temp",
+    })
+
+    saved_data = options_flow.hass.config_entries.async_update_entry.call_args[1]["data"]
+    assert saved_data[CONF_WATER_HEATER_TEMP_SENSOR] == "sensor.shelly_vvb_temp"
+
+
+

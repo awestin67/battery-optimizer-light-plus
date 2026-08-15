@@ -209,10 +209,12 @@ När integrationen körs skapas automatiskt två entiteter för smart varmvatten
 Det finns två sätt att koppla din hårdvara:
 
 * **Alternativ 1 (Enklast – Direkt i inställningarna):**
-  Gå till *Inställningar -> Enheter och tjänster -> Battery Optimizer Light Plus -> Konfigurera* och välj din switch under **Varmvattenberedare / Plusvärme Switch**. Integrationen slår då automatiskt på och av switchen åt dig i realtid utan att du behöver skapa någon egen automation!
+  Gå till *Inställningar -> Enheter och tjänster -> Battery Optimizer Light Plus -> Konfigurera*:
+  - Välj din switch under **Varmvattenberedare / Plusvärme (Switch)**. Integrationen slår då automatiskt på och av switchen åt dig i realtid!
+  - *(Valfritt)* Välj din temperatursensor under **Varmvattentemperatur Sensor**. Temperaturen skickas då till molnet så att boost spärras automatiskt om tanken når inställd maxtemperatur (t.ex. 65 °C).
 
 * **Alternativ 2 (Via Automation):**
-  Om du har avancerade villkor eller vill styra via scripts/klimatenheter kan du lämna inställningsfältet tomt och istället skapa en vanlig Home Assistant-automation mot signalen `binary_sensor.battery_optimizer_water_heater_boost`:
+  Om du har avancerade villkor eller vill styra via scripts/klimatenheter kan du lämna switch-fältet tomt och istället skapa en vanlig Home Assistant-automation mot signalen `binary_sensor.battery_optimizer_water_heater_boost`:
 
 #### 1. Automation: IVT / Värmepump (Plusvärme / SG Ready)
 Koppla signalen till din värmepumps Plusvärme-switch eller SG Ready-ingång:

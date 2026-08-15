@@ -57,6 +57,8 @@ CONF_EXTERNAL_CONTROL_SENSOR = "external_control_sensor" # Sensor för CheckWatt
 CONF_MIN_SOC = "min_soc" # Backup-reserv för Generic-batterier
 CONF_GRAPH_HISTORY_HOURS = "graph_history_hours"
 CONF_WATER_HEATER_SWITCH = "water_heater_switch" # Switch för VVB/Plusvärme (Valfritt)
+CONF_WATER_HEATER_TEMP_SENSOR = "water_heater_temp_sensor" # Sensor för VVB-temperatur (Valfritt)
+
 
 
 # EV Smart Charging - Car 1
