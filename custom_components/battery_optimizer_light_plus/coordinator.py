@@ -20,8 +20,10 @@ import aiohttp
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_change
+from homeassistant.helpers.entity import DeviceInfo
 import homeassistant.util.dt as dt_util
 from .battery_factory import create_battery_api
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,6 +53,17 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         self.current_load_w = None
         self._is_passive_mode = False
         self._ev_lock = asyncio.Lock()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Gemensam enhetsinformation för integrationens entiteter."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.api_key)},
+            name="Battery Optimizer Light Plus",
+            manufacturer="Awestin Consulting",
+            model="Cloud Optimizer",
+            configuration_url="https://battery-prod.awestinconsulting.se",
+        )
 
     def setup_timer(self):
         """Startar schemaläggaren.

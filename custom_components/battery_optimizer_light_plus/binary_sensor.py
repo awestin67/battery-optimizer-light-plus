@@ -25,12 +25,64 @@ from .const import DOMAIN, CONF_BATTERY_TYPE, BATTERY_TYPE_HUAWEI, BATTERY_TYPE_
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
+    entities = [
+        BatteryOptimizerWaterHeaterBoostBinarySensor(coordinator, entry),
+    ]
+
     if entry.data.get(CONF_BATTERY_TYPE) == BATTERY_TYPE_HUAWEI:
-        async_add_entities([HuaweiConnectionSensor(coordinator)])
+        entities.append(HuaweiConnectionSensor(coordinator))
 
     if entry.data.get(CONF_BATTERY_TYPE) == BATTERY_TYPE_SONNEN:
         sonnen_coord = coordinator.battery_api.coordinator
-        async_add_entities([SonnenConnectionSensor(coordinator, sonnen_coord)])
+        entities.append(SonnenConnectionSensor(coordinator, sonnen_coord))
+
+    async_add_entities(entities)
+
+class BatteryOptimizerWaterHeaterBoostBinarySensor(CoordinatorEntity, BinarySensorEntity):
+    """Indikerar om Varmvattenberedare / Plusvärme ska vara aktiv."""
+    _attr_has_entity_name = True
+    _attr_translation_key = "water_heater_boost"
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
+    _attr_icon = "mdi:water-boiler"
+
+    def __init__(self, coordinator, entry=None):
+        super().__init__(coordinator)
+        self.entry = entry
+        entry_id = getattr(entry, "entry_id", None) if entry else None
+        if entry_id:
+            self._attr_unique_id = f"{entry_id}_water_heater_boost"
+        else:
+            api_key = getattr(coordinator, "api_key", "light_plus")
+            self._attr_unique_id = f"{api_key}_water_heater_boost"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        if hasattr(self.coordinator, "device_info") and isinstance(self.coordinator.device_info, DeviceInfo):
+            return self.coordinator.device_info
+        api_key = getattr(self.coordinator, "api_key", "light_plus")
+        return DeviceInfo(
+            identifiers={(DOMAIN, api_key)},
+            name="Battery Optimizer Light Plus",
+            manufacturer="Awestin Consulting",
+            model="Cloud Optimizer",
+            configuration_url="https://battery-prod.awestinconsulting.se",
+        )
+
+    @property
+    def is_on(self) -> bool:
+        """Returnerar True om optimeraren beordrar VVB Boost."""
+        if not self.coordinator.data:
+            return False
+        return bool(self.coordinator.data.get("water_heater_boost", False))
+
+    @property
+    def extra_state_attributes(self):
+        """Skickar med förklarande orsak som attribut."""
+        if not self.coordinator.data:
+            return {"reason": "Väntar på data"}
+        return {
+            "reason": self.coordinator.data.get("water_heater_reason", "Väntar på data"),
+        }
 
 class HuaweiConnectionSensor(BinarySensorEntity):
     """Visar om integrationen har kontakt med Huawei-utrustningen."""

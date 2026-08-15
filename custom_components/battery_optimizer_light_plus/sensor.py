@@ -63,6 +63,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         BatteryLightNextActionTimeSensor(coordinator),
         BatteryLightDynamicExportLimitSensor(coordinator),
         BatteryLightEVScheduleSensor(coordinator),
+        BatteryOptimizerWaterHeaterReasonSensor(coordinator, entry),
     ]
 
     if entry.data.get(CONF_BATTERY_TYPE) != BATTERY_TYPE_SONNEN:
@@ -750,3 +751,32 @@ class BatteryLightEVScheduleSensor(BatteryOptimizerSensorBase):
         return {
             "schedules": schedules
         }
+
+class BatteryOptimizerWaterHeaterReasonSensor(BatteryOptimizerSensorBase):
+    """Visar varför VVB körs eller pausas."""
+    _attr_has_entity_name = True
+    _attr_translation_key = "water_heater_reason"
+    _attr_icon = "mdi:water-boiler-alert"
+
+    def __init__(self, coordinator, entry=None):
+        super().__init__(coordinator)
+        self.entry = entry
+        entry_id = getattr(entry, "entry_id", None) if entry else None
+        if entry_id:
+            self._attr_unique_id = f"{entry_id}_water_heater_reason"
+        else:
+            api_key = getattr(coordinator, "api_key", "light_plus")
+            self._attr_unique_id = f"{api_key}_water_heater_reason"
+
+    @property
+    def native_value(self) -> str:
+        if not self.coordinator.data:
+            return "Okänd"
+        return str(self.coordinator.data.get("water_heater_reason", "Normal"))
+
+    @property
+    def state(self) -> str:
+        return self.native_value
+
+BatteryLightWaterHeaterReasonSensor = BatteryOptimizerWaterHeaterReasonSensor
+

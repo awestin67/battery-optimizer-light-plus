@@ -32,7 +32,8 @@ from custom_components.battery_optimizer_light_plus.sensor import (
     BatteryLightAISummarySensor,
     BatteryLightNextActionSensor,
     BatteryLightNextActionTimeSensor,
-    BatteryLightDynamicExportLimitSensor
+    BatteryLightDynamicExportLimitSensor,
+    BatteryOptimizerWaterHeaterReasonSensor,
 )
 from custom_components.battery_optimizer_light_plus.const import (
     DOMAIN,
@@ -53,7 +54,7 @@ async def test_sensor_setup_entry_generic():
 
     await async_setup_entry(hass, entry, async_add_entities)
     async_add_entities.assert_called_once()
-    assert len(async_add_entities.call_args[0][0]) == 16
+    assert len(async_add_entities.call_args[0][0]) == 17
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_huawei():
@@ -70,7 +71,7 @@ async def test_sensor_setup_entry_huawei():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 19
+    assert len(async_add_entities.call_args[0][0]) == 20
 
 @pytest.mark.asyncio
 async def test_sensor_setup_entry_sonnen():
@@ -83,7 +84,7 @@ async def test_sensor_setup_entry_sonnen():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 23
+    assert len(async_add_entities.call_args[0][0]) == 24
 
 def test_basic_sensors():
     coordinator = MagicMock()
@@ -312,3 +313,32 @@ def test_dynamic_export_limit_sensor_empty_data():
     assert sensor.state is None
     assert sensor.extra_state_attributes["limit_active"] is False
     assert sensor.extra_state_attributes["status_text"] == "Unlimited"
+
+def test_water_heater_reason_sensor():
+    coordinator = MagicMock()
+    coordinator.api_key = "test_key"
+    coordinator.data = {
+        "water_heater_reason": "Solöverskott (1.4 kW) | Batteri 94%"
+    }
+    entry = MagicMock(entry_id="entry_xyz")
+
+    sensor = BatteryOptimizerWaterHeaterReasonSensor(coordinator, entry)
+    assert sensor.native_value == "Solöverskott (1.4 kW) | Batteri 94%"
+    assert sensor.state == "Solöverskott (1.4 kW) | Batteri 94%"
+    assert sensor._attr_unique_id == "entry_xyz_water_heater_reason"
+
+    # Test without entry
+    sensor_no_entry = BatteryOptimizerWaterHeaterReasonSensor(coordinator)
+    assert sensor_no_entry._attr_unique_id == "test_key_water_heater_reason"
+
+    # Test with default fallback when reason key is missing in non-empty dict
+    coordinator.data = {"action": "HOLD"}
+    assert sensor.native_value == "Normal"
+
+    # Test with no data at all (or empty dict)
+    coordinator.data = None
+    assert sensor.native_value == "Okänd"
+
+    # Test device info
+    assert sensor.device_info["identifiers"] == {(DOMAIN, "test_key")}
+

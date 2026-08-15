@@ -27,6 +27,7 @@ Systemet kombinerar **Molnintelligens** (för prisoptimering och arbitrage) med 
     * Peka ut Helpers i Home Assistant (Target kWh, Max kW, Avresetid) och din "cable connected"-sensor.
     * När du sätter i kabeln räknar molnet automatiskt ut när laddningen ska starta och stoppa och exponerar en tidslinje som JSON på en sensor (`sensor.optimizer_light_ev_schedule`).
     * **Hur det fungerar:** Du skapar en egen automation i Home Assistant som läser av tidslinjen och skickar "Start" eller "Stop" till din specifika laddbox (Easee, Zaptec, Tesla, etc) vid rätt tillfälle.
+* **🚿 Smart Varmvattenoptimering (VVB Boost):** Optimeraren identifierar solöverskott och billiga eltimmar för att automatiskt värma varmvattenberedare eller aktivera plusvärme på värmepumpar (SG Ready / IVT). Exponeras via en `binary_sensor` och en förklarande statussensor.
 * **⏸️ Stöd för CheckWatt & Stödtjänster (Extern Paus):** Om ett externt system behöver exklusiv kontroll över batteriet kan du peka ut en Paus-sensor (t.ex. en `input_boolean` eller status-sensor för CheckWatt). 
   *(Integrationen reagerar automatiskt på tillstånden `on`, `true`, `1`, `active`, `yes`, `på` eller `sant`. Då pausas all styrning från Battery Optimizer och batteriet sätts i `IDLE` så att systemen inte slåss om kommandona).*
 * **🔌 Off-grid & Strömavbrottsskydd:** Peka ut en sensor som visar om huset är i off-grid-läge (t.ex. vid strömavbrott). Optimeraren pausas automatiskt tills nätströmmen är tillbaka. *(För Sonnen detekteras detta automatiskt via batteriets eget API).*
@@ -197,6 +198,77 @@ action:
 > [!IMPORTANT]
 > **Automatiskt Pausat Husbatteri:** Se till att du har angett en sensor för "Bilen laddar" (t.ex. din laddbox effekt-mätare) i integrationens inställningar. När laddboxen börjar dra ström känner integrationen av det och signalerar till molnet. Detta säkerställer att ditt husbatteri automatiskt **pausas** och inte slösas bort på elbilen!
 
+### 🚿 Smart Varmvattenoptimering (VVB Boost)
+
+När integrationen körs skapas automatiskt två entiteter för smart varmvattenstyrning:
+* `binary_sensor.battery_optimizer_water_heater_boost`: Slår om till `on` när optimeraren beordrar extra varmvattenuppvärmning (t.ex. vid billiga eltimmar eller vid solöverskott när hembatteriet är fulladdat).
+* `sensor.battery_optimizer_water_heater_reason`: Visar den aktuella orsaken i klartext (t.ex. *"Solöverskott (1.4 kW) | Batteri 94%"*).
+
+#### 1. Automation: IVT / Värmepump (Plusvärme / SG Ready)
+Koppla signalen till din värmepumps Plusvärme-switch eller SG Ready-ingång:
+
+```yaml
+alias: "🚿 IVT Plusvärme (Smart VVB)"
+description: "Aktiverar Plusvärme på värmepumpen vid billig el eller solöverskott"
+trigger:
+  - platform: state
+    entity_id: binary_sensor.battery_optimizer_water_heater_boost
+condition: []
+action:
+  - if:
+      - condition: state
+        entity_id: binary_sensor.battery_optimizer_water_heater_boost
+        state: "on"
+    then:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.ivt_extra_varmvatten   # <-- Din IVT Plusvärme entity
+    else:
+      - service: switch.turn_off
+        target:
+          entity_id: switch.ivt_extra_varmvatten   # <-- Din IVT Plusvärme entity
+mode: restart
+```
+
+#### 2. Automation: Extra VVB (Shelly-relä / Kontaktor)
+Om du styr en elpatron eller extra beredare via ett Shelly-relä eller kontaktor:
+
+```yaml
+alias: "🚿 Extra VVB Kontaktor (Smart VVB)"
+description: "Slår till elpatronen vid billig el eller solöverskott"
+trigger:
+  - platform: state
+    entity_id: binary_sensor.battery_optimizer_water_heater_boost
+condition: []
+action:
+  - if:
+      - condition: state
+        entity_id: binary_sensor.battery_optimizer_water_heater_boost
+        state: "on"
+    then:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.shelly_extra_vvb       # <-- Din Shelly-brytare
+    else:
+      - service: switch.turn_off
+        target:
+          entity_id: switch.shelly_extra_vvb       # <-- Din Shelly-brytare
+mode: restart
+```
+
+#### 3. Dashboard-kort i Home Assistant (Exempel)
+```yaml
+type: entities
+title: 🚿 Varmvattenoptimering
+entities:
+  - entity: binary_sensor.battery_optimizer_water_heater_boost
+    name: VVB Boost Status
+  - entity: sensor.battery_optimizer_water_heater_reason
+    name: Orsak
+  - entity: switch.extra_vvb
+    name: Beredare / Plusvärme
+```
+
 ---
 
 ## ℹ️ Sensorer & Övervakning
@@ -210,6 +282,8 @@ När systemet är igång skapas en mängd sensorer för att hjälpa dig övervak
 * 🛑 **`sensor.optimizer_light_peak_limit`**: Den effektgräns (i Watt) som effektvakten just nu försvarar.
 * 🏠 **`sensor.optimizer_light_virtual_load`**: Husets beräknade nettolast i realtid (W).
 * 🏠 **`sensor.optimizer_light_house_consumption`**: Husets faktiska förbrukning (W) som skickas till molnet.
+* 🚿 **`binary_sensor.battery_optimizer_water_heater_boost`**: Indikerar (`on`/`off`) om varmvattenberedare eller värmepumpens plusvärme ska aktiveras.
+* ℹ️ **`sensor.battery_optimizer_water_heater_reason`**: Förklarande orsak till varför varmvattenberedaren körs eller pausas (t.ex. vid solöverskott eller billig el).
 * 🔌 **`sensor.sonnen_grid_in_out`** *(Endast Sonnen)*: Visar det faktiska nätutbytet (Grid In/Out) i realtid (W). **Plus (+)** = Importerar (köper), **Minus (-)** = Exporterar (säljer).
 * 🔋 **`sensor.*_battery_in_out`** *(Sonnen, Huawei & Homevolt)*: Batteriets effekt i realtid (W). Standard för Sonnen/Homevolt/Generic är att **Minus (-)** = Laddar. För Huawei är detta inverterat (se notis under Huawei-sektionen ovan).
 * 📊 **`sensor.*_soc`** *(Sonnen, Huawei & Homevolt)*: Batteriets nuvarande laddningsnivå (%).

@@ -222,5 +222,17 @@
                 "168": "1 vecka (168h)"
             }
         }
+    },
+    "entity": {
+        "binary_sensor": {
+            "water_heater_boost": {
+                "name": "VVB Boost"
+            }
+        },
+        "sensor": {
+            "water_heater_reason": {
+                "name": "VVB Orsak"
+            }
+        }
     }
 }

@@ -17,7 +17,8 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from custom_components.battery_optimizer_light_plus.binary_sensor import (
-    async_setup_entry, HuaweiConnectionSensor, SonnenConnectionSensor
+    async_setup_entry, HuaweiConnectionSensor, SonnenConnectionSensor,
+    BatteryOptimizerWaterHeaterBoostBinarySensor
 )
 from custom_components.battery_optimizer_light_plus.const import (
     DOMAIN, CONF_BATTERY_TYPE, BATTERY_TYPE_HUAWEI, BATTERY_TYPE_SONNEN
@@ -35,7 +36,8 @@ async def test_binary_sensor_setup_entry_sonnen():
     await async_setup_entry(hass, entry, async_add_entities)
 
     entities = async_add_entities.call_args[0][0]
-    assert isinstance(entities[0], SonnenConnectionSensor)
+    assert any(isinstance(e, BatteryOptimizerWaterHeaterBoostBinarySensor) for e in entities)
+    assert any(isinstance(e, SonnenConnectionSensor) for e in entities)
 
 @pytest.mark.asyncio
 async def test_binary_sensor_setup_entry_huawei():
@@ -49,7 +51,37 @@ async def test_binary_sensor_setup_entry_huawei():
     await async_setup_entry(hass, entry, async_add_entities)
 
     entities = async_add_entities.call_args[0][0]
-    assert isinstance(entities[0], HuaweiConnectionSensor)
+    assert any(isinstance(e, BatteryOptimizerWaterHeaterBoostBinarySensor) for e in entities)
+    assert any(isinstance(e, HuaweiConnectionSensor) for e in entities)
+
+def test_water_heater_boost_binary_sensor():
+    coordinator = MagicMock()
+    coordinator.api_key = "12345"
+    coordinator.data = {
+        "water_heater_boost": True,
+        "water_heater_reason": "Solöverskott (1.4 kW) | Batteri 94%"
+    }
+    entry = MagicMock(entry_id="entry_abc")
+
+    sensor = BatteryOptimizerWaterHeaterBoostBinarySensor(coordinator, entry)
+    assert sensor.is_on is True
+    assert sensor.extra_state_attributes == {"reason": "Solöverskott (1.4 kW) | Batteri 94%"}
+    assert sensor._attr_unique_id == "entry_abc_water_heater_boost"
+
+    # Test without entry and with False boost
+    sensor_no_entry = BatteryOptimizerWaterHeaterBoostBinarySensor(coordinator)
+    coordinator.data["water_heater_boost"] = False
+    assert sensor_no_entry.is_on is False
+    assert sensor_no_entry._attr_unique_id == "12345_water_heater_boost"
+
+    # Test with no data
+    coordinator.data = None
+    assert sensor.is_on is False
+    assert sensor.extra_state_attributes == {"reason": "Väntar på data"}
+
+    # Test device info
+    assert sensor.device_info["identifiers"] == {(DOMAIN, "12345")}
+
 
 @pytest.mark.asyncio
 async def test_huawei_connection_sensor():

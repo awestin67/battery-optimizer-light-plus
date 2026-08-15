@@ -222,5 +222,17 @@
                 "168": "1 week (168h)"
             }
         }
+    },
+    "entity": {
+        "binary_sensor": {
+            "water_heater_boost": {
+                "name": "Water Heater Boost"
+            }
+        },
+        "sensor": {
+            "water_heater_reason": {
+                "name": "Water Heater Reason"
+            }
+        }
     }
 }
