@@ -16,6 +16,7 @@
 
 import pytest
 from unittest.mock import MagicMock, patch
+from homeassistant.const import EntityCategory
 from custom_components.battery_optimizer_light_plus.sensor import (
     async_setup_entry,
     BatteryLightActionSensor,
@@ -325,7 +326,9 @@ def test_water_heater_reason_sensor():
     sensor = BatteryOptimizerWaterHeaterReasonSensor(coordinator, entry)
     assert sensor.native_value == "Solöverskott (1.4 kW) | Batteri 94%"
     assert sensor.state == "Solöverskott (1.4 kW) | Batteri 94%"
-    assert sensor._attr_unique_id == "entry_xyz_water_heater_reason"
+    assert sensor._attr_unique_id == "test_key_water_heater_reason"
+    assert sensor._attr_name == "Optimizer Light VVB Orsak"
+    assert sensor._attr_entity_category == EntityCategory.DIAGNOSTIC
 
     # Test without entry
     sensor_no_entry = BatteryOptimizerWaterHeaterReasonSensor(coordinator)

@@ -40,25 +40,20 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 class BatteryOptimizerWaterHeaterBoostBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Indikerar om Varmvattenberedare / Plusvärme ska vara aktiv."""
-    _attr_has_entity_name = True
-    _attr_translation_key = "water_heater_boost"
     _attr_device_class = BinarySensorDeviceClass.RUNNING
     _attr_icon = "mdi:water-boiler"
 
     def __init__(self, coordinator, entry=None):
         super().__init__(coordinator)
+        self.coordinator = coordinator
         self.entry = entry
-        entry_id = getattr(entry, "entry_id", None) if entry else None
-        if entry_id:
-            self._attr_unique_id = f"{entry_id}_water_heater_boost"
-        else:
-            api_key = getattr(coordinator, "api_key", "light_plus")
-            self._attr_unique_id = f"{api_key}_water_heater_boost"
+        self._attr_name = "Optimizer Light VVB Boost"
+        api_key = getattr(coordinator, "api_key", "light_plus")
+        self._attr_unique_id = f"{api_key}_water_heater_boost"
+        self.entity_id = "binary_sensor.optimizer_light_vvb_boost"
 
     @property
     def device_info(self) -> DeviceInfo:
-        if hasattr(self.coordinator, "device_info") and isinstance(self.coordinator.device_info, DeviceInfo):
-            return self.coordinator.device_info
         api_key = getattr(self.coordinator, "api_key", "light_plus")
         return DeviceInfo(
             identifiers={(DOMAIN, api_key)},

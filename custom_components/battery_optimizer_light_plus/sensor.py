@@ -754,19 +754,16 @@ class BatteryLightEVScheduleSensor(BatteryOptimizerSensorBase):
 
 class BatteryOptimizerWaterHeaterReasonSensor(BatteryOptimizerSensorBase):
     """Visar varför VVB körs eller pausas."""
-    _attr_has_entity_name = True
-    _attr_translation_key = "water_heater_reason"
     _attr_icon = "mdi:water-boiler-alert"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator, entry=None):
         super().__init__(coordinator)
         self.entry = entry
-        entry_id = getattr(entry, "entry_id", None) if entry else None
-        if entry_id:
-            self._attr_unique_id = f"{entry_id}_water_heater_reason"
-        else:
-            api_key = getattr(coordinator, "api_key", "light_plus")
-            self._attr_unique_id = f"{api_key}_water_heater_reason"
+        self._attr_name = "Optimizer Light VVB Orsak"
+        api_key = getattr(coordinator, "api_key", "light_plus")
+        self._attr_unique_id = f"{api_key}_water_heater_reason"
+        self.entity_id = "sensor.optimizer_light_vvb_orsak"
 
     @property
     def native_value(self) -> str:

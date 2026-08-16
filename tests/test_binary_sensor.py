@@ -66,7 +66,8 @@ def test_water_heater_boost_binary_sensor():
     sensor = BatteryOptimizerWaterHeaterBoostBinarySensor(coordinator, entry)
     assert sensor.is_on is True
     assert sensor.extra_state_attributes == {"reason": "Solöverskott (1.4 kW) | Batteri 94%"}
-    assert sensor._attr_unique_id == "entry_abc_water_heater_boost"
+    assert sensor._attr_unique_id == "12345_water_heater_boost"
+    assert sensor._attr_name == "Optimizer Light VVB Boost"
 
     # Test without entry and with False boost
     sensor_no_entry = BatteryOptimizerWaterHeaterBoostBinarySensor(coordinator)
