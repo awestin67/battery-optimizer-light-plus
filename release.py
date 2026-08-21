@@ -338,7 +338,7 @@ def run_hacs_validation_local():
         print(f"⚠️  Kunde inte läsa manifest för HACS-koll: {e}")
 
 def check_images():
-    """Kollar att bilder finns för HA UI och skapar icon.png om den saknas."""
+    """Kollar att bilder finns för HA UI."""
     print("\n--- 🖼️  KOLLAR BILDER ---")
     comp_dir = BASE_DIR / "custom_components" / "battery_optimizer_light_plus"
     brand_dir = comp_dir / "brand"
@@ -349,26 +349,15 @@ def check_images():
     logo_path = brand_dir / "logo.png"
     icon_path = brand_dir / "icon.png"
 
-    old_logo_path = comp_dir / "logo.png"
-    old_icon_path = comp_dir / "icon.png"
-
-    if old_logo_path.exists() and not logo_path.exists():
-        print("📦 Flyttar gamla logo.png till brand-mappen...")
-        shutil.move(str(old_logo_path), str(logo_path))
-
-    if old_icon_path.exists() and not icon_path.exists():
-        print("📦 Flyttar gamla icon.png till brand-mappen...")
-        shutil.move(str(old_icon_path), str(icon_path))
-
-    if logo_path.exists() and (not icon_path.exists() or icon_path.stat().st_size == 0):
-        print("⚠️  brand/icon.png saknas (krävs för integrationslistan).")
-        print("   Kopierar brand/logo.png till brand/icon.png...")
-        shutil.copyfile(logo_path, icon_path)
-        print("✅ brand/icon.png skapad.")
-    elif icon_path.exists():
-        print("✅ brand/icon.png finns.")
+    if icon_path.exists() and icon_path.stat().st_size > 0:
+        print(f"✅ brand/icon.png finns ({icon_path.stat().st_size // 1024} KB).")
     else:
-        print("⚠️  Ingen logo.png hittades i brand-mappen. Integrationen kommer sakna bilder i HA.")
+        print("⚠️  brand/icon.png saknas eller är tom.")
+
+    if logo_path.exists() and logo_path.stat().st_size > 0:
+        print(f"✅ brand/logo.png finns ({logo_path.stat().st_size // 1024} KB).")
+    else:
+        print("⚠️  brand/logo.png saknas eller är tom.")
 
 def get_github_repo_slug():
     """Hämtar 'user/repo' från git config."""

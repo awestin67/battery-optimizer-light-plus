@@ -11,8 +11,6 @@
   "documentation": "https://github.com/awestin67/battery-optimizer-light-plus",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/awestin67/battery-optimizer-light-plus/issues",
-  "requirements": [
-    "aiohttp"
-  ],
+  "requirements": [],
   "version": "0.15.1"
 }

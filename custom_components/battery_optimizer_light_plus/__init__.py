@@ -892,12 +892,12 @@ class PeakGuard:
         try:
             api_url = f"{self._base_api_url}/report_peak"
             payload = {
-                "api_key": self.config[CONF_API_KEY],
                 "grid_power_kw": round(grid_w / 1000.0, 2),
                 "limit_kw": round(limit_w / 1000.0, 2)
             }
+            headers = {"X-API-Key": self.config[CONF_API_KEY]}
             session = async_get_clientsession(self.hass)
-            async with session.post(api_url, json=payload, timeout=10) as resp:
+            async with session.post(api_url, json=payload, headers=headers, timeout=10) as resp:
                 if resp.status == 200:
                     _LOGGER.debug(f"Cloud report sent: PeakGuard Triggered: {payload['grid_power_kw']} kW")
         except Exception as e:
@@ -907,12 +907,12 @@ class PeakGuard:
         try:
             api_url = f"{self._base_api_url}/report_peak_clear"
             payload = {
-                "api_key": self.config[CONF_API_KEY],
                 "grid_power_kw": round(grid_w / 1000.0, 2),
                 "limit_kw": round(limit_w / 1000.0, 2)
             }
+            headers = {"X-API-Key": self.config[CONF_API_KEY]}
             session = async_get_clientsession(self.hass)
-            async with session.post(api_url, json=payload, timeout=10) as resp:
+            async with session.post(api_url, json=payload, headers=headers, timeout=10) as resp:
                 if resp.status == 200:
                     _LOGGER.debug(f"Cloud report sent: PeakGuard Cleared: {payload['grid_power_kw']} kW")
         except Exception as e:
@@ -922,12 +922,12 @@ class PeakGuard:
         try:
             api_url = f"{self._base_api_url}/report_peak_failure"
             payload = {
-                "api_key": self.config[CONF_API_KEY],
                 "grid_power_kw": round(grid_w / 1000.0, 2),
                 "limit_kw": round(limit_w / 1000.0, 2)
             }
+            headers = {"X-API-Key": self.config[CONF_API_KEY]}
             session = async_get_clientsession(self.hass)
-            async with session.post(api_url, json=payload, timeout=10) as resp:
+            async with session.post(api_url, json=payload, headers=headers, timeout=10) as resp:
                 if resp.status == 200:
                     _LOGGER.debug(f"Cloud report sent: PeakGuard Failure: {payload['grid_power_kw']} kW")
         except Exception as e:
@@ -937,12 +937,12 @@ class PeakGuard:
         try:
             api_url = f"{self._base_api_url}/report_solar_override"
             payload = {
-                "api_key": self.config[CONF_API_KEY],
                 "grid_power_kw": round(grid_w / 1000.0, 2),
                 "limit_kw": round(limit_w / 1000.0, 2)
             }
+            headers = {"X-API-Key": self.config[CONF_API_KEY]}
             session = async_get_clientsession(self.hass)
-            async with session.post(api_url, json=payload, timeout=10) as resp:
+            async with session.post(api_url, json=payload, headers=headers, timeout=10) as resp:
                 if resp.status == 200:
                     _LOGGER.debug(f"Cloud report sent: Solar Override: {payload['grid_power_kw']} kW")
         except Exception as e:
@@ -952,12 +952,12 @@ class PeakGuard:
         try:
             api_url = f"{self._base_api_url}/report_solar_override_clear"
             payload = {
-                "api_key": self.config[CONF_API_KEY],
                 "grid_power_kw": round(grid_w / 1000.0, 2),
                 "limit_kw": round(limit_w / 1000.0, 2)
             }
+            headers = {"X-API-Key": self.config[CONF_API_KEY]}
             session = async_get_clientsession(self.hass)
-            async with session.post(api_url, json=payload, timeout=10) as resp:
+            async with session.post(api_url, json=payload, headers=headers, timeout=10) as resp:
                 if resp.status == 200:
                     _LOGGER.debug(f"Cloud report sent: Solar Override Cleared: {payload['grid_power_kw']} kW")
         except Exception as e:
@@ -979,7 +979,6 @@ class BatteryOptimizerGraphView(HomeAssistantView):
     """Exponerar grafdata via ett internt API för att slippa 16KB-gränsen på sensorattribut."""
     url = "/api/battery_optimizer_graph_data"
     name = "api:battery_optimizer_graph_data"
-    requires_auth = False
 
     def __init__(self, hass: HomeAssistant):
         self.hass = hass
@@ -987,8 +986,8 @@ class BatteryOptimizerGraphView(HomeAssistantView):
     async def get(self, request):
         result = {}
         domain_data = self.hass.data.get(DOMAIN, {})
-        for coordinator in domain_data.values():
-            if hasattr(coordinator, "api_key") and hasattr(coordinator, "data"):
+        for entry_id, coordinator in domain_data.items():
+            if hasattr(coordinator, "data"):
                 graph_data = coordinator.data.get("graph_data", {}) if coordinator.data else {}
-                result[coordinator.api_key] = graph_data
+                result[entry_id] = graph_data
         return self.json(result)

@@ -2779,5 +2779,113 @@ async def test_water_heater_temp_sensor_payload(mock_hass_instance, mock_battery
         assert sent_payload["water_heater_temp"] == 56.4
 
 
+@pytest.mark.asyncio
+async def test_graph_view_requires_auth_and_keys_by_entry_id(mock_hass_instance):
+    """Testar att BatteryOptimizerGraphView kräver auth och indexerar på entry_id istället för api_key."""
+    from custom_components.battery_optimizer_light_plus import BatteryOptimizerGraphView
+    from custom_components.battery_optimizer_light_plus.const import DOMAIN
+
+    # 1. Verifiera att requires_auth INTE är False (default i HomeAssistantView är True)
+    assert getattr(BatteryOptimizerGraphView, "requires_auth", True) is True
+
+    # 2. Skapa mock-koordinator med entry_id och hemlig api_key
+    mock_coord = MagicMock()
+    mock_coord.api_key = "secret_credential_12345"
+    mock_coord.data = {"graph_data": {"history": [{"action": "CHARGE"}]}}
+
+    mock_hass_instance.data = {
+        DOMAIN: {
+            "test_entry_id_abc": mock_coord
+        }
+    }
+
+    view = BatteryOptimizerGraphView(mock_hass_instance)
+    mock_request = MagicMock()
+    view.json = MagicMock(side_effect=lambda x: x)
+
+    response_data = await view.get(mock_request)
+    # Svaret ska vara indexerat på entry_id
+    assert "test_entry_id_abc" in response_data
+    # Användarens hemliga API-nyckel ska ALDRIG finnas som nyckel i svaret
+    assert "secret_credential_12345" not in response_data
+    assert response_data["test_entry_id_abc"] == {"history": [{"action": "CHARGE"}]}
+
+
+@pytest.mark.asyncio
+async def test_signal_sends_api_key_in_headers_and_sanitizes_logs(mock_hass_instance, mock_battery, caplog):
+    """Testar att /signal skickar API-nyckeln i X-API-Key headern och inte läcker nyckeln i loggen."""
+    import logging
+    from custom_components.battery_optimizer_light_plus.coordinator import BatteryOptimizerLightCoordinator
+
+    config = {
+        "api_url": "https://test.app",
+        "api_key": "my_secret_key_999",
+        "battery_type": "generic",
+        "soc_sensor": "sensor.soc",
+    }
+
+    mock_soc = MagicMock()
+    mock_soc.state = "50"
+    mock_hass_instance.states.get.return_value = mock_soc
+
+    coord = BatteryOptimizerLightCoordinator(mock_hass_instance, config, version="0.15.1")
+    coord.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+    mock_battery.get_min_soc.return_value = 0.0
+
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.json = AsyncMock(return_value={"action": "IDLE", "target_power_kw": 0.0})
+
+    mock_session = MagicMock()
+    mock_session.post.return_value.__aenter__.return_value = mock_resp
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target, return_value=mock_session), caplog.at_level(logging.DEBUG):
+        await coord._async_update_data()
+
+        call_kwargs = mock_session.post.call_args[1]
+        sent_headers = call_kwargs["headers"]
+
+        # API-nyckeln ska ligga i headern
+        assert sent_headers.get("X-API-Key") == "my_secret_key_999"
+
+        # API-nyckeln ska INTE finnas i JSON-payloaden
+        assert "api_key" not in call_kwargs["json"]
+
+        # Loggarna ska ALDRIG innehålla "Light-Request" med hemligheten
+        for record in caplog.records:
+            if "Light-Request:" in record.message:
+                assert "my_secret_key_999" not in record.message
+
+
+
+
+def test_manifest_and_hacs_compliance():
+    """Testar att manifest.json och hacs.json uppfyller kraven från Frenck."""
+    import json
+    from pathlib import Path
+
+    base_path = Path(__file__).parent.parent
+    manifest_path = base_path / "custom_components" / "battery_optimizer_light_plus" / "manifest.json"
+    hacs_path = base_path / "hacs.json"
+
+    with open(manifest_path, encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    with open(hacs_path, encoding="utf-8") as f:
+        hacs = json.load(f)
+
+    # 1. Minsta version deklarerad i hacs.json (HACS floor)
+    assert hacs.get("homeassistant") == "2024.11.0"
+    # manifest.json ska inte ha extra nycklar som ogiltigförklarar Hassfest
+    assert "homeassistant" not in manifest
+
+    # 2. aiohttp borttagen ur requirements (eftersom det tillhandahålls av core)
+    assert manifest.get("requirements") == []
+
+
+
+
 
 

@@ -306,7 +306,6 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                 # 5. Payload (Endast det backend behöver)
                 payload = {
-                    "api_key": self.api_key,
                     "soc": reported_soc,
                     "is_solar_override": is_solar_override,
                     "is_in_maintenance": is_in_maintenance,
@@ -325,8 +324,10 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                 _LOGGER.debug(f"Light-Request: {payload}")
 
+                headers = {"X-API-Key": self.api_key}
+
                 async with session.post(
-                    self.api_url, json=payload, timeout=aiohttp.ClientTimeout(total=30)
+                    self.api_url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=30)
                 ) as response:
                     if response.status == 401:
                         text = await response.text()
@@ -543,7 +544,6 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             return
 
         payload = {
-            "api_key": self.api_key,
             "cars": cars_payload
         }
 
@@ -551,9 +551,10 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         url = f"{base_url}/api/ev/plan"
         _LOGGER.debug(f"Hämtar EV-laddplan från {url}: {payload}")
 
+        headers = {"X-API-Key": self.api_key}
         session = async_get_clientsession(self.hass)
         try:
-            async with session.post(url, json=payload, timeout=20) as resp:
+            async with session.post(url, json=payload, headers=headers, timeout=20) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     schedules = data.get("schedules", {})
@@ -596,11 +597,11 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         # 2. Skicka DELETE till backend
         base_url = getattr(self, "base_api_url", self.config.get("api_url", "").rstrip("/"))
         url = f"{base_url}/api/ev/plan/{cname}"
-        params = {"api_key": self.api_key}
+        headers = {"X-API-Key": self.api_key}
         session = async_get_clientsession(self.hass)
 
         try:
-            async with session.delete(url, params=params, timeout=10) as resp:
+            async with session.delete(url, headers=headers, timeout=10) as resp:
                 if resp.status == 200:
                     _LOGGER.info(f"Schemat för {cname} raderades i molnet.")
                     # Tvinga fram en uppdatering av grafdatan
