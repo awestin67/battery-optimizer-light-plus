@@ -409,8 +409,10 @@ series:
     show:
       legend_value: false
     data_generator: >
-      return fetch('/api/battery_optimizer_graph_data').then(r =>
-      r.json()).then(d => {
+      const ha = document.querySelector('home-assistant') || document.querySelector('hc-main');
+      const hassObj = (typeof hass !== 'undefined' && hass) || (ha && ha.hass);
+      const token = hassObj && hassObj.auth && hassObj.auth.data ? hassObj.auth.data.access_token : '';
+      return fetch('/api/battery_optimizer_graph_data', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} }).then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const hist = (api.history || []).filter(x => x.action === 'CHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
         const fore = (api.forecast || []).filter(x => x.action === 'CHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
@@ -424,8 +426,10 @@ series:
     show:
       legend_value: false
     data_generator: >
-      return fetch('/api/battery_optimizer_graph_data').then(r =>
-      r.json()).then(d => {
+      const ha = document.querySelector('home-assistant') || document.querySelector('hc-main');
+      const hassObj = (typeof hass !== 'undefined' && hass) || (ha && ha.hass);
+      const token = hassObj && hassObj.auth && hassObj.auth.data ? hassObj.auth.data.access_token : '';
+      return fetch('/api/battery_optimizer_graph_data', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} }).then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const hist = (api.history || []).filter(x => x.action === 'DISCHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
         const fore = (api.forecast || []).filter(x => x.action === 'DISCHARGE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
@@ -439,8 +443,10 @@ series:
     show:
       legend_value: false
     data_generator: >
-      return fetch('/api/battery_optimizer_graph_data').then(r =>
-      r.json()).then(d => {
+      const ha = document.querySelector('home-assistant') || document.querySelector('hc-main');
+      const hassObj = (typeof hass !== 'undefined' && hass) || (ha && ha.hass);
+      const token = hassObj && hassObj.auth && hassObj.auth.data ? hassObj.auth.data.access_token : '';
+      return fetch('/api/battery_optimizer_graph_data', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} }).then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const hist = (api.history || []).filter(x => x.action === 'HOLD').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
         const fore = (api.forecast || []).filter(x => x.action === 'HOLD').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
@@ -454,8 +460,10 @@ series:
     show:
       legend_value: false
     data_generator: >
-      return fetch('/api/battery_optimizer_graph_data').then(r =>
-      r.json()).then(d => {
+      const ha = document.querySelector('home-assistant') || document.querySelector('hc-main');
+      const hassObj = (typeof hass !== 'undefined' && hass) || (ha && ha.hass);
+      const token = hassObj && hassObj.auth && hassObj.auth.data ? hassObj.auth.data.access_token : '';
+      return fetch('/api/battery_optimizer_graph_data', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} }).then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const hist = (api.history || []).filter(x => x.action === 'IDLE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
         const fore = (api.forecast || []).filter(x => x.action === 'IDLE').map(x => [new Date(x.timestamp).getTime(), x.price_sek]);
@@ -506,8 +514,10 @@ series:
     show:
       legend_value: false
     data_generator: >
-      return fetch('/api/battery_optimizer_graph_data').then(r =>
-      r.json()).then(d => {
+      const ha = document.querySelector('home-assistant') || document.querySelector('hc-main');
+      const hassObj = (typeof hass !== 'undefined' && hass) || (ha && ha.hass);
+      const token = hassObj && hassObj.auth && hassObj.auth.data ? hassObj.auth.data.access_token : '';
+      return fetch('/api/battery_optimizer_graph_data', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} }).then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const now = new Date().getTime();
         return (api.history || []).filter(x => new Date(x.timestamp).getTime() <= now).map(x => {
@@ -527,8 +537,10 @@ series:
     show:
       legend_value: false
     data_generator: >
-      return fetch('/api/battery_optimizer_graph_data').then(r =>
-      r.json()).then(d => {
+      const ha = document.querySelector('home-assistant') || document.querySelector('hc-main');
+      const hassObj = (typeof hass !== 'undefined' && hass) || (ha && ha.hass);
+      const token = hassObj && hassObj.auth && hassObj.auth.data ? hassObj.auth.data.access_token : '';
+      return fetch('/api/battery_optimizer_graph_data', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} }).then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const fore = (api.forecast || []).map(x => [new Date(x.timestamp).getTime(), x.simulated_soc]);
         const hist = api.history || [];
@@ -549,8 +561,10 @@ series:
     show:
       legend_value: false
     data_generator: >
-      return fetch('/api/battery_optimizer_graph_data').then(r =>
-      r.json()).then(d => {
+      const ha = document.querySelector('home-assistant') || document.querySelector('hc-main');
+      const hassObj = (typeof hass !== 'undefined' && hass) || (ha && ha.hass);
+      const token = hassObj && hassObj.auth && hassObj.auth.data ? hassObj.auth.data.access_token : '';
+      return fetch('/api/battery_optimizer_graph_data', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} }).then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const now = new Date().getTime();
         return (api.history || []).filter(x => x.solar_kw !== undefined && new Date(x.timestamp).getTime() <= now).map(x => [new Date(x.timestamp).getTime(), x.solar_kw]);
@@ -567,8 +581,10 @@ series:
     show:
       legend_value: false
     data_generator: >
-      return fetch('/api/battery_optimizer_graph_data').then(r =>
-      r.json()).then(d => {
+      const ha = document.querySelector('home-assistant') || document.querySelector('hc-main');
+      const hassObj = (typeof hass !== 'undefined' && hass) || (ha && ha.hass);
+      const token = hassObj && hassObj.auth && hassObj.auth.data ? hassObj.auth.data.access_token : '';
+      return fetch('/api/battery_optimizer_graph_data', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} }).then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const fore = (api.forecast || []).map(x => [new Date(x.timestamp).getTime(), x.solar_kw]);
         const hist = (api.history || []).filter(x => x.current_solar_kw !== undefined);
@@ -588,8 +604,10 @@ series:
     show:
       legend_value: false
     data_generator: >
-      return fetch('/api/battery_optimizer_graph_data').then(r =>
-      r.json()).then(d => {
+      const ha = document.querySelector('home-assistant') || document.querySelector('hc-main');
+      const hassObj = (typeof hass !== 'undefined' && hass) || (ha && ha.hass);
+      const token = hassObj && hassObj.auth && hassObj.auth.data ? hassObj.auth.data.access_token : '';
+      return fetch('/api/battery_optimizer_graph_data', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} }).then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const hist = (api.history || []).filter(x => x.house_base_load_kw !== undefined).map(x => [new Date(x.timestamp).getTime(), x.house_base_load_kw]);
         const fore = (api.forecast || []).filter(x => x.base_load_kw !== undefined).map(x => [new Date(x.timestamp).getTime(), x.base_load_kw]);
@@ -632,8 +650,10 @@ series:
     type: column
     unit: " SEK"
     data_generator: >
-      return fetch('/api/battery_optimizer_graph_data').then(r =>
-      r.json()).then(d => {
+      const ha = document.querySelector('home-assistant') || document.querySelector('hc-main');
+      const hassObj = (typeof hass !== 'undefined' && hass) || (ha && ha.hass);
+      const token = hassObj && hassObj.auth && hassObj.auth.data ? hassObj.auth.data.access_token : '';
+      return fetch('/api/battery_optimizer_graph_data', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} }).then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         const hourly = {};
         const now = new Date().getTime();
@@ -663,8 +683,10 @@ series:
     stroke_width: 3
     extend_to: false
     data_generator: >
-      return fetch('/api/battery_optimizer_graph_data').then(r =>
-      r.json()).then(d => {
+      const ha = document.querySelector('home-assistant') || document.querySelector('hc-main');
+      const hassObj = (typeof hass !== 'undefined' && hass) || (ha && ha.hass);
+      const token = hassObj && hassObj.auth && hassObj.auth.data ? hassObj.auth.data.access_token : '';
+      return fetch('/api/battery_optimizer_graph_data', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} }).then(r => r.json()).then(d => {
         const api = Object.values(d)[0] || {};
         let sum = 0;
         const now = new Date().getTime();
