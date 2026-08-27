@@ -2,9 +2,11 @@
 
 <img src="https://raw.githubusercontent.com/awestin67/battery-optimizer-light-plus/main/custom_components/battery_optimizer_light_plus/brand/logo.png" alt="Logo" width="200"/>
 
-[![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![HACS](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
 [![Validate and Test](https://github.com/awestin67/battery-optimizer-light-plus/actions/workflows/run_tests.yml/badge.svg)](https://github.com/awestin67/battery-optimizer-light-plus/actions/workflows/run_tests.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=awestin67&repository=battery-optimizer-light-plus&category=integration)
 
 **Battery Optimizer Light Plus** är en lättviktig hybridlösning som kopplar din Home Assistant till en smart molntjänst för hembatterier.
 
@@ -72,14 +74,26 @@ För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men s
 
 ---
 
-##  Installation
+## 📦 Installation
 
-### Via HACS (Rekommenderas)
-1. Se till att HACS är installerat.
-2. Gå till **HACS** -> **Integrationer**.
-3. Klicka på de tre prickarna uppe till höger och välj **Anpassade arkiv (Custom repositories)**.
-4. Lägg till URL: `https://github.com/awestin67/battery-optimizer-light-plus` och välj kategori **Integration**.
-5. Ladda ner "Battery Optimizer Light Plus" och starta om Home Assistant.
+### Alternativ 1: Direkt via My Home Assistant (Snabbast)
+Klicka på knappen nedan för att öppna integrationen direkt i HACS:
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=awestin67&repository=battery-optimizer-light-plus&category=integration)
+
+### Alternativ 2: Sök i HACS
+1. Öppna **HACS** i din Home Assistant.
+2. Gå till **Integrationer** och sök efter **Battery Optimizer Light Plus**.
+3. Klicka på **Ladda ner** och starta om Home Assistant vid behov.
+
+<details>
+<summary><b>Installera som anpassat arkiv (om den inte syns i standardkatalogen ännu)</b></summary>
+
+1. Gå till **HACS** -> **Integrationer**.
+2. Klicka på de tre prickarna uppe till höger och välj **Anpassade arkiv (Custom repositories)**.
+3. Lägg till URL: `https://github.com/awestin67/battery-optimizer-light-plus` och välj kategori **Integration**.
+4. Ladda ner "Battery Optimizer Light Plus" och starta om Home Assistant.
+</details>
 
 ### Konfiguration
 1. Gå till **Inställningar** -> **Enheter & Tjänster**.
