@@ -11,6 +11,7 @@
                     "solis_modbus": "Solis Modbus",
                     "sigenergy": "Sigenergy",
                     "solinteg": "Solinteg",
+                    "kostal": "Kostal Plenticore",
                     "generic": "Generic / Övriga (Ingen lokal styrning)"
                 }
             },
@@ -76,6 +77,16 @@
                 },
                 "data_description": {
                     "battery_device_id": "Välj din Solinteg-växelriktare i listan så integrationen vet var kommandona ska skickas."
+                }
+            },
+            "kostal": {
+                "title": "Konfigurera Kostal Plenticore",
+                "description": "Välj din Kostal Plenticore-enhet. IP-adress och sensorer hittas automatiskt.\n\n**Viktigt:** Du måste först ställa in batterihantering till 'Extern styrning via Modbus-protokoll (TCP)' i Kostals webbgränssnitt.",
+                "data": {
+                    "battery_device_id": "Kostal Plenticore-enhet"
+                },
+                "data_description": {
+                    "battery_device_id": "Välj din Kostal Plenticore-växelriktare i listan. Integrationen upptäcker sensorer automatiskt och använder Modbus TCP för batteristyrning."
                 }
             },
             "common": {

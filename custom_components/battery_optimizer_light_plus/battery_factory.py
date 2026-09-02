@@ -24,6 +24,7 @@ from .const import (
     BATTERY_TYPE_SOLIS_MODBUS,
     BATTERY_TYPE_SIGENERGY,
     BATTERY_TYPE_SOLINTEG,
+    BATTERY_TYPE_KOSTAL,
     CONF_HOST,
     CONF_PORT,
     CONF_API_TOKEN,
@@ -36,6 +37,11 @@ from .const import (
     CONF_BATTERY_POWER_SENSOR,
     CONF_BATTERY_SENSOR_INVERT,
     CONF_VIRTUAL_LOAD_SENSOR,
+    CONF_SOLAR_SENSOR,
+)
+from .const import (
+    DEFAULT_KOSTAL_PORT,
+    DEFAULT_KOSTAL_SLAVE_ID,
 )
 from .batteries.base import BatteryApi
 
@@ -126,6 +132,23 @@ def create_battery_api(hass: HomeAssistant, config: dict) -> BatteryApi:
             invert_grid=config.get(CONF_GRID_SENSOR_INVERT, False),
             invert_battery=config.get(CONF_BATTERY_SENSOR_INVERT, False),
         )
+
+    elif battery_type == BATTERY_TYPE_KOSTAL:
+        from .batteries.kostal.kostal import KostalBattery
+
+        battery = KostalBattery(
+            hass=hass,
+            host=config[CONF_HOST],
+            port=config.get(CONF_PORT, DEFAULT_KOSTAL_PORT),
+            slave_id=config.get("kostal_slave_id", DEFAULT_KOSTAL_SLAVE_ID),
+            soc_entity=config.get(CONF_SOC_SENSOR),
+            grid_entity=config.get(CONF_GRID_SENSOR),
+            battery_power_entity=config.get(CONF_BATTERY_POWER_SENSOR),
+            load_entity=config.get(CONF_VIRTUAL_LOAD_SENSOR),
+            solar_entity=config.get(CONF_SOLAR_SENSOR),
+            status_entity=config.get(CONF_DEVICE_STATUS_ENTITY),
+        )
+
     else:
         from .batteries.generic import GenericBattery
         battery = GenericBattery(hass, config.get(CONF_SOC_SENSOR))

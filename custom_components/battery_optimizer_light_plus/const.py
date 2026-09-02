@@ -26,6 +26,11 @@ BATTERY_TYPE_HOMEVOLT = "homevolt"
 BATTERY_TYPE_SOLIS_MODBUS = "solis_modbus"
 BATTERY_TYPE_SIGENERGY = "sigenergy"
 BATTERY_TYPE_SOLINTEG = "solinteg"
+BATTERY_TYPE_KOSTAL = "kostal"
+
+# Kostal Plenticore Modbus-inställningar
+DEFAULT_KOSTAL_PORT = 1502
+DEFAULT_KOSTAL_SLAVE_ID = 71
 
 # Konfiguration
 CONF_API_KEY = "api_key"

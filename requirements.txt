@@ -1,5 +1,15 @@
-requests
-python-dotenv
+# Integrationens beroenden
+aiohttp
+voluptuous
+async-timeout
+pymodbus
+
+# Test & Lint
 pytest
 pytest-asyncio
+pytest-cov
 ruff
+
+# Release-skript (release.py)
+requests
+python-dotenv

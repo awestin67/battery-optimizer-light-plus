@@ -122,5 +122,11 @@ class MockSwitchEntity(MockEntity):
 mock_switch.SwitchEntity = MockSwitchEntity
 sys.modules["homeassistant.components.switch"] = mock_switch
 
+# --- MOCK PYMODBUS ---
+mock_pymodbus = MagicMock()
+sys.modules["pymodbus"] = mock_pymodbus
+sys.modules["pymodbus.client"] = mock_pymodbus
+
 # Lägg till rotmappen i sökvägen så vi kan importera komponenten i alla tester
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+

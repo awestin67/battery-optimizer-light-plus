@@ -27,6 +27,7 @@ from custom_components.battery_optimizer_light_plus.const import (
     BATTERY_TYPE_GENERIC,
     BATTERY_TYPE_HOMEVOLT,
     BATTERY_TYPE_SOLIS_MODBUS,
+    BATTERY_TYPE_KOSTAL,
     CONF_BATTERY_SENSOR_INVERT,
     CONF_GRID_SENSOR_INVERT,
 )
@@ -39,6 +40,9 @@ HOMEVOLT_DISCOVERY_PATH = (
 )
 SOLIS_DISCOVERY_PATH = (
     "custom_components.battery_optimizer_light_plus.config_flow.async_auto_discover_solis_entities"
+)
+KOSTAL_DISCOVERY_PATH = (
+    "custom_components.battery_optimizer_light_plus.config_flow.async_auto_discover_kostal_entities"
 )
 
 @pytest.mark.asyncio
@@ -643,6 +647,103 @@ async def test_config_flow_water_heater_temp_sensor():
 
     saved_data = options_flow.hass.config_entries.async_update_entry.call_args[1]["data"]
     assert saved_data[CONF_WATER_HEATER_TEMP_SENSOR] == "sensor.shelly_vvb_temp"
+
+
+@pytest.mark.asyncio
+async def test_config_flow_kostal():
+    """Testar att Kostal-steget hämtar host/port, auto-discovery och går vidare till common."""
+    from custom_components.battery_optimizer_light_plus.const import (
+        CONF_BATTERY_DEVICE_ID,
+        CONF_HOST,
+        CONF_PORT,
+    )
+
+    flow = BatteryOptimizerLightConfigFlow()
+    flow.hass = MagicMock()
+
+    # Första anropet visar formuläret
+    result = await flow.async_step_kostal()
+    assert result["type"] == "form"
+    assert result["step_id"] == "kostal"
+
+    # Mocka device registry och config entries
+    mock_device = MagicMock()
+    mock_device.config_entries = {"kostal_entry_1"}
+    flow.hass.config_entries.async_get_entry.return_value = MagicMock(
+        data={"host": "192.168.1.150"}
+    )
+
+    with patch("homeassistant.helpers.device_registry.async_get") as mock_dr, \
+         patch(KOSTAL_DISCOVERY_PATH) as mock_discover:
+        mock_dr.return_value.async_get.return_value = mock_device
+        mock_discover.return_value = {
+            "soc_sensor": "sensor.plenticore_battery_soc",
+            "virtual_load_sensor": "sensor.plenticore_home_power",
+        }
+
+        result2 = await flow.async_step_kostal({CONF_BATTERY_DEVICE_ID: "kostal_dev_id"})
+
+        assert result2["type"] == "form"
+        assert result2["step_id"] == "common"
+        assert flow.data[CONF_BATTERY_TYPE] == BATTERY_TYPE_KOSTAL
+        assert flow.data[CONF_HOST] == "192.168.1.150"
+        assert flow.data[CONF_PORT] == 1502
+        assert flow.data["soc_sensor"] == "sensor.plenticore_battery_soc"
+        assert flow.data["virtual_load_sensor"] == "sensor.plenticore_home_power"
+        assert flow.data[CONF_BATTERY_SENSOR_INVERT] is False
+        assert flow.data[CONF_GRID_SENSOR_INVERT] is False
+
+
+def test_async_auto_discover_kostal_entities():
+    """Testar att async_auto_discover_kostal_entities mappar sensorer korrekt."""
+    from custom_components.battery_optimizer_light_plus.config_flow import (
+        async_auto_discover_kostal_entities,
+    )
+    from custom_components.battery_optimizer_light_plus.const import (
+        CONF_SOC_SENSOR,
+        CONF_BATTERY_POWER_SENSOR,
+        CONF_GRID_SENSOR,
+        CONF_VIRTUAL_LOAD_SENSOR,
+        CONF_SOLAR_SENSOR,
+        CONF_DEVICE_STATUS_ENTITY,
+    )
+
+    hass = MagicMock()
+    mock_registry = MagicMock()
+
+    # Skapa fejkade entiteter enligt Kostals namnmönster
+    entry_soc = MagicMock(
+        domain="sensor", unique_id="entry_id_devices:local:battery_soc", entity_id="sensor.battery_soc"
+    )
+    entry_bat_p = MagicMock(
+        domain="sensor", unique_id="entry_id_devices:local:battery_p", entity_id="sensor.battery_p"
+    )
+    entry_grid_p = MagicMock(
+        domain="sensor", unique_id="entry_id_devices:local_grid_p", entity_id="sensor.grid_p"
+    )
+    entry_home_p = MagicMock(
+        domain="sensor", unique_id="entry_id_devices:local_home_p", entity_id="sensor.home_p"
+    )
+    entry_dc_p = MagicMock(
+        domain="sensor", unique_id="entry_id_devices:local_dc_p", entity_id="sensor.dc_p"
+    )
+    entry_state = MagicMock(
+        domain="sensor", unique_id="entry_id_devices:local_inverter_state", entity_id="sensor.inverter_state"
+    )
+
+    with patch("homeassistant.helpers.entity_registry.async_get", return_value=mock_registry), \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device", return_value=[
+             entry_soc, entry_bat_p, entry_grid_p, entry_home_p, entry_dc_p, entry_state
+         ]):
+        res = async_auto_discover_kostal_entities(hass, "test_device")
+
+        assert res[CONF_SOC_SENSOR] == "sensor.battery_soc"
+        assert res[CONF_BATTERY_POWER_SENSOR] == "sensor.battery_p"
+        assert res[CONF_GRID_SENSOR] == "sensor.grid_p"
+        assert res[CONF_VIRTUAL_LOAD_SENSOR] == "sensor.home_p"
+        assert res[CONF_SOLAR_SENSOR] == "sensor.dc_p"
+        assert res[CONF_DEVICE_STATUS_ENTITY] == "sensor.inverter_state"
+
 
 
 

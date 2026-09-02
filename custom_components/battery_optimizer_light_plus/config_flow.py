@@ -36,6 +36,7 @@ from .const import (
     BATTERY_TYPE_SOLIS_MODBUS,
     BATTERY_TYPE_SIGENERGY,
     BATTERY_TYPE_SOLINTEG,
+    BATTERY_TYPE_KOSTAL,
     CONF_API_URL,
     DEFAULT_API_URL,
     CONF_API_KEY,
@@ -74,6 +75,7 @@ from .const import (
     CONF_EV_C2_MAX_KW,
     CONF_EV_C2_CABLE_CONNECTED,
     CONF_EV_C2_IS_CHARGING,
+    DEFAULT_KOSTAL_PORT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -224,6 +226,67 @@ def async_auto_discover_solinteg_entities(hass, device_id: str) -> dict:
 
     return found_entities
 
+def async_auto_discover_kostal_entities(hass, device_id: str) -> dict:
+    """Attempt to auto-discover standard entities for a Kostal Plenticore device.
+
+    Söker efter sensorer skapade av den officiella kostal_plenticore-integrationen.
+    Unika ID:n följer mönstret: {config_entry_id}_{module_id}_{data_id}
+    """
+    registry = er.async_get(hass)
+    entries = er.async_entries_for_device(registry, device_id)
+    found_entities = {}
+
+    # Primär sökning baserat på Kostals unika ID-mönster
+    for entry in entries:
+        uid = (entry.unique_id or "").lower()
+        ent_id = entry.entity_id
+
+        # SoC: devices:local:battery / SoC
+        if CONF_SOC_SENSOR not in found_entities:
+            if "battery" in uid and "soc" in uid and entry.domain == "sensor":
+                found_entities[CONF_SOC_SENSOR] = ent_id
+
+        # Batterieffekt: devices:local:battery / P
+        if CONF_BATTERY_POWER_SENSOR not in found_entities:
+            if "battery" in uid and uid.endswith("_p") and entry.domain == "sensor":
+                found_entities[CONF_BATTERY_POWER_SENSOR] = ent_id
+
+        # Näteffekt: devices:local / Grid_P
+        if CONF_GRID_SENSOR not in found_entities:
+            if "grid_p" in uid and entry.domain == "sensor":
+                found_entities[CONF_GRID_SENSOR] = ent_id
+
+        # Husförbrukning: devices:local / Home_P
+        if CONF_VIRTUAL_LOAD_SENSOR not in found_entities:
+            if "home_p" in uid and entry.domain == "sensor":
+                found_entities[CONF_VIRTUAL_LOAD_SENSOR] = ent_id
+
+        # Solproduktion: devices:local / Dc_P
+        if CONF_SOLAR_SENSOR not in found_entities:
+            if "dc_p" in uid and entry.domain == "sensor":
+                found_entities[CONF_SOLAR_SENSOR] = ent_id
+
+        # Inverter-status: devices:local / Inverter:State
+        if CONF_DEVICE_STATUS_ENTITY not in found_entities:
+            if "inverter" in uid and "state" in uid and entry.domain == "sensor":
+                found_entities[CONF_DEVICE_STATUS_ENTITY] = ent_id
+
+    # Fallback: generell namnbaserad sökning om vi saknar sensorer
+    for entry in entries:
+        ent_id = entry.entity_id
+        if CONF_SOC_SENSOR not in found_entities and "battery_soc" in ent_id and entry.domain == "sensor":
+            found_entities[CONF_SOC_SENSOR] = ent_id
+        elif CONF_GRID_SENSOR not in found_entities and "grid_power" in ent_id and entry.domain == "sensor":
+            found_entities[CONF_GRID_SENSOR] = ent_id
+        elif CONF_BATTERY_POWER_SENSOR not in found_entities and "battery_power" in ent_id and entry.domain == "sensor":
+            found_entities[CONF_BATTERY_POWER_SENSOR] = ent_id
+        elif CONF_VIRTUAL_LOAD_SENSOR not in found_entities and "home_power" in ent_id and entry.domain == "sensor":
+            found_entities[CONF_VIRTUAL_LOAD_SENSOR] = ent_id
+        elif CONF_SOLAR_SENSOR not in found_entities and "solar_power" in ent_id and entry.domain == "sensor":
+            found_entities[CONF_SOLAR_SENSOR] = ent_id
+
+    return found_entities
+
 class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Battery Optimizer Light."""
     VERSION = 1
@@ -236,7 +299,7 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the initial step where the user selects the battery type."""
         return self.async_show_menu(
             step_id="user",
-            menu_options=["sonnen", "huawei", "homevolt", "solis_modbus", "sigenergy", "solinteg", "generic"]
+            menu_options=["sonnen", "huawei", "homevolt", "solis_modbus", "sigenergy", "solinteg", "kostal", "generic"]
         )
 
     async def async_step_sonnen(self, user_input=None):
@@ -363,6 +426,43 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="solinteg",
             data_schema=vol.Schema({
                 vol.Required(CONF_BATTERY_DEVICE_ID): selector.DeviceSelector(selector.DeviceSelectorConfig()),
+            })
+        )
+
+    async def async_step_kostal(self, user_input=None):
+        """Handle the Kostal Plenticore battery configuration step."""
+        self.data[CONF_BATTERY_TYPE] = BATTERY_TYPE_KOSTAL
+        self.data[CONF_BATTERY_SENSOR_INVERT] = False
+        self.data[CONF_GRID_SENSOR_INVERT] = False
+
+        if user_input is not None:
+            # Hämta IP-adressen från Kostals egen config_entry
+            device_id = user_input[CONF_BATTERY_DEVICE_ID]
+            from homeassistant.helpers import device_registry as dr
+            dev_reg = dr.async_get(self.hass)
+            device = dev_reg.async_get(device_id)
+            if device and device.config_entries:
+                config_entry_id = next(iter(device.config_entries))
+                config_entry = self.hass.config_entries.async_get_entry(config_entry_id)
+                if config_entry and config_entry.data.get("host"):
+                    self.data["host"] = config_entry.data["host"]
+                    self.data["port"] = DEFAULT_KOSTAL_PORT
+
+            # Autodiscovery av sensorer
+            discovered_entities = async_auto_discover_kostal_entities(self.hass, device_id)
+            if discovered_entities:
+                _LOGGER.info(f"Auto-discovered Kostal entities: {discovered_entities}")
+                self.data.update(discovered_entities)
+
+            self.data.update(user_input)
+            return await self.async_step_common()
+
+        return self.async_show_form(
+            step_id="kostal",
+            data_schema=vol.Schema({
+                vol.Required(CONF_BATTERY_DEVICE_ID): selector.DeviceSelector(
+                    selector.DeviceSelectorConfig(integration="kostal_plenticore")
+                ),
             })
         )
 

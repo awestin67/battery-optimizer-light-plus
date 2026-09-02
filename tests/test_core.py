@@ -2882,7 +2882,8 @@ def test_manifest_and_hacs_compliance():
     assert "homeassistant" not in manifest
 
     # 2. aiohttp borttagen ur requirements (eftersom det tillhandahålls av core)
-    assert manifest.get("requirements") == []
+    assert not any("aiohttp" in req for req in manifest.get("requirements", []))
+    assert manifest.get("requirements") == ["pymodbus>=3.6.8"]
 
 
 

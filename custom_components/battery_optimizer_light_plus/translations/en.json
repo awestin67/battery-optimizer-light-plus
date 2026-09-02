@@ -11,6 +11,7 @@
                     "solis_modbus": "Solis Modbus",
                     "sigenergy": "Sigenergy",
                     "solinteg": "Solinteg",
+                    "kostal": "Kostal Plenticore",
                     "generic": "Generic / Other (No local control)"
                 }
             },
@@ -76,6 +77,16 @@
                 },
                 "data_description": {
                     "battery_device_id": "Select your Solinteg inverter from the list so the integration knows where to send commands."
+                }
+            },
+            "kostal": {
+                "title": "Configure Kostal Plenticore",
+                "description": "Select your Kostal Plenticore device. The IP address and sensors will be auto-discovered.\n\n**Important:** You must first set your inverter's battery management to 'External via Modbus protocol (TCP)' in the Kostal web interface.",
+                "data": {
+                    "battery_device_id": "Kostal Plenticore Device"
+                },
+                "data_description": {
+                    "battery_device_id": "Select your Kostal Plenticore inverter from the list. The integration will auto-discover sensors and use Modbus TCP for battery control."
                 }
             },
             "common": {
