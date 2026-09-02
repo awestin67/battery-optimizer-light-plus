@@ -69,6 +69,17 @@ Styr Solinteg-växelriktare lokalt via Modbus.
 *   **Viktigt Krav:** Du *måste* använda integrationen [SolaX Inverter Modbus](https://github.com/wills106/homeassistant-solax-modbus) (via HACS) för att ansluta din Solinteg-växelriktare till Home Assistant. Även fast den heter SolaX, så har den inbyggt stöd för Solinteg. Andra Solinteg-integrationer stöds ej i dagsläget då de saknar standardiserade styrentiteter.
 *   **Notera:** Integrationen stöder *Auto-Discovery* och letar automatiskt upp dina mät- och styrentiteter från SolaX-integrationen.
 
+### ☀️ Kostal Plenticore
+Styr Kostal Plenticore-växelriktare med anslutet hembatteri (t.ex. BYD Battery-Box) via Modbus TCP.
+*   **Krav:** 
+    1. Den officiella integrationen [Kostal Plenticore](https://www.home-assistant.io/integrations/kostal_plenticore/) måste vara installerad och konfigurerad i Home Assistant (används för att läsa av sensorer för SoC, husförbrukning, solproduktion och nätutbyte).
+    2. **Aktivera extern Modbus-styrning:** Du måste ställa in växelriktaren på extern styrning:
+       - Logga in i Kostal Plenticores lokala webbgränssnitt som *Installatör* (eller administratör).
+       - Gå till **Inställningar** -> **Batterihantering** (*Battery management*).
+       - Välj batteriläge **"Extern styrning via Modbus-protokoll (TCP)"** (*External battery control via Modbus TCP*).
+       - Kontrollera att Modbus TCP är aktiverat (standardport: `1502`, slave/enhets-ID: `71`).
+*   **Notera:** Integrationen stöder *Auto-Discovery* – den upptäcker din Kostal-växelriktare, hämtar IP-adressen automatiskt från Home Assistant och länkar samman alla sensorer (`battery_soc`, `Home_P`, `Dc_P`, `Grid_P` och `Inverter:State`) helt utan manuell konfiguration!
+
 ### ☁️ Generic / Light
 För dig som bara vill hämta optimeringsbeslut och räkna ut last lokalt, men sedan styra ditt batteri manuellt via egna automationsflöden. [Se exempel på automation här nere](#-automationer-för-generic--övriga-batterier).
 
@@ -99,7 +110,7 @@ Klicka på knappen nedan för att öppna integrationen direkt i HACS:
 1. Gå till **Inställningar** -> **Enheter & Tjänster**.
 2. Klicka på **Lägg till integration** och sök efter **Battery Optimizer Light Plus**.
 3. Följ guiden:
-    * **Steg 1:** Välj vilken typ av batteri du har (Sonnen, Huawei, Homevolt, Solis Modbus, Sigenergy, Solinteg, Generic).
+    * **Steg 1:** Välj vilken typ av batteri du har (Sonnen, Huawei, Homevolt, Solis Modbus, Sigenergy, Solinteg, Kostal Plenticore, Generic).
     * **Steg 2:** Fyll i batterispecifika uppgifter (t.ex. IP och API-token för Sonnen, eller enheter för Huawei).
     * **Steg 3:** Fyll i din API-nyckel från Dashboarden. För alla märken utom Generic hittas de flesta mätvärden och styrentiteter automatiskt med Auto-Discovery. För **Generic** måste du dock manuellt peka ut dina sensorer.
     * **Steg 4 (Valfritt):** Peka ut **Husets totala förbrukning**. Om du saknar en pålitlig nätutbytes-sensor ("Grid Sensor (W) - Husets Nätutbyte") men istället har en sensor som visar husets totala last (t.ex. "House Total Load"), kan du välja den här. Lämna då fältet för Grid Sensor helt tomt!
