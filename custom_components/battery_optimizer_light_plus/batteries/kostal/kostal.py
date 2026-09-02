@@ -9,6 +9,7 @@
 import logging
 import struct
 from homeassistant.core import HomeAssistant  # type: ignore
+from homeassistant.const import STATE_UNKNOWN, STATE_UNAVAILABLE  # type: ignore
 from ..base import BatteryApi
 
 _LOGGER = logging.getLogger(__name__)
@@ -95,6 +96,14 @@ class KostalBattery(BatteryApi):
         """Hämtar solproduktion i Watt från Kostals Dc_P-sensor."""
         return self._read_sensor(self._solar_entity)
 
+    async def get_status_text(self) -> str | None:
+        """Hämtar växelriktarens driftstatus för underhållsläge."""
+        if self._status_entity:
+            state_obj = self._hass.states.get(self._status_entity)
+            if state_obj and state_obj.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                return str(state_obj.state)
+        return None
+
     @staticmethod
     def _float_to_registers(value: float) -> list[int]:
         """Konverterar ett flyttal till två 16-bitars Modbus-register (Big-Endian).
@@ -138,25 +147,27 @@ class KostalBattery(BatteryApi):
                 )
                 return False
 
-            result = await client.write_registers(
-                address=KOSTAL_BATTERY_POWER_REGISTER,
-                values=registers,
-                slave=self._slave_id,
-            )
-            client.close()
-
-            if result.isError():
-                _LOGGER.error(
-                    "Modbus-skrivning misslyckades för register %s: %s",
-                    KOSTAL_BATTERY_POWER_REGISTER, result
+            try:
+                result = await client.write_registers(
+                    address=KOSTAL_BATTERY_POWER_REGISTER,
+                    values=registers,
+                    slave=self._slave_id,
                 )
-                return False
 
-            _LOGGER.debug(
-                "Kostal Modbus: Skrev %.1f W till register %s (regs=%s)",
-                value_watts, KOSTAL_BATTERY_POWER_REGISTER, registers
-            )
-            return True
+                if result.isError():
+                    _LOGGER.error(
+                        "Modbus-skrivning misslyckades för register %s: %s",
+                        KOSTAL_BATTERY_POWER_REGISTER, result
+                    )
+                    return False
+
+                _LOGGER.debug(
+                    "Kostal Modbus: Skrev %.1f W till register %s (regs=%s)",
+                    value_watts, KOSTAL_BATTERY_POWER_REGISTER, registers
+                )
+                return True
+            finally:
+                client.close()
 
         except Exception:
             _LOGGER.exception(

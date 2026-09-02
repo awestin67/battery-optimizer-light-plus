@@ -566,7 +566,13 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                 )
 
-            if battery_type in [BATTERY_TYPE_HUAWEI, BATTERY_TYPE_SOLIS_MODBUS, BATTERY_TYPE_SIGENERGY, BATTERY_TYPE_SOLINTEG]:
+            if battery_type in [
+                BATTERY_TYPE_HUAWEI,
+                BATTERY_TYPE_SOLIS_MODBUS,
+                BATTERY_TYPE_SIGENERGY,
+                BATTERY_TYPE_SOLINTEG,
+                BATTERY_TYPE_KOSTAL,
+            ]:
                 schema_dict.update({
                     _opt(
                         CONF_DEVICE_STATUS_ENTITY, get_val(CONF_DEVICE_STATUS_ENTITY)
@@ -693,6 +699,10 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             device_id = self.config_entry.data.get(CONF_BATTERY_DEVICE_ID)
             if device_id:
                 discovered = async_auto_discover_solinteg_entities(self.hass, device_id)
+        elif battery_type == BATTERY_TYPE_KOSTAL:
+            device_id = self.config_entry.data.get(CONF_BATTERY_DEVICE_ID)
+            if device_id:
+                discovered = async_auto_discover_kostal_entities(self.hass, device_id)
 
         def get_default(key, default_fallback=vol.UNDEFINED):
             val = self.config_entry.data.get(key)
@@ -805,6 +815,21 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(CONF_GRID_SENSOR_INVERT, default=get_default(CONF_GRID_SENSOR_INVERT, False)): bool,
                 vol.Required(CONF_BATTERY_POWER_SENSOR, default=get_default(CONF_BATTERY_POWER_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
                 vol.Optional(CONF_BATTERY_SENSOR_INVERT, default=get_default(CONF_BATTERY_SENSOR_INVERT, False)): bool,
+                _opt(CONF_DEVICE_STATUS_ENTITY, get_default(CONF_DEVICE_STATUS_ENTITY)): selector.EntitySelector(EntitySelectorConfig(domain="sensor")),
+                _opt(CONF_BATTERY_STATUS_KEYWORDS, get_default(CONF_BATTERY_STATUS_KEYWORDS, DEFAULT_BATTERY_STATUS_KEYWORDS)): TextSelector(TextSelectorConfig(multiline=True)),
+            })
+        elif battery_type == BATTERY_TYPE_KOSTAL:
+            schema_fields.update({
+                vol.Required(CONF_BATTERY_DEVICE_ID, default=get_default(CONF_BATTERY_DEVICE_ID)): selector.DeviceSelector(
+                    selector.DeviceSelectorConfig(integration="kostal_plenticore")
+                ),
+                vol.Required(CONF_HOST, default=get_default(CONF_HOST)): str,
+                vol.Optional(CONF_PORT, default=get_default(CONF_PORT, DEFAULT_KOSTAL_PORT)): int,
+                vol.Required(CONF_SOC_SENSOR, default=get_default(CONF_SOC_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                _opt(CONF_GRID_SENSOR, get_default(CONF_GRID_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                vol.Required(CONF_BATTERY_POWER_SENSOR, default=get_default(CONF_BATTERY_POWER_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                _opt(CONF_VIRTUAL_LOAD_SENSOR, get_default(CONF_VIRTUAL_LOAD_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
+                _opt(CONF_SOLAR_SENSOR, get_default(CONF_SOLAR_SENSOR)): EntitySelector(EntitySelectorConfig(domain="sensor", device_class="power")),
                 _opt(CONF_DEVICE_STATUS_ENTITY, get_default(CONF_DEVICE_STATUS_ENTITY)): selector.EntitySelector(EntitySelectorConfig(domain="sensor")),
                 _opt(CONF_BATTERY_STATUS_KEYWORDS, get_default(CONF_BATTERY_STATUS_KEYWORDS, DEFAULT_BATTERY_STATUS_KEYWORDS)): TextSelector(TextSelectorConfig(multiline=True)),
             })

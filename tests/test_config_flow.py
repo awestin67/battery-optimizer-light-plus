@@ -310,6 +310,31 @@ async def test_options_flow_solis_uses_auto_discovered_defaults():
         assert soc_key.default() == "sensor.smart_discovered_solis_soc"
 
 @pytest.mark.asyncio
+async def test_options_flow_kostal_uses_auto_discovered_defaults():
+    """Testar att OptionsFlow använder auto-discovery för att förifylla saknade fält för Kostal."""
+    config_entry = MagicMock()
+    config_entry.data = {
+        CONF_BATTERY_TYPE: BATTERY_TYPE_KOSTAL,
+        "api_url": "http://test",
+        "battery_device_id": "test_kostal_device_123",
+        "host": "192.168.1.100",
+    }
+
+    flow = BatteryOptimizerLightOptionsFlow()
+    flow.config_entry = config_entry
+    flow.hass = MagicMock()
+
+    with patch(KOSTAL_DISCOVERY_PATH) as mock_discover:
+        mock_discover.return_value = {"soc_sensor": "sensor.smart_discovered_kostal_soc"}
+        result = await flow.async_step_init()
+
+        schema_keys = result["data_schema"].schema.keys()
+        soc_key = next((k for k in schema_keys if getattr(k, "schema", None) == "soc_sensor"), None)
+
+        assert soc_key is not None
+        assert soc_key.default() == "sensor.smart_discovered_kostal_soc"
+
+@pytest.mark.asyncio
 async def test_config_flow_huawei_sets_invert_true():
     """Testar att Huawei-flödet automatiskt sätter invert till True."""
     flow = BatteryOptimizerLightConfigFlow()

@@ -9,7 +9,7 @@
 import pytest
 import struct
 from unittest.mock import MagicMock, AsyncMock, patch
-from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 from custom_components.battery_optimizer_light_plus.battery_factory import create_battery_api
 from custom_components.battery_optimizer_light_plus.const import (
@@ -155,6 +155,40 @@ async def test_get_solar_power(kostal_battery, mock_hass):
     assert solar == 4200.0
 
 
+# === Driftstatus (get_status_text) ===
+
+@pytest.mark.asyncio
+async def test_get_status_text(kostal_battery, mock_hass):
+    """Krav: get_status_text ska hämta rätt värde om status_entity är satt."""
+    mock_state = MagicMock()
+    mock_state.state = "FeedIn"
+    mock_hass.states.get.return_value = mock_state
+
+    status = await kostal_battery.get_status_text()
+    assert status == "FeedIn"
+    mock_hass.states.get.assert_called_once_with("sensor.plenticore_inverter_state")
+
+
+@pytest.mark.asyncio
+async def test_get_status_text_unavailable(kostal_battery, mock_hass):
+    """Krav: get_status_text ska returnera None om sensorn är unavailable eller unknown."""
+    mock_state = MagicMock()
+    mock_state.state = STATE_UNAVAILABLE
+    mock_hass.states.get.return_value = mock_state
+
+    assert await kostal_battery.get_status_text() is None
+
+    mock_state.state = STATE_UNKNOWN
+    assert await kostal_battery.get_status_text() is None
+
+
+@pytest.mark.asyncio
+async def test_get_status_text_no_entity(mock_hass):
+    """Krav: get_status_text ska returnera None om ingen status_entity är konfigurerad."""
+    battery = KostalBattery(hass=mock_hass, host="192.168.1.100")
+    assert await battery.get_status_text() is None
+
+
 # === Float32-konvertering ===
 
 def test_float_to_registers_positive():
@@ -284,6 +318,7 @@ async def test_write_modbus_register_write_error(kostal_battery):
     ):
         result = await kostal_battery._write_modbus_register(3500.0)
         assert result is False
+        mock_client.close.assert_called_once()
 
 
 @pytest.mark.asyncio
