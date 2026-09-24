@@ -79,11 +79,12 @@ class SonnenAPI:
     async def async_set_operating_mode(self, mode: int) -> bool:
         """Sätter driftläge via /api/v2/configurations."""
         config_url = f"{self._base_url}{API_CONFIG}"
-        em_usoc = self._last_em_usoc if self._last_em_usoc is not None else "0"
-        payload_with_usoc = {"EM_OperatingMode": str(mode), "EM_USOC": em_usoc}
-        payload_mode_only = {"EM_OperatingMode": str(mode)}
+        # Skicka endast EM_OperatingMode utan EM_USOC då Sonnen ofta ignorerar driftläget
+        # om flera parametrar skickas i samma PUT-anrop.
+        payload_str = {"EM_OperatingMode": str(mode)}
+        payload_int = {"EM_OperatingMode": mode}
 
-        for payload in (payload_with_usoc, payload_mode_only):
+        for payload in (payload_str, payload_int):
             try:
                 async with self._session.put(
                     config_url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)

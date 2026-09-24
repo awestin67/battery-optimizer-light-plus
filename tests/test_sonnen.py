@@ -294,7 +294,7 @@ async def test_sonnen_api_methods():
     assert await api.async_set_operating_mode(1) is True
     mock_session.put.assert_called_once_with(
         "http://192.168.1.50:80/api/v2/configurations",
-        json={"EM_OperatingMode": "1", "EM_USOC": "5"},
+        json={"EM_OperatingMode": "1"},
         headers=expected_headers,
         timeout=aiohttp.ClientTimeout(total=5),
     )
