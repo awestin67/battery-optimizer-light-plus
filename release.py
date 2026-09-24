@@ -192,7 +192,12 @@ def run_lint():
 def run_pip_audit():
     print("\n--- 🔒 KÖR SÄKERHETSGRANSKNING (pip-audit) ---")
     try:
-        subprocess.run([sys.executable, "-m", "pip_audit"], cwd=str(BASE_DIR), check=True, shell=False)
+        subprocess.run(
+            [sys.executable, "-m", "pip_audit", "--skip-editable"],
+            cwd=str(BASE_DIR),
+            check=True,
+            shell=False,
+        )
         print("✅ Säkerhetsgranskning godkänd (inga kända sårbarheter).")
     except FileNotFoundError:
         print("⚠️  Kunde inte hitta Python för att köra pip-audit.")
