@@ -77,7 +77,7 @@ class SonnenAPI:
     async def async_set_operating_mode(self, mode: int):
         """Sätter driftläge via /api/v2/site/configurations (med fallback till /api/v2/configurations)."""
         em_usoc = self._last_em_usoc if self._last_em_usoc is not None else "0"
-        payload_with_usoc = {"EM_OperatingMode": str(mode), "EM_USOC": str(em_usoc)}
+        payload_with_usoc = {"EM_OperatingMode": str(mode), "EM_USOC": em_usoc}
         payload_mode_only = {"EM_OperatingMode": str(mode)}
 
         # Prova först det officiella EMS Site Configurations API:et
