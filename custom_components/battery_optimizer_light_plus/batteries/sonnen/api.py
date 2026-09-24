@@ -94,12 +94,12 @@ class SonnenAPI:
                     except Exception:
                         resp_text = ""
                     if resp.status in (200, 204):
-                        _LOGGER.info(
-                            "Sonnen satte driftläge %s via %s: %s (payload: %s)",
-                            mode,
+                        _LOGGER.warning(
+                            "Sonnen svarade på PUT %s (payload: %s): status %s, body: '%s'",
                             API_CONFIG,
-                            resp_text,
                             payload,
+                            resp.status,
+                            resp_text,
                         )
                         self._last_operating_mode = str(mode)
                         return True
@@ -233,6 +233,24 @@ class SonnenAPI:
                         _LOGGER.warning("Kunde inte sätta Sonnen i Mode 2 (EM2), avbryter retry för Site Limits")
                         return False
                     await asyncio.sleep(2.5)
+
+                    # Diagnostik: Kontrollera vad Sonnen faktiskt har för driftläge i konfigurationen
+                    try:
+                        async with self._session.get(
+                            f"{self._base_url}{API_CONFIG}",
+                            headers=self._headers,
+                            timeout=aiohttp.ClientTimeout(total=5),
+                        ) as chk_resp:
+                            if chk_resp.status == 200:
+                                chk_data = await chk_resp.json(content_type=None)
+                                _LOGGER.warning(
+                                    "Sonnen konfiguration före retry: EM_OperatingMode=%s, EM_USOC=%s (full: %s)",
+                                    chk_data.get("EM_OperatingMode"),
+                                    chk_data.get("EM_USOC"),
+                                    chk_data,
+                                )
+                    except Exception as chk_err:
+                        _LOGGER.warning("Kunde inte läsa konfiguration före retry: %s", chk_err)
                     async with self._session.put(
                         url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
                     ) as retry_resp:
