@@ -400,7 +400,7 @@ async def test_sonnen_api_software_version_and_site_limits():
     # Verifiera att None rensats och duration sattes
     mock_session.put.assert_called_with(
         "http://192.168.1.50:80/api/v2/site/limits",
-        json={"p_gcp_max_import_limit": 4500, "p_gcp_max_export_limit": 0, "duration": "PT10M"},
+        json={"p_gcp_max_import_limit": 4500, "p_gcp_max_export_limit": 0, "duration": "PT600S"},
         headers=expected_headers,
         timeout=aiohttp.ClientTimeout(total=5),
     )
@@ -523,9 +523,9 @@ async def test_sonnen_apply_action_modern_ems(sonnen_battery, mock_sonnen_api):
 
     # Ska säkerställa Self-consumption (Mode 2)
     mock_sonnen_api.async_set_operating_mode.assert_called_once_with(2)
-    # Ska anropa async_set_site_limits med uppgraderad duration (PT10M)
+    # Ska anropa async_set_site_limits med uppgraderad duration (PT600S)
     expected_limits = dict(limits)
-    expected_limits["duration"] = "PT10M"
+    expected_limits["duration"] = "PT600S"
     mock_sonnen_api.async_set_site_limits.assert_called_once_with(expected_limits)
     # Inga manuella setpoint-kommandon
     mock_sonnen_api.async_charge.assert_not_called()
@@ -670,7 +670,7 @@ async def test_sonnen_apply_action_clears_export_limit_on_idle(sonnen_battery, m
     mock_sonnen_api.async_set_site_limits.assert_called_with({
         "p_bess_inv_max_export_limit": 0,
         "p_gcp_max_import_limit": 4500,
-        "duration": "PT10M",
+        "duration": "PT600S",
     })
     mock_sonnen_api.reset_mock()
 
@@ -684,7 +684,7 @@ async def test_sonnen_apply_action_clears_export_limit_on_idle(sonnen_battery, m
     assert "p_bess_inv_max_export_limit" not in sent_limits
     # GCP-begränsningen ska finnas kvar
     assert sent_limits.get("p_gcp_max_import_limit") == 4500
-    assert sent_limits.get("duration") == "PT10M"
+    assert sent_limits.get("duration") == "PT600S"
 
 
 @pytest.mark.asyncio
@@ -698,7 +698,7 @@ async def test_sonnen_apply_action_idle_without_remaining_limits(sonnen_battery,
     await sonnen_battery.apply_action("HOLD", sonnen_site_limits=initial_limits)
     mock_sonnen_api.async_set_site_limits.assert_called_with({
         "p_bess_inv_max_export_limit": 0,
-        "duration": "PT10M",
+        "duration": "PT600S",
     })
     mock_sonnen_api.reset_mock()
 

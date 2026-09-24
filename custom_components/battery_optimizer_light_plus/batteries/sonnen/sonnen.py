@@ -232,8 +232,8 @@ class SonnenBattery(BatteryApi):
                     await asyncio.sleep(2.0)
 
                 limits_payload = dict(sonnen_site_limits)
-                if limits_payload.get("duration") in ("PT90S", None):
-                    limits_payload["duration"] = "PT10M"
+                if limits_payload.get("duration") in ("PT90S", "PT10M", None):
+                    limits_payload["duration"] = "PT600S"
 
                 # Skicka gränserna direkt till PUT /api/v2/site/limits
                 success = await self._api.async_set_site_limits(limits_payload)

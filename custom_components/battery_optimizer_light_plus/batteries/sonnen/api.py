@@ -277,9 +277,9 @@ class SonnenAPI:
                 elif k == "duration":
                     payload[k] = str(v)
 
-            # Säkerställ längre duration än koordinators 5 minuter (standard PT10M)
-            if "duration" not in payload or payload.get("duration") == "PT90S":
-                payload["duration"] = "PT10M"
+            # Säkerställ sekundformat (PT600S för 10 minuter) då Sonnens Swagger kräver PT...S
+            if "duration" not in payload or payload.get("duration") in ("PT90S", "PT10M"):
+                payload["duration"] = "PT600S"
 
             # Sonnen Swagger specificerar: "At least one limit must be specified."
             # Om inga specifika gränser anges returnerar Sonnen 400 Bad Request.
@@ -306,7 +306,7 @@ class SonnenAPI:
                     payload,
                 )
 
-                # Om Sonnen svarar att EM2 krävs: sätt Mode 2, vänta och prova igen
+                # Om Sonnen svarar att EM2 krävs: sätt Mode 2, vänta och prova igen med alternativa durationer
                 if "EM2" in resp_text:
                     _LOGGER.warning(
                         "Sonnen kräver driftläge 2 (EM2) för Site Limits. Växlar till Mode 2 och provar igen..."
@@ -317,39 +317,35 @@ class SonnenAPI:
                         return False
                     await asyncio.sleep(2.5)
 
-                    # Diagnostik: Kontrollera vad Sonnen faktiskt har för driftläge i konfigurationen
-                    try:
-                        async with self._session.get(
-                            f"{self._base_url}{API_CONFIG}",
-                            headers=self._headers,
-                            timeout=aiohttp.ClientTimeout(total=5),
-                        ) as chk_resp:
-                            if chk_resp.status == 200:
-                                chk_data = await chk_resp.json(content_type=None)
-                                _LOGGER.warning(
-                                    "Sonnen konfiguration före retry: EM_OperatingMode=%s, EM_USOC=%s (full: %s)",
-                                    chk_data.get("EM_OperatingMode"),
-                                    chk_data.get("EM_USOC"),
-                                    chk_data,
+                    # Prova med variations: 1. PT600S, 2. PT30S (Swagger standard), 3. utan duration
+                    retry_variants = [
+                        dict(payload),
+                        {**payload, "duration": "PT30S"},
+                        {k: v for k, v in payload.items() if k != "duration"},
+                    ]
+
+                    for r_idx, r_payload in enumerate(retry_variants, 1):
+                        async with self._session.put(
+                            url, json=r_payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
+                        ) as retry_resp:
+                            if retry_resp.status in (200, 204):
+                                _LOGGER.info(
+                                    "Sonnen PutSiteLimits lyckades vid retry variant %d (payload: %s)!",
+                                    r_idx,
+                                    r_payload,
                                 )
-                    except Exception as chk_err:
-                        _LOGGER.warning("Kunde inte läsa konfiguration före retry: %s", chk_err)
-                    async with self._session.put(
-                        url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
-                    ) as retry_resp:
-                        if retry_resp.status in (200, 204):
-                            _LOGGER.info("Sonnen PutSiteLimits lyckades efter växling till EM2!")
-                            return True
-                        try:
-                            retry_text = await retry_resp.text()
-                        except Exception:
-                            retry_text = ""
-                        _LOGGER.warning(
-                            "Sonnen PutSiteLimits misslyckades efter retry: status %s (%s) för payload %s",
-                            retry_resp.status,
-                            retry_text,
-                            payload,
-                        )
+                                return True
+                            try:
+                                retry_text = await retry_resp.text()
+                            except Exception:
+                                retry_text = ""
+                            _LOGGER.warning(
+                                "Sonnen PutSiteLimits misslyckades vid retry variant %d: status %s (%s) för payload %s",
+                                r_idx,
+                                retry_resp.status,
+                                retry_text,
+                                r_payload,
+                            )
 
             return False
         except Exception as e:
