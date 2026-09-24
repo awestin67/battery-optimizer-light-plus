@@ -22,6 +22,9 @@ import shutil
 from collections import OrderedDict
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 def get_project_python() -> Path:
     """Tries to find the python executable in the local .venv"""
     project_root = Path(__file__).resolve().parent
@@ -220,8 +223,8 @@ def check_license_headers():
     missing_long = []
 
     for file_path in BASE_DIR.rglob("*.py"):
-        # Ignorera mappar i IGNORED_DIRS
-        if any(part in IGNORED_DIRS for part in file_path.parts):
+        # Ignorera mappar i IGNORED_DIRS och lokala live-testfiler
+        if any(part in IGNORED_DIRS for part in file_path.parts) or file_path.name.endswith("_live.py"):
             continue
 
         rel_path = file_path.relative_to(BASE_DIR)
