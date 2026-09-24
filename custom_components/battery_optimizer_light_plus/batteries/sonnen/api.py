@@ -49,15 +49,18 @@ class SonnenAPI:
                 response.raise_for_status()
                 status_data = await response.json()
 
-            # Hämta även konfiguration för att få EM_USOC (Backup-reserv)
+            # Hämta även konfiguration för att få EM_USOC (Backup-reserv) och DE_Software
             try:
                 async with self._session.get(config_url, headers=self._headers) as conf_response:
                     if conf_response.status == 200:
-                        conf_data = await conf_response.json()
-                        if "EM_USOC" in conf_data:
-                            status_data["EM_USOC"] = conf_data["EM_USOC"]
+                        conf_data = await conf_response.json(content_type=None)
+                        if isinstance(conf_data, dict):
+                            if "EM_USOC" in conf_data:
+                                status_data["EM_USOC"] = conf_data["EM_USOC"]
+                            if "DE_Software" in conf_data:
+                                status_data["DE_Software"] = conf_data["DE_Software"]
             except Exception as conf_e:
-                _LOGGER.debug("Kunde inte hämta konfiguration (EM_USOC) från Sonnen: %s", conf_e)
+                _LOGGER.debug("Kunde inte hämta konfiguration från Sonnen: %s", conf_e)
 
             return status_data
         except Exception as e:
@@ -100,18 +103,56 @@ class SonnenAPI:
             return False
 
     async def async_get_software_version(self) -> str | None:
-        """Hämtar firmware-version från DE_Software."""
+        """Hämtar firmware-version från DE_Software eller configurations."""
         url = f"{self._base_url}{API_CONFIG_SOFTWARE}"
         try:
             async with self._session.get(url, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                 if resp.status == 200:
-                    data = await resp.json()
-                    if isinstance(data, dict):
-                        return data.get("DE_Software")
-                    elif isinstance(data, str):
-                        return data
+                    try:
+                        data = await resp.json(content_type=None)
+                        if isinstance(data, dict) and "DE_Software" in data:
+                            return str(data["DE_Software"]).strip()
+                        elif isinstance(data, (str, int, float)):
+                            return str(data).strip()
+                    except Exception:
+                        text = (await resp.text()).strip().strip('"')
+                        if text:
+                            return text
+                else:
+                    _LOGGER.info(
+                        "Sonnen GET %s returnerade status %s, provar fallback till %s",
+                        API_CONFIG_SOFTWARE,
+                        resp.status,
+                        API_CONFIG,
+                    )
         except Exception as e:
-            _LOGGER.debug("Kunde inte hämta DE_Software från Sonnen: %s", e)
+            _LOGGER.info(
+                "Kunde inte nå %s: %s (provar fallback till %s)",
+                API_CONFIG_SOFTWARE,
+                e,
+                API_CONFIG,
+            )
+
+        # Fallback: hämta från full konfiguration /api/v2/configurations
+        conf_url = f"{self._base_url}{API_CONFIG}"
+        try:
+            async with self._session.get(
+                conf_url, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
+            ) as resp:
+                if resp.status == 200:
+                    conf_data = await resp.json(content_type=None)
+                    if isinstance(conf_data, dict) and "DE_Software" in conf_data:
+                        return str(conf_data["DE_Software"]).strip()
+                else:
+                    _LOGGER.warning(
+                        "Sonnen GET %s returnerade status %s: %s",
+                        API_CONFIG,
+                        resp.status,
+                        await resp.text(),
+                    )
+        except Exception as e:
+            _LOGGER.warning("Kunde inte hämta konfiguration från %s: %s", API_CONFIG, e)
+
         return None
 
     async def async_set_site_limits(self, limits: dict) -> bool:

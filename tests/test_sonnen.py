@@ -337,6 +337,18 @@ async def test_sonnen_api_software_version_and_site_limits():
     mock_response.json = AsyncMock(return_value="1.36.0")
     assert await api.async_get_software_version() == "1.36.0"
 
+    # 2b. async_get_software_version fallback till /api/v2/configurations vid 404 på DE_Software
+    mock_resp_404 = MagicMock(status=404)
+    mock_resp_404.text = AsyncMock(return_value="Not Found")
+    mock_resp_conf = MagicMock(status=200)
+    mock_resp_conf.json = AsyncMock(return_value={"DE_Software": "1.37.0"})
+    mock_session.get.side_effect = [
+        MagicMock(__aenter__=AsyncMock(return_value=mock_resp_404), __aexit__=AsyncMock()),
+        MagicMock(__aenter__=AsyncMock(return_value=mock_resp_conf), __aexit__=AsyncMock()),
+    ]
+    assert await api.async_get_software_version() == "1.37.0"
+    mock_session.get.side_effect = None
+
     # 3. async_get_software_version felhantering
     mock_session.get.side_effect = Exception("Network timeout")
     assert await api.async_get_software_version() is None

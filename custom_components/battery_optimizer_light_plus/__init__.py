@@ -89,7 +89,7 @@ async def async_setup_entry(hass: HomeAssistant, entry):
             try:
                 await coordinator.battery_api.async_init_version()
             except Exception as ver_err:
-                _LOGGER.debug("Kunde inte hämta Sonnen firmware-version vid setup: %s", ver_err)
+                _LOGGER.warning("Kunde inte hämta Sonnen firmware-version vid setup: %s", ver_err)
 
         # Starta Sonne-specifik polling var 10:e sekund INNAN vi frågar molnet första gången
         await coordinator.battery_api.coordinator.async_config_entry_first_refresh()

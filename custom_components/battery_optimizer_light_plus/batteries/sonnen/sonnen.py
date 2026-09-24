@@ -85,25 +85,33 @@ class SonnenBattery(BatteryApi):
         """Indikerar om batteriet stödjer moderna EMS Site Limits (>= 1.35.14)."""
         return self._is_modern_ems
 
+    def _process_software_version(self, sw: str | None) -> bool:
+        """Tolkar mjukvaruversion och sätter is_modern_ems."""
+        if not sw:
+            return False
+        self._software_version = str(sw).strip()
+        try:
+            self._is_modern_ems = AwesomeVersion(self._software_version) >= AwesomeVersion("1.35.14")
+            _LOGGER.info(
+                "Sonnen firmware version detected: %s (Modern EMS: %s)",
+                self._software_version,
+                self._is_modern_ems,
+            )
+            return True
+        except Exception as err:
+            _LOGGER.warning("Kunde inte parsa Sonnen version '%s': %s", sw, err)
+            return False
+
     async def async_init_version(self):
         """Detekterar Sonnen firmware och aktiverar EMS om >= 1.35.14."""
         sw = await self._api.async_get_software_version()
         if sw:
-            self._software_version = str(sw).strip()
-            try:
-                self._is_modern_ems = AwesomeVersion(self._software_version) >= AwesomeVersion("1.35.14")
-                if self._is_modern_ems:
-                    _LOGGER.info(
-                        "Sonnen kör mjukvara %s >= 1.35.14: Aktiverar modernt EMS Site Limits läge!",
-                        self._software_version,
-                    )
-                else:
-                    _LOGGER.info(
-                        "Sonnen kör äldre mjukvara %s (< 1.35.14): Använder legacy driftlägesstyrning.",
-                        self._software_version,
-                    )
-            except Exception as err:
-                _LOGGER.warning("Kunde inte parsa Sonnen version '%s': %s", sw, err)
+            self._process_software_version(sw)
+        else:
+            _LOGGER.warning(
+                "Sonnen firmware-version kunde inte läsas av från batteriets API vid start. "
+                "Provar igen vid nästa statusläsning."
+            )
 
     async def _async_update_data(self):
         """Hämtar data från Sonnen lokalt."""
@@ -113,6 +121,9 @@ class SonnenBattery(BatteryApi):
         try:
             raw_status = await self._api.async_get_status()
             status_data = dict(raw_status) if isinstance(raw_status, dict) else {}
+            if self._software_version is None and "DE_Software" in status_data:
+                self._process_software_version(status_data["DE_Software"])
+
             if self._is_modern_ems:
                 try:
                     site_limits = await self._api.async_get_site_limits()

@@ -15,7 +15,7 @@
 2. **Hårdvarugaranterad PeakGuard:** Vi sätter `p_gcp_max_import_limit` (W) vid elmätaren (GCP). Sonnens interna regulator parerar effekttoppar på millisekundnivå.
 3. **Negativa elpriser:** Vi sätter `p_gcp_max_export_limit = 0` (W) vid minuspriser. Solenergi tillåts gå till hus och batteri, men inte en watt exporteras ut på nätet.
 4. **Smart HOLD:** Vid `action == "HOLD"` sätter vi `p_bess_inv_max_export_limit = 0` (W). Batteriet kan inte ladda ur till huset, men solpanelerna kan fortsätta ladda batteriet fritt!
-5. **Inbyggd Watchdog:** Parametern `duration: "PT90S"` gör att alla gränser automatiskt nollställs om HA tappar kontakten i mer än 90 sekunder.
+5. **Inbyggd Watchdog:** Parametern `duration: "PT10M"` (10 minuter) skickas så att gränserna hålls aktiva över molnets 5-minutersintervall (Sonnens API-default är annars `PT30S`). Alla gränser nollställs automatiskt om HA tappar kontakten i mer än 10 minuter.
 
 ---
 
@@ -31,7 +31,7 @@
 ### Request Body för `PUT /api/v2/site/limits`
 ```json
 {
-  "duration": "PT90S",
+  "duration": "PT10M",
   "p_gcp_max_import_limit": 4500,
   "p_gcp_max_export_limit": 0,
   "p_bess_inv_max_export_limit": 0,
@@ -69,7 +69,7 @@ async def async_set_site_limits(self, limits: dict) -> bool:
         # Rensa bort eventuella None-värden
         payload = {k: v for k, v in limits.items() if v is not None}
         if "duration" not in payload:
-            payload["duration"] = "PT90S"
+            payload["duration"] = "PT10M"
             
         async with self._session.put(url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)) as resp:
             if resp.status in (200, 204):
