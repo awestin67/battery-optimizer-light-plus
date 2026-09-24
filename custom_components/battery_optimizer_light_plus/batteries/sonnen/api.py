@@ -22,7 +22,9 @@ import aiohttp
 
 API_STATUS = "/api/v2/status"
 API_CONFIG = "/api/v2/configurations"
+API_SITE_CONFIG = "/api/v2/site/configurations"
 API_SITE_LIMITS = "/api/v2/site/limits"
+API_SITE_SETPOINT = "/api/v2/site/setpoint"
 API_CONFIG_SOFTWARE = "/api/v2/configurations/DE_Software"
 
 _LOGGER = logging.getLogger(__name__)
@@ -69,14 +71,42 @@ class SonnenAPI:
             raise
 
     async def async_set_operating_mode(self, mode: int):
-        """Sätter driftläge."""
-        url = f"{self._base_url}{API_CONFIG}"
+        """Sätter driftläge via /api/v2/site/configurations (med fallback till /api/v2/configurations)."""
         payload = {"EM_OperatingMode": str(mode)}
 
+        # Prova först det officiella EMS Site Configurations API:et
+        site_url = f"{self._base_url}{API_SITE_CONFIG}"
         try:
-            async with self._session.put(url, json=payload, headers=self._headers) as response:
-                response.raise_for_status()
-                return True
+            async with self._session.put(
+                site_url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
+            ) as resp:
+                if resp.status in (200, 204):
+                    _LOGGER.info("Sonnen satte driftläge %s via %s", mode, API_SITE_CONFIG)
+                    return True
+                _LOGGER.debug(
+                    "Sonnen PUT %s returnerade status %s (provar legacy fallback)",
+                    API_SITE_CONFIG,
+                    resp.status,
+                )
+        except Exception as e:
+            _LOGGER.debug("Kunde inte sätta driftläge via %s: %s (provar legacy)", API_SITE_CONFIG, e)
+
+        # Legacy fallback (/api/v2/configurations)
+        legacy_url = f"{self._base_url}{API_CONFIG}"
+        try:
+            async with self._session.put(
+                legacy_url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
+            ) as resp:
+                if resp.status in (200, 204):
+                    _LOGGER.info("Sonnen satte driftläge %s via legacy %s", mode, API_CONFIG)
+                    return True
+                _LOGGER.warning(
+                    "Sonnen PUT legacy %s returnerade status %s: %s",
+                    API_CONFIG,
+                    resp.status,
+                    await resp.text(),
+                )
+                return False
         except Exception as e:
             _LOGGER.error("Fel vid ändring av driftläge: %s", e)
             return False
@@ -165,6 +195,18 @@ class SonnenAPI:
             # Säkerställ längre duration än koordinators 5 minuter (standard PT10M)
             if "duration" not in payload or payload.get("duration") == "PT90S":
                 payload["duration"] = "PT10M"
+
+            limit_keys = {
+                "p_gcp_max_import_limit",
+                "p_gcp_max_export_limit",
+                "p_bess_inv_max_export_limit",
+                "p_bess_inv_max_import_limit",
+                "i_bess_storage_max_charge_limit",
+                "i_bess_storage_max_discharge_limit",
+            }
+            if not any(k in payload for k in limit_keys):
+                _LOGGER.debug("Inga specifika site limits i payloaden, hoppar över anrop till PutSiteLimits")
+                return True
 
             async with self._session.put(
                 url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
