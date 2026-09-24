@@ -25,6 +25,35 @@ from .api import SonnenAPI
 from ..base import BatteryApi
 from homeassistant.core import HomeAssistant
 
+try:
+    from awesomeversion import AwesomeVersion
+except ImportError:
+    class AwesomeVersion:  # type: ignore[no-redef]
+        """Fallback-implementation om awesomeversion saknas."""
+
+        def __init__(self, version: str):
+            self.version = str(version).strip()
+
+        def __ge__(self, other):
+            if isinstance(other, AwesomeVersion):
+                other_ver = other.version
+            else:
+                other_ver = str(other).strip()
+
+            def _parse_tuple(v: str):
+                parts = []
+                for p in v.split("."):
+                    num = ""
+                    for ch in p:
+                        if ch.isdigit():
+                            num += ch
+                        else:
+                            break
+                    parts.append(int(num) if num else 0)
+                return tuple(parts)
+
+            return _parse_tuple(self.version) >= _parse_tuple(other_ver)
+
 _LOGGER = logging.getLogger(__name__)
 
 class SonnenBattery(BatteryApi):
@@ -35,6 +64,9 @@ class SonnenBattery(BatteryApi):
         self._hass = hass
         self._api = api
         self._soc_entity = soc_entity
+        self._software_version: str | None = None
+        self._is_modern_ems: bool = False
+        self._last_site_limits: dict | None = None
         self.coordinator = DataUpdateCoordinator(
             hass,
             _LOGGER,
@@ -43,10 +75,52 @@ class SonnenBattery(BatteryApi):
             update_interval=timedelta(seconds=10),
         )
 
+    @property
+    def software_version(self) -> str | None:
+        """Firmware-version för Sonnen."""
+        return self._software_version
+
+    @property
+    def is_modern_ems(self) -> bool:
+        """Indikerar om batteriet stödjer moderna EMS Site Limits (>= 1.35.14)."""
+        return self._is_modern_ems
+
+    async def async_init_version(self):
+        """Detekterar Sonnen firmware och aktiverar EMS om >= 1.35.14."""
+        sw = await self._api.async_get_software_version()
+        if sw:
+            self._software_version = str(sw).strip()
+            try:
+                self._is_modern_ems = AwesomeVersion(self._software_version) >= AwesomeVersion("1.35.14")
+                if self._is_modern_ems:
+                    _LOGGER.info(
+                        "Sonnen kör mjukvara %s >= 1.35.14: Aktiverar modernt EMS Site Limits läge!",
+                        self._software_version,
+                    )
+                else:
+                    _LOGGER.info(
+                        "Sonnen kör äldre mjukvara %s (< 1.35.14): Använder legacy driftlägesstyrning.",
+                        self._software_version,
+                    )
+            except Exception as err:
+                _LOGGER.warning("Kunde inte parsa Sonnen version '%s': %s", sw, err)
+
     async def _async_update_data(self):
         """Hämtar data från Sonnen lokalt."""
+        if self._software_version is None:
+            await self.async_init_version()
+
         try:
-            return await self._api.async_get_status()
+            raw_status = await self._api.async_get_status()
+            status_data = dict(raw_status) if isinstance(raw_status, dict) else {}
+            if self._is_modern_ems:
+                try:
+                    site_limits = await self._api.async_get_site_limits()
+                    if site_limits:
+                        status_data["site_limits"] = site_limits
+                except Exception as limits_err:
+                    _LOGGER.debug("Kunde inte hämta aktiva site limits från Sonnen: %s", limits_err)
+            return status_data
         except Exception as e:
             raise UpdateFailed(f"Kunde inte hämta Sonnen data: {e}") from e
 
@@ -83,24 +157,49 @@ class SonnenBattery(BatteryApi):
         discharge_ok = await self.async_set_discharge(0)
         return charge_ok and discharge_ok
 
-    async def apply_action(self, action: str, target_kw: float = 0.0):
+    async def apply_action(
+        self, action: str, target_kw: float = 0.0, sonnen_site_limits: dict | None = None, **kwargs
+    ):
         """Verkställer ett beslut från molnet eller lokalt."""
+        if sonnen_site_limits:
+            self._last_site_limits = dict(sonnen_site_limits)
+        elif self._last_site_limits and action == "HOLD":
+            sonnen_site_limits = self._last_site_limits
+
+        # Använd modern EMS för HOLD och IDLE när gränser finns
+        if self._is_modern_ems and sonnen_site_limits and action in ("HOLD", "IDLE"):
+            _LOGGER.debug("Verkställer beslut via Sonnen Site Limits (%s): %s", action, sonnen_site_limits)
+
+            # Säkerställ att batteriet ligger kvar i Self-consumption (Mode 2)
+            await self._api.async_set_operating_mode(2)
+
+            limits_payload = dict(sonnen_site_limits)
+            if limits_payload.get("duration") in ("PT90S", None):
+                limits_payload["duration"] = "PT10M"
+
+            # Skicka gränserna direkt till PUT /api/v2/site/limits
+            success = await self._api.async_set_site_limits(limits_payload)
+            if success:
+                return True
+            _LOGGER.warning("Misslyckades att sätta Site Limits, provar fallback...")
+
+        # För aktiv CHARGE och DISCHARGE (samt fallback för HOLD/IDLE) krävs manuellt driftläge (Mode 1)
         power_w = int(target_kw * 1000)
 
         if action == "CHARGE":
             await self._api.async_set_operating_mode(1)
             await asyncio.sleep(0.5)
-            await self.async_set_charge(power_w)
+            return await self.async_set_charge(power_w)
         elif action == "DISCHARGE":
             await self._api.async_set_operating_mode(1)
             await asyncio.sleep(0.5)
-            await self.async_set_discharge(power_w)
+            return await self.async_set_discharge(power_w)
         elif action == "HOLD":
             await self._api.async_set_operating_mode(1)
             await asyncio.sleep(0.5)
-            await self.async_set_idle()
+            return await self.async_set_idle()
         elif action == "IDLE":
-            await self._api.async_set_operating_mode(2)
+            return await self._api.async_set_operating_mode(2)
     async def get_virtual_load(self) -> float | None:
         data = self.coordinator.data
         if data and "Consumption_W" in data and "Production_W" in data:

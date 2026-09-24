@@ -131,6 +131,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 PERCENTAGE, SensorDeviceClass.BATTERY, EntityCategory.DIAGNOSTIC
             ),
             SonnenVirtualLoadSensor(coordinator, sonnen_coord),
+            SonnenControlModeSensor(coordinator, sonnen_coord),
         ])
 
     async_add_entities(entities)
@@ -556,6 +557,58 @@ class SonnenVirtualLoadSensor(CoordinatorEntity, SensorEntity):
             except ValueError:
                 pass
         return None
+
+class SonnenControlModeSensor(CoordinatorEntity, SensorEntity):
+    """Diagnostiksensor för Sonnens styrläge (EMS Site Limits vs Legacy)."""
+
+    def __init__(self, main_coordinator, sonnen_coord):
+        super().__init__(sonnen_coord)
+        self.main_coordinator = main_coordinator
+        self.entity_id = "sensor.battery_optimizer_sonnen_control_mode"
+        self._attr_name = "Sonnen Control Mode"
+        self._attr_unique_id = f"{main_coordinator.api_key}_sonnen_control_mode"
+        self._attr_icon = "mdi:tune-vertical"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def unique_id(self) -> str:
+        return self._attr_unique_id
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.main_coordinator.api_key)},
+            name="Battery Optimizer Light Plus",
+        )
+
+    @property
+    def state(self):
+        battery_api = getattr(self.main_coordinator, "battery_api", None)
+        if battery_api and getattr(battery_api, "is_modern_ems", False):
+            return "Site Power Limits (EMS v1.35+)"
+        return "Legacy (Manual Mode)"
+
+    @property
+    def extra_state_attributes(self):
+        battery_api = getattr(self.main_coordinator, "battery_api", None)
+        attrs = {
+            "software_version": getattr(battery_api, "software_version", None),
+            "active_gcp_import_limit": None,
+            "active_gcp_export_limit": None,
+            "active_bess_export_limit": None,
+        }
+        site_limits = None
+        if self.coordinator.data and isinstance(self.coordinator.data, dict):
+            site_limits = self.coordinator.data.get("site_limits")
+
+        if isinstance(site_limits, dict):
+            attrs["active_gcp_import_limit"] = site_limits.get("p_gcp_max_import_limit")
+            attrs["active_gcp_export_limit"] = site_limits.get("p_gcp_max_export_limit")
+            attrs["active_bess_export_limit"] = site_limits.get("p_bess_inv_max_export_limit")
+            if "p_bess_inv_max_import_limit" in site_limits:
+                attrs["active_bess_import_limit"] = site_limits.get("p_bess_inv_max_import_limit")
+
+        return attrs
 
 class BatteryLightDischargeTargetSensor(BatteryOptimizerSensorBase):
     """Sensor som visar önskad urladdningseffekt i Watt (för styrning)."""

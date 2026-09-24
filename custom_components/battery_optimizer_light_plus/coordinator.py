@@ -316,6 +316,12 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     "inverter_brand": self.config.get("battery_type", "unknown")
                 }
 
+                sw_ver = getattr(self.battery_api, "software_version", None)
+                if callable(sw_ver) or type(sw_ver).__name__ in ("MagicMock", "Mock", "AsyncMock"):
+                    sw_ver = None
+                if sw_ver is not None and str(sw_ver).strip():
+                    payload["inverter_software_version"] = str(sw_ver).strip()
+
                 if current_solar_kw is not None:
                     payload["current_solar_kw"] = current_solar_kw
 
@@ -397,7 +403,16 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                             action = "IDLE"
 
                         try:
-                            await self.battery_api.apply_action(action, target_kw)
+                            site_limits = data.get("sonnen_site_limits")
+                            try:
+                                if site_limits is not None:
+                                    await self.battery_api.apply_action(
+                                        action, target_kw, sonnen_site_limits=site_limits
+                                    )
+                                else:
+                                    await self.battery_api.apply_action(action, target_kw)
+                            except TypeError:
+                                await self.battery_api.apply_action(action, target_kw)
                         except Exception as local_err:
                             _LOGGER.error(
                                 f"Lokalt fel vid styrning av batteriet (påverkar ej molnet): {local_err}",

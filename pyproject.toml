@@ -4,7 +4,8 @@ version = "0.1.0"
 dependencies = [
     "aiohttp",
     "voluptuous",
-    "async_timeout"
+    "async_timeout",
+    "awesomeversion"
 ]
 
 [project.optional-dependencies]

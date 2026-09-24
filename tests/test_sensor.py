@@ -30,6 +30,7 @@ from custom_components.battery_optimizer_light_plus.sensor import (
     HuaweiWrapperSensor,
     SonnenInternalSensor,
     SonnenVirtualLoadSensor,
+    SonnenControlModeSensor,
     BatteryLightAISummarySensor,
     BatteryLightNextActionSensor,
     BatteryLightNextActionTimeSensor,
@@ -85,7 +86,7 @@ async def test_sensor_setup_entry_sonnen():
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 24
+    assert len(async_add_entities.call_args[0][0]) == 25
 
 def test_basic_sensors():
     coordinator = MagicMock()
@@ -344,4 +345,53 @@ def test_water_heater_reason_sensor():
 
     # Test device info
     assert sensor.device_info["identifiers"] == {(DOMAIN, "test_key")}
+
+def test_sonnen_control_mode_sensor_modern():
+    """Testar SonnenControlModeSensor när modernt EMS är aktivt."""
+    main_coordinator = MagicMock()
+    main_coordinator.api_key = "test_sonnen_key"
+    battery_api = MagicMock()
+    battery_api.is_modern_ems = True
+    battery_api.software_version = "1.35.14"
+    main_coordinator.battery_api = battery_api
+
+    sonnen_coord = MagicMock()
+    sonnen_coord.data = {
+        "site_limits": {
+            "p_gcp_max_import_limit": 4500,
+            "p_gcp_max_export_limit": 0,
+            "p_bess_inv_max_export_limit": 0,
+            "p_bess_inv_max_import_limit": 3300,
+        }
+    }
+
+    sensor = SonnenControlModeSensor(main_coordinator, sonnen_coord)
+    assert sensor.state == "Site Power Limits (EMS v1.35+)"
+    assert sensor.entity_id == "sensor.battery_optimizer_sonnen_control_mode"
+    assert sensor.unique_id == "test_sonnen_key_sonnen_control_mode"
+    assert sensor.extra_state_attributes["software_version"] == "1.35.14"
+    assert sensor.extra_state_attributes["active_gcp_import_limit"] == 4500
+    assert sensor.extra_state_attributes["active_gcp_export_limit"] == 0
+    assert sensor.extra_state_attributes["active_bess_export_limit"] == 0
+    assert sensor.extra_state_attributes["active_bess_import_limit"] == 3300
+
+def test_sonnen_control_mode_sensor_legacy():
+    """Testar SonnenControlModeSensor när legacy-läge körs."""
+    main_coordinator = MagicMock()
+    main_coordinator.api_key = "test_sonnen_key"
+    battery_api = MagicMock()
+    battery_api.is_modern_ems = False
+    battery_api.software_version = "1.30.0"
+    main_coordinator.battery_api = battery_api
+
+    sonnen_coord = MagicMock()
+    sonnen_coord.data = {}
+
+    sensor = SonnenControlModeSensor(main_coordinator, sonnen_coord)
+    assert sensor.state == "Legacy (Manual Mode)"
+    assert sensor.extra_state_attributes["software_version"] == "1.30.0"
+    assert sensor.extra_state_attributes["active_gcp_import_limit"] is None
+    assert sensor.extra_state_attributes["active_gcp_export_limit"] is None
+    assert sensor.extra_state_attributes["active_bess_export_limit"] is None
+
 

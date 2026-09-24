@@ -21,6 +21,8 @@ import aiohttp
 
 API_STATUS = "/api/v2/status"
 API_CONFIG = "/api/v2/configurations"
+API_SITE_LIMITS = "/api/v2/site/limits"
+API_CONFIG_SOFTWARE = "/api/v2/configurations/DE_Software"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,3 +98,50 @@ class SonnenAPI:
         except Exception as e:
             _LOGGER.error("Fel vid skickande av urladdningskommando: %s", e)
             return False
+
+    async def async_get_software_version(self) -> str | None:
+        """Hämtar firmware-version från DE_Software."""
+        url = f"{self._base_url}{API_CONFIG_SOFTWARE}"
+        try:
+            async with self._session.get(url, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if isinstance(data, dict):
+                        return data.get("DE_Software")
+                    elif isinstance(data, str):
+                        return data
+        except Exception as e:
+            _LOGGER.debug("Kunde inte hämta DE_Software från Sonnen: %s", e)
+        return None
+
+    async def async_set_site_limits(self, limits: dict) -> bool:
+        """Sätter site power limits via PUT /api/v2/site/limits."""
+        url = f"{self._base_url}{API_SITE_LIMITS}"
+        try:
+            # Rensa bort eventuella None-värden
+            payload = {k: v for k, v in limits.items() if v is not None}
+            # Säkerställ längre duration än koordinators 5 minuter (standard PT10M)
+            if "duration" not in payload or payload.get("duration") == "PT90S":
+                payload["duration"] = "PT10M"
+
+            async with self._session.put(
+                url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
+            ) as resp:
+                if resp.status in (200, 204):
+                    return True
+                _LOGGER.warning("Sonnen PutSiteLimits returnerade status %s: %s", resp.status, await resp.text())
+                return False
+        except Exception as e:
+            _LOGGER.error("Fel vid anrop till Sonnen PutSiteLimits: %s", e)
+            return False
+
+    async def async_get_site_limits(self) -> dict | None:
+        """Hämtar aktiva site limits via GET /api/v2/site/limits."""
+        url = f"{self._base_url}{API_SITE_LIMITS}"
+        try:
+            async with self._session.get(url, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+        except Exception as e:
+            _LOGGER.debug("Kunde inte hämta aktiva site limits från Sonnen: %s", e)
+        return None

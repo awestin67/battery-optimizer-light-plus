@@ -3,6 +3,7 @@ aiohttp
 voluptuous
 async-timeout
 pymodbus
+awesomeversion
 
 # Test & Lint
 pytest

@@ -84,6 +84,13 @@ async def async_setup_entry(hass: HomeAssistant, entry):
     virtual_load_entity = config.get(CONF_VIRTUAL_LOAD_SENSOR)
 
     if config.get(CONF_BATTERY_TYPE) == BATTERY_TYPE_SONNEN:
+        # Initiera firmware-version om metoden finns
+        if hasattr(coordinator.battery_api, "async_init_version"):
+            try:
+                await coordinator.battery_api.async_init_version()
+            except Exception as ver_err:
+                _LOGGER.debug("Kunde inte hämta Sonnen firmware-version vid setup: %s", ver_err)
+
         # Starta Sonne-specifik polling var 10:e sekund INNAN vi frågar molnet första gången
         await coordinator.battery_api.coordinator.async_config_entry_first_refresh()
 
@@ -855,7 +862,16 @@ class PeakGuard:
                                 f"⚙️ Executing HOLD command. Battery is active ({bat_power} W), "
                                 "enforcing pause."
                             )
-                            await self.battery.apply_action("HOLD")
+                            site_limits = (
+                                self.coordinator.data.get("sonnen_site_limits") if self.coordinator.data else None
+                            )
+                            try:
+                                if site_limits is not None:
+                                    await self.battery.apply_action("HOLD", sonnen_site_limits=site_limits)
+                                else:
+                                    await self.battery.apply_action("HOLD")
+                            except TypeError:
+                                await self.battery.apply_action("HOLD")
                             self._hold_command_sent = True
                             self._last_sent_command = "HOLD"
                     else:
@@ -871,7 +887,16 @@ class PeakGuard:
                             "⚙️ Executing IDLE (Auto) command to battery. "
                             f"(CloudAction={cloud_action}, SolarOverride={self._is_solar_override})"
                         )
-                        await self.battery.apply_action("IDLE")
+                        site_limits = (
+                            self.coordinator.data.get("sonnen_site_limits") if self.coordinator.data else None
+                        )
+                        try:
+                            if site_limits is not None:
+                                await self.battery.apply_action("IDLE", sonnen_site_limits=site_limits)
+                            else:
+                                await self.battery.apply_action("IDLE")
+                        except TypeError:
+                            await self.battery.apply_action("IDLE")
                         self._last_sent_command = "IDLE"
 
                 else:

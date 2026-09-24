@@ -19,6 +19,11 @@ from abc import ABC, abstractmethod
 class BatteryApi(ABC):
     """Gemensamt gränssnitt för alla batterityper i Optimizer Light."""
 
+    @property
+    def software_version(self) -> str | None:
+        """Firmware-version för batteriet/invertern om tillgänglig."""
+        return None
+
     @abstractmethod
     async def get_current_soc(self) -> float | None:
         """Hämtar aktuell SoC (State of Charge)."""
@@ -33,7 +38,7 @@ class BatteryApi(ABC):
         return None
 
     @abstractmethod
-    async def apply_action(self, action: str, target_kw: float = 0.0):
+    async def apply_action(self, action: str, target_kw: float = 0.0, **kwargs):
         """
         Verkställer ett beslut från molnet eller lokalt.
         action: 'CHARGE', 'DISCHARGE', 'HOLD', 'IDLE'
