@@ -379,6 +379,20 @@ async def test_sonnen_api_software_version_and_site_limits():
     mock_response.text = AsyncMock(return_value="Bad Request")
     assert await api.async_set_site_limits({"p_gcp_max_import_limit": 4500}) is False
 
+    # 7. async_set_site_limits vid felstatus med EM2-krav och lyckad retry
+    mock_resp_em2 = MagicMock(status=400)
+    mock_resp_em2.text = AsyncMock(return_value='{"error":"Site limits can only be set in EM2"}')
+    mock_resp_mode2 = MagicMock(status=200)
+    mock_resp_ok = MagicMock(status=200)
+    mock_session.put.side_effect = [
+        MagicMock(__aenter__=AsyncMock(return_value=mock_resp_em2), __aexit__=AsyncMock()),
+        MagicMock(__aenter__=AsyncMock(return_value=mock_resp_mode2), __aexit__=AsyncMock()),
+        MagicMock(__aenter__=AsyncMock(return_value=mock_resp_ok), __aexit__=AsyncMock()),
+    ]
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        assert await api.async_set_site_limits({"p_bess_inv_max_export_limit": 0}) is True
+    mock_session.put.side_effect = None
+
     # 7. async_set_site_limits vid exception
     mock_session.put.side_effect = Exception("Connection error")
     assert await api.async_set_site_limits({"p_gcp_max_import_limit": 4500}) is False

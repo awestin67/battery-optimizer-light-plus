@@ -193,8 +193,18 @@ class SonnenBattery(BatteryApi):
         if self._is_modern_ems and sonnen_site_limits is not None and action in ("HOLD", "IDLE"):
             _LOGGER.debug("Verkställer beslut via Sonnen Site Limits (%s): %s", action, sonnen_site_limits)
 
-            # Säkerställ att batteriet ligger kvar i Self-consumption (Mode 2)
-            await self._api.async_set_operating_mode(2)
+            # Säkerställ att batteriet ligger i Self-consumption (Mode 2)
+            current_mode = None
+            if self.coordinator.data and "OperatingMode" in self.coordinator.data:
+                current_mode = str(self.coordinator.data["OperatingMode"]).strip()
+
+            if current_mode != "2":
+                _LOGGER.info(
+                    "Sonnen är i driftläge %s, växlar till Mode 2 (Self-consumption) före Site Limits...",
+                    current_mode or "okänt",
+                )
+                await self._api.async_set_operating_mode(2)
+                await asyncio.sleep(1.0)
 
             limits_payload = dict(sonnen_site_limits)
             if limits_payload.get("duration") in ("PT90S", None):
@@ -204,7 +214,7 @@ class SonnenBattery(BatteryApi):
             success = await self._api.async_set_site_limits(limits_payload)
             if success:
                 return True
-            _LOGGER.warning("Misslyckades att sätta Site Limits, provar fallback...")
+            _LOGGER.warning("Misslyckades att sätta Site Limits för Sonnen (%s), provar fallback...", action)
 
         # För aktiv CHARGE och DISCHARGE (samt fallback för HOLD/IDLE) krävs manuellt driftläge (Mode 1)
         power_w = int(target_kw * 1000)

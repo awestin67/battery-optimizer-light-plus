@@ -16,6 +16,7 @@
 
 
 """API-klient för Sonnen Batteri."""
+import asyncio
 import logging
 import aiohttp
 
@@ -170,7 +171,26 @@ class SonnenAPI:
             ) as resp:
                 if resp.status in (200, 204):
                     return True
-                _LOGGER.warning("Sonnen PutSiteLimits returnerade status %s: %s", resp.status, await resp.text())
+                resp_text = await resp.text()
+                _LOGGER.warning("Sonnen PutSiteLimits returnerade status %s: %s", resp.status, resp_text)
+
+                # Om Sonnen svarar att EM2 krävs: sätt Mode 2, vänta och prova igen
+                if "EM2" in resp_text:
+                    _LOGGER.info("Sonnen kräver driftläge 2 (EM2) för Site Limits. Sätter Mode 2 och provar igen...")
+                    await self.async_set_operating_mode(2)
+                    await asyncio.sleep(1.5)
+                    async with self._session.put(
+                        url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
+                    ) as retry_resp:
+                        if retry_resp.status in (200, 204):
+                            _LOGGER.info("Sonnen PutSiteLimits lyckades efter växling till EM2!")
+                            return True
+                        _LOGGER.warning(
+                            "Sonnen PutSiteLimits misslyckades efter retry: status %s (%s)",
+                            retry_resp.status,
+                            await retry_resp.text(),
+                        )
+
                 return False
         except Exception as e:
             _LOGGER.error("Fel vid anrop till Sonnen PutSiteLimits: %s", e)
