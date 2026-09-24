@@ -42,6 +42,7 @@ The project uses `pytest` for testing and `ruff` for linting and formatting.
 -   **Language:** The codebase, including comments and user-facing strings in the `README.md`, is primarily in **Swedish**.
 -   **Linting:** The project uses `ruff` for code linting. Configuration can be found in `pyproject.toml`.
 -   **Testing:** Tests are located in the `tests/` directory and are run using `pytest`. The CI pipeline in `.github/workflows/run_tests.yml` validates tests, HACS compatibility, and Home Assistant's `hassfest`.
+-   **Release Process:** Kör ALDRIG `git push` direkt. Använd ALLTID `python release.py` för att bygga releases, bumpa version och pusha till GitHub.
 -   **Configuration:** The integration is configured via the Home Assistant UI (Config Flow). The main configuration options are defined in `custom_components/battery_optimizer_light/config_flow.py`.
 -   **Data Flow:**
     1.  The `coordinator.py` polls a cloud API endpoint for optimization data.
