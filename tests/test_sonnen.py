@@ -428,9 +428,30 @@ async def test_sonnen_api_software_version_and_site_limits():
     ]
     with patch("asyncio.sleep", new_callable=AsyncMock):
         assert await api.async_set_site_limits({"p_bess_inv_max_export_limit": 0}) is True
+    assert api.site_limits_supported is True
     mock_session.put.side_effect = None
 
-    # 7. async_set_site_limits vid exception
+    # 7b. async_set_site_limits vid felstatus med EM2-krav och misslyckad retry avaktiverar site_limits_supported
+    api.site_limits_supported = True
+    api._site_limits_em2_logged = False
+    mock_resp_em2_again = MagicMock(status=400)
+    mock_resp_em2_again.text = AsyncMock(return_value='{"error":"Site limits can only be set in EM2"}')
+    mock_session.put.side_effect = [
+        MagicMock(__aenter__=AsyncMock(return_value=mock_resp_em2), __aexit__=AsyncMock()),
+        MagicMock(__aenter__=AsyncMock(return_value=mock_resp_mode2), __aexit__=AsyncMock()),
+        MagicMock(__aenter__=AsyncMock(return_value=mock_resp_em2_again), __aexit__=AsyncMock()),
+    ]
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        assert await api.async_set_site_limits({"p_bess_inv_max_export_limit": 0}) is False
+    assert api.site_limits_supported is False
+    # Nästa anrop returnerar direkt False utan nätverksanrop
+    mock_session.put.reset_mock()
+    assert await api.async_set_site_limits({"p_bess_inv_max_export_limit": 0}) is False
+    mock_session.put.assert_not_called()
+    mock_session.put.side_effect = None
+    api.site_limits_supported = True
+
+    # 7c. async_set_site_limits vid exception
     mock_session.put.side_effect = Exception("Connection error")
     assert await api.async_set_site_limits({"p_gcp_max_import_limit": 4500}) is False
     mock_session.put.side_effect = None

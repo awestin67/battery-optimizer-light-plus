@@ -44,6 +44,8 @@ class SonnenAPI:
         }
         self._last_em_usoc: str | None = None
         self._last_operating_mode: str | None = None
+        self.site_limits_supported: bool = True
+        self._site_limits_em2_logged: bool = False
 
     async def async_get_status(self):
         """Hämtar status och konfiguration."""
@@ -255,6 +257,9 @@ class SonnenAPI:
 
     async def async_set_site_limits(self, limits: dict) -> bool:
         """Sätter site power limits via PUT /api/v2/site/limits."""
+        if not self.site_limits_supported:
+            return False
+
         url = f"{self._base_url}{API_SITE_LIMITS}"
         try:
             limit_keys = {
@@ -299,53 +304,54 @@ class SonnenAPI:
                     resp_text = await resp.text()
                 except Exception:
                     resp_text = ""
+
+                # Om Sonnen svarar att EM2 krävs: sätt Mode 2, vänta och prova en retry
+                if "EM2" in resp_text:
+                    if not self._site_limits_em2_logged:
+                        _LOGGER.info(
+                            "Sonnen meddelar att Site Limits kräver EM2. Försöker säkerställa Mode 2 och provar igen..."
+                        )
+                    mode_set = await self.async_set_operating_mode(2)
+                    if not mode_set:
+                        if not self._site_limits_em2_logged:
+                            _LOGGER.warning(
+                                "Kunde inte sätta Sonnen i Mode 2 (EM2). "
+                                "Avaktiverar Site Limits och växlar till standardstyrning."
+                            )
+                            self._site_limits_em2_logged = True
+                        self.site_limits_supported = False
+                        return False
+
+                    await asyncio.sleep(0.5)
+
+                    async with self._session.put(
+                        url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
+                    ) as retry_resp:
+                        if retry_resp.status in (200, 204):
+                            _LOGGER.info("Sonnen PutSiteLimits lyckades efter växling till Mode 2!")
+                            return True
+                        try:
+                            retry_text = await retry_resp.text()
+                        except Exception:
+                            retry_text = ""
+
+                        if not self._site_limits_em2_logged:
+                            _LOGGER.warning(
+                                "Sonnen tillåter inte dynamisk styrning via Site Limits (%s: %s). "
+                                "Växlar automatiskt till beprövad standard Sonnen-styrning (Manual Mode setpoints).",
+                                retry_resp.status,
+                                retry_text.strip(),
+                            )
+                            self._site_limits_em2_logged = True
+                        self.site_limits_supported = False
+                        return False
+
                 _LOGGER.warning(
                     "Sonnen PutSiteLimits returnerade status %s: %s (payload: %s)",
                     resp.status,
                     resp_text,
                     payload,
                 )
-
-                # Om Sonnen svarar att EM2 krävs: sätt Mode 2, vänta och prova igen med alternativa durationer
-                if "EM2" in resp_text:
-                    _LOGGER.warning(
-                        "Sonnen kräver driftläge 2 (EM2) för Site Limits. Växlar till Mode 2 och provar igen..."
-                    )
-                    mode_set = await self.async_set_operating_mode(2)
-                    if not mode_set:
-                        _LOGGER.warning("Kunde inte sätta Sonnen i Mode 2 (EM2), avbryter retry för Site Limits")
-                        return False
-                    await asyncio.sleep(2.5)
-
-                    # Prova med variations: 1. PT600S, 2. PT30S (Swagger standard), 3. utan duration
-                    retry_variants = [
-                        dict(payload),
-                        {**payload, "duration": "PT30S"},
-                        {k: v for k, v in payload.items() if k != "duration"},
-                    ]
-
-                    for r_idx, r_payload in enumerate(retry_variants, 1):
-                        async with self._session.put(
-                            url, json=r_payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
-                        ) as retry_resp:
-                            if retry_resp.status in (200, 204):
-                                _LOGGER.info(
-                                    "Sonnen PutSiteLimits lyckades vid retry variant %d (payload: %s)!",
-                                    r_idx,
-                                    r_payload,
-                                )
-                                return True
-                            try:
-                                retry_text = await retry_resp.text()
-                            except Exception:
-                                retry_text = ""
-                            _LOGGER.warning(
-                                "Sonnen PutSiteLimits misslyckades vid retry variant %d: status %s (%s) för payload %s",
-                                r_idx,
-                                retry_resp.status,
-                                retry_text,
-                                r_payload,
-                            )
 
             return False
         except Exception as e:

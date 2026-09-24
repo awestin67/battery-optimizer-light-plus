@@ -83,7 +83,7 @@ class SonnenBattery(BatteryApi):
     @property
     def is_modern_ems(self) -> bool:
         """Indikerar om batteriet stödjer moderna EMS Site Limits (>= 1.35.14)."""
-        return self._is_modern_ems
+        return bool(self._is_modern_ems and getattr(self._api, "site_limits_supported", True))
 
     def _process_software_version(self, sw: str | None) -> bool:
         """Tolkar mjukvaruversion och sätter is_modern_ems."""
@@ -104,6 +104,10 @@ class SonnenBattery(BatteryApi):
 
     async def async_init_version(self):
         """Detekterar Sonnen firmware och aktiverar EMS om >= 1.35.14."""
+        if hasattr(self._api, "site_limits_supported"):
+            self._api.site_limits_supported = True
+        if hasattr(self._api, "_site_limits_em2_logged"):
+            self._api._site_limits_em2_logged = False
         sw = await self._api.async_get_software_version()
         if sw:
             self._process_software_version(sw)
@@ -124,7 +128,7 @@ class SonnenBattery(BatteryApi):
             if self._software_version is None and "DE_Software" in status_data:
                 self._process_software_version(status_data["DE_Software"])
 
-            if self._is_modern_ems:
+            if self.is_modern_ems:
                 try:
                     site_limits = await self._api.async_get_site_limits()
                     if site_limits:
@@ -201,7 +205,7 @@ class SonnenBattery(BatteryApi):
         has_active_limits = any(k in (sonnen_site_limits or {}) for k in limit_keys)
 
         # Använd modern EMS för HOLD och IDLE när gränser finns
-        if self._is_modern_ems and action in ("HOLD", "IDLE"):
+        if self.is_modern_ems and action in ("HOLD", "IDLE"):
             if not has_active_limits and action == "IDLE":
                 # Inga gränser kvar (t.ex. exportspärr borttagen och ingen GCP-gräns).
                 # Säkerställ att batteriet är i Mode 2 utan att skicka tom payload till PutSiteLimits.
@@ -239,7 +243,13 @@ class SonnenBattery(BatteryApi):
                 success = await self._api.async_set_site_limits(limits_payload)
                 if success:
                     return True
-                _LOGGER.warning("Misslyckades att sätta Site Limits för Sonnen (%s), provar fallback...", action)
+                if not self.is_modern_ems:
+                    _LOGGER.info(
+                        "Site limits avaktiverades för Sonnen (%s), växlar direkt till standardstyrning.",
+                        action,
+                    )
+                else:
+                    _LOGGER.warning("Misslyckades att sätta Site Limits för Sonnen (%s), provar fallback...", action)
 
         # För aktiv CHARGE och DISCHARGE (samt fallback för HOLD/IDLE) krävs manuellt driftläge (Mode 1)
         power_w = int(target_kw * 1000)
