@@ -172,6 +172,15 @@ class SonnenBattery(BatteryApi):
         self, action: str, target_kw: float = 0.0, sonnen_site_limits: dict | None = None, **kwargs
     ):
         """Verkställer ett beslut från molnet eller lokalt."""
+        limit_keys = {
+            "p_gcp_max_import_limit",
+            "p_gcp_max_export_limit",
+            "p_bess_inv_max_export_limit",
+            "p_bess_inv_max_import_limit",
+            "i_bess_storage_max_charge_limit",
+            "i_bess_storage_max_discharge_limit",
+        }
+
         if sonnen_site_limits is not None:
             self._last_site_limits = dict(sonnen_site_limits)
             if action == "HOLD":
@@ -189,38 +198,48 @@ class SonnenBattery(BatteryApi):
                 sonnen_site_limits.pop("p_bess_inv_max_export_limit", None)
                 self._last_site_limits.pop("p_bess_inv_max_export_limit", None)
 
+        has_active_limits = any(k in (sonnen_site_limits or {}) for k in limit_keys)
+
         # Använd modern EMS för HOLD och IDLE när gränser finns
-        if self._is_modern_ems and sonnen_site_limits is not None and action in ("HOLD", "IDLE"):
-            _LOGGER.debug("Verkställer beslut via Sonnen Site Limits (%s): %s", action, sonnen_site_limits)
+        if self._is_modern_ems and action in ("HOLD", "IDLE"):
+            if not has_active_limits and action == "IDLE":
+                # Inga gränser kvar (t.ex. exportspärr borttagen och ingen GCP-gräns).
+                # Säkerställ att batteriet är i Mode 2 utan att skicka tom payload till PutSiteLimits.
+                _LOGGER.debug("IDLE utan aktiva site limits. Säkerställer Mode 2 (Self-consumption).")
+                self._last_site_limits = None
+                return await self._api.async_set_operating_mode(2)
 
-            # Säkerställ att batteriet ligger i Self-consumption (Mode 2)
-            current_mode = None
-            if self.coordinator.data:
-                current_mode = str(
-                    self.coordinator.data.get("EM_OperatingMode")
-                    or self.coordinator.data.get("OperatingMode")
-                    or ""
-                ).strip()
-            if not current_mode and getattr(self._api, "_last_operating_mode", None):
-                current_mode = str(self._api._last_operating_mode).strip()
+            if sonnen_site_limits is not None and has_active_limits:
+                _LOGGER.debug("Verkställer beslut via Sonnen Site Limits (%s): %s", action, sonnen_site_limits)
 
-            if current_mode != "2":
-                _LOGGER.info(
-                    "Sonnen är i driftläge %s, växlar till Mode 2 (Self-consumption) före Site Limits...",
-                    current_mode or "okänt",
-                )
-                await self._api.async_set_operating_mode(2)
-                await asyncio.sleep(2.0)
+                # Säkerställ att batteriet ligger i Self-consumption (Mode 2)
+                current_mode = None
+                if self.coordinator.data:
+                    current_mode = str(
+                        self.coordinator.data.get("EM_OperatingMode")
+                        or self.coordinator.data.get("OperatingMode")
+                        or ""
+                    ).strip()
+                if not current_mode and getattr(self._api, "_last_operating_mode", None):
+                    current_mode = str(self._api._last_operating_mode).strip()
 
-            limits_payload = dict(sonnen_site_limits)
-            if limits_payload.get("duration") in ("PT90S", None):
-                limits_payload["duration"] = "PT10M"
+                if current_mode != "2":
+                    _LOGGER.info(
+                        "Sonnen är i driftläge %s, växlar till Mode 2 (Self-consumption) före Site Limits...",
+                        current_mode or "okänt",
+                    )
+                    await self._api.async_set_operating_mode(2)
+                    await asyncio.sleep(2.0)
 
-            # Skicka gränserna direkt till PUT /api/v2/site/limits
-            success = await self._api.async_set_site_limits(limits_payload)
-            if success:
-                return True
-            _LOGGER.warning("Misslyckades att sätta Site Limits för Sonnen (%s), provar fallback...", action)
+                limits_payload = dict(sonnen_site_limits)
+                if limits_payload.get("duration") in ("PT90S", None):
+                    limits_payload["duration"] = "PT10M"
+
+                # Skicka gränserna direkt till PUT /api/v2/site/limits
+                success = await self._api.async_set_site_limits(limits_payload)
+                if success:
+                    return True
+                _LOGGER.warning("Misslyckades att sätta Site Limits för Sonnen (%s), provar fallback...", action)
 
         # För aktiv CHARGE och DISCHARGE (samt fallback för HOLD/IDLE) krävs manuellt driftläge (Mode 1)
         power_w = int(target_kw * 1000)

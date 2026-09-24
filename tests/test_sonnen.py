@@ -290,11 +290,11 @@ async def test_sonnen_api_methods():
         "http://192.168.1.50:80/api/v2/configurations", headers=expected_headers
     )
 
-    # 2. Test set_operating_mode via /api/v2/configurations
+    # 2. Test set_operating_mode via /api/v2/site/configurations
     assert await api.async_set_operating_mode(1) is True
     mock_session.put.assert_called_once_with(
-        "http://192.168.1.50:80/api/v2/configurations",
-        json={"EM_OperatingMode": "1"},
+        "http://192.168.1.50:80/api/v2/site/configurations",
+        json={"EM_OperatingMode": "1", "EM_USOC": "5"},
         headers=expected_headers,
         timeout=aiohttp.ClientTimeout(total=5),
     )
@@ -310,6 +310,38 @@ async def test_sonnen_api_methods():
     mock_session.post.assert_any_call(
         "http://192.168.1.50:80/api/v2/setpoint/discharge/2500", json={}, headers=expected_headers
     )
+
+
+@pytest.mark.asyncio
+async def test_sonnen_api_set_operating_mode_form_encoded_fallback():
+    """Testar att SonnenAPI faller tillbaka till form-encoded /api/v2/configurations om site/configurations misslyckas.
+    """
+    mock_session = MagicMock()
+    mock_resp_fail = MagicMock(status=404)
+    mock_resp_fail.text = AsyncMock(return_value="Not Found")
+    mock_resp_ok = MagicMock(status=200)
+    mock_resp_ok.text = AsyncMock(return_value="OK")
+
+    # Anrop 1 och 2 till site/configurations misslyckas, anrop 3 till configurations (form-encoded) lyckas
+    mock_session.put.side_effect = [
+        MagicMock(__aenter__=AsyncMock(return_value=mock_resp_fail), __aexit__=AsyncMock()),
+        MagicMock(__aenter__=AsyncMock(return_value=mock_resp_fail), __aexit__=AsyncMock()),
+        MagicMock(__aenter__=AsyncMock(return_value=mock_resp_ok), __aexit__=AsyncMock()),
+    ]
+
+    api = SonnenAPI("192.168.1.50", 80, "my-secret-token", mock_session)
+    api._last_em_usoc = "10"
+
+    assert await api.async_set_operating_mode(2) is True
+    assert mock_session.put.call_count == 3
+    # Verifiera att det tredje anropet gjordes till /api/v2/configurations med form-encoded data
+    mock_session.put.assert_called_with(
+        "http://192.168.1.50:80/api/v2/configurations",
+        data={"EM_OperatingMode": "2"},
+        headers={"Auth-Token": "my-secret-token"},
+        timeout=aiohttp.ClientTimeout(total=5),
+    )
+    assert api._last_operating_mode == "2"
 
 
 @pytest.mark.asyncio
@@ -653,6 +685,30 @@ async def test_sonnen_apply_action_clears_export_limit_on_idle(sonnen_battery, m
     # GCP-begränsningen ska finnas kvar
     assert sent_limits.get("p_gcp_max_import_limit") == 4500
     assert sent_limits.get("duration") == "PT10M"
+
+
+@pytest.mark.asyncio
+async def test_sonnen_apply_action_idle_without_remaining_limits(sonnen_battery, mock_sonnen_api):
+    """Testar att IDLE utan kvarvarande site limits sätter Mode 2 och INTE anropar PutSiteLimits med tom payload."""
+    sonnen_battery._software_version = "1.35.14"
+    sonnen_battery._is_modern_ems = True
+
+    # 1. Molnet skickar HOLD med enbart exportspärr (inga GCP-limits)
+    initial_limits = {"p_bess_inv_max_export_limit": 0}
+    await sonnen_battery.apply_action("HOLD", sonnen_site_limits=initial_limits)
+    mock_sonnen_api.async_set_site_limits.assert_called_with({
+        "p_bess_inv_max_export_limit": 0,
+        "duration": "PT10M",
+    })
+    mock_sonnen_api.reset_mock()
+
+    # 2. Molnet skickar IDLE (exportspärren tas bort och inga andra gränser finns kvar)
+    await sonnen_battery.apply_action("IDLE")
+    # Ska sätta Mode 2 (Self-consumption)
+    mock_sonnen_api.async_set_operating_mode.assert_called_once_with(2)
+    # Får ABSOLUT INTE anropa async_set_site_limits med tom payload (det gav 400 Bad Request från Sonnen)
+    mock_sonnen_api.async_set_site_limits.assert_not_called()
+    assert sonnen_battery._last_site_limits is None
 
 
 def _create_mock_battery(is_modern_ems: bool = True):

@@ -77,41 +77,104 @@ class SonnenAPI:
             raise
 
     async def async_set_operating_mode(self, mode: int) -> bool:
-        """Sätter driftläge via /api/v2/configurations."""
-        config_url = f"{self._base_url}{API_CONFIG}"
-        # Skicka endast EM_OperatingMode utan EM_USOC då Sonnen ofta ignorerar driftläget
-        # om flera parametrar skickas i samma PUT-anrop.
-        payload_str = {"EM_OperatingMode": str(mode)}
-        payload_int = {"EM_OperatingMode": mode}
+        """Sätter driftläge via /api/v2/site/configurations (med fallback till /api/v2/configurations)."""
+        mode_str = str(mode)
+        headers_json = {"Auth-Token": self._token, "Content-Type": "application/json"}
+        headers_form = {"Auth-Token": self._token}
 
-        for payload in (payload_str, payload_int):
+        # 1. Prova först det officiella EMS Site Configurations API:et (application/json)
+        site_config_url = f"{self._base_url}{API_SITE_CONFIG}"
+        site_payloads = []
+        if self._last_em_usoc is not None:
+            site_payloads.append({"EM_OperatingMode": mode_str, "EM_USOC": str(self._last_em_usoc)})
+        site_payloads.append({"EM_OperatingMode": mode_str})
+
+        for payload in site_payloads:
             try:
                 async with self._session.put(
-                    config_url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
+                    site_config_url, json=payload, headers=headers_json, timeout=aiohttp.ClientTimeout(total=5)
                 ) as resp:
+                    resp_text = ""
                     try:
                         resp_text = await resp.text()
                     except Exception:
-                        resp_text = ""
+                        pass
                     if resp.status in (200, 204):
-                        _LOGGER.warning(
-                            "Sonnen svarade på PUT %s (payload: %s): status %s, body: '%s'",
-                            API_CONFIG,
-                            payload,
-                            resp.status,
+                        _LOGGER.info(
+                            "Sonnen satte driftläge %s via %s: %s (payload: %s)",
+                            mode,
+                            API_SITE_CONFIG,
                             resp_text,
+                            payload,
                         )
-                        self._last_operating_mode = str(mode)
+                        self._last_operating_mode = mode_str
                         return True
-                    _LOGGER.warning(
-                        "Sonnen PUT %s returnerade status %s: %s (payload: %s)",
-                        API_CONFIG,
+                    _LOGGER.debug(
+                        "Sonnen PUT %s returnerade status %s: %s (payload: %s), provar nästa",
+                        API_SITE_CONFIG,
                         resp.status,
                         resp_text,
                         payload,
                     )
             except Exception as e:
-                _LOGGER.warning("Kunde inte sätta driftläge via %s: %s (payload: %s)", API_CONFIG, e, payload)
+                _LOGGER.debug("Kunde inte sätta driftläge via %s: %s (payload: %s)", API_SITE_CONFIG, e, payload)
+
+        # 2. Fallback: Prova legacy /api/v2/configurations med application/x-www-form-urlencoded
+        config_url = f"{self._base_url}{API_CONFIG}"
+        form_data = {"EM_OperatingMode": mode_str}
+        try:
+            async with self._session.put(
+                config_url, data=form_data, headers=headers_form, timeout=aiohttp.ClientTimeout(total=5)
+            ) as resp:
+                resp_text = ""
+                try:
+                    resp_text = await resp.text()
+                except Exception:
+                    pass
+                if resp.status in (200, 204):
+                    _LOGGER.info(
+                        "Sonnen satte driftläge %s via form-encoded %s: status %s, body: '%s'",
+                        mode,
+                        API_CONFIG,
+                        resp.status,
+                        resp_text,
+                    )
+                    self._last_operating_mode = mode_str
+                    return True
+                _LOGGER.warning(
+                    "Sonnen PUT form-encoded %s returnerade status %s: %s",
+                    API_CONFIG,
+                    resp.status,
+                    resp_text,
+                )
+        except Exception as e:
+            _LOGGER.warning("Kunde inte sätta driftläge via form-encoded %s: %s", API_CONFIG, e)
+
+        # 3. Fallback: Prova legacy /api/v2/configurations med JSON (om äldre firmware kräver JSON)
+        try:
+            async with self._session.put(
+                config_url,
+                json={"EM_OperatingMode": mode_str},
+                headers=headers_json,
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
+                resp_text = ""
+                try:
+                    resp_text = await resp.text()
+                except Exception:
+                    pass
+                if resp.status in (200, 204):
+                    _LOGGER.info(
+                        "Sonnen satte driftläge %s via JSON %s: status %s, body: '%s'",
+                        mode,
+                        API_CONFIG,
+                        resp.status,
+                        resp_text,
+                    )
+                    self._last_operating_mode = mode_str
+                    return True
+        except Exception as e:
+            _LOGGER.debug("Kunde inte sätta driftläge via JSON %s: %s", API_CONFIG, e)
 
         return False
 
@@ -194,12 +257,6 @@ class SonnenAPI:
         """Sätter site power limits via PUT /api/v2/site/limits."""
         url = f"{self._base_url}{API_SITE_LIMITS}"
         try:
-            # Rensa bort eventuella None-värden
-            payload = {k: v for k, v in limits.items() if v is not None}
-            # Säkerställ längre duration än koordinators 5 minuter (standard PT10M)
-            if "duration" not in payload or payload.get("duration") == "PT90S":
-                payload["duration"] = "PT10M"
-
             limit_keys = {
                 "p_gcp_max_import_limit",
                 "p_gcp_max_export_limit",
@@ -208,8 +265,29 @@ class SonnenAPI:
                 "i_bess_storage_max_charge_limit",
                 "i_bess_storage_max_discharge_limit",
             }
+            # Rensa bort None-värden och casta numeriska limits till int (<int32>) enligt Sonnens Swagger-schema
+            payload = {}
+            for k, v in limits.items():
+                if k in limit_keys:
+                    if v is not None:
+                        try:
+                            payload[k] = int(round(float(v)))
+                        except (ValueError, TypeError):
+                            payload[k] = v
+                elif k == "duration":
+                    payload[k] = str(v)
+
+            # Säkerställ längre duration än koordinators 5 minuter (standard PT10M)
+            if "duration" not in payload or payload.get("duration") == "PT90S":
+                payload["duration"] = "PT10M"
+
+            # Sonnen Swagger specificerar: "At least one limit must be specified."
+            # Om inga specifika gränser anges returnerar Sonnen 400 Bad Request.
             if not any(k in payload for k in limit_keys):
-                _LOGGER.debug("Inga specifika site limits i payloaden, hoppar över anrop till PutSiteLimits")
+                _LOGGER.debug(
+                    "Inga specifika site limits i payloaden (%s), hoppar över anrop till PutSiteLimits",
+                    limits,
+                )
                 return True
 
             async with self._session.put(
@@ -221,7 +299,12 @@ class SonnenAPI:
                     resp_text = await resp.text()
                 except Exception:
                     resp_text = ""
-                _LOGGER.warning("Sonnen PutSiteLimits returnerade status %s: %s", resp.status, resp_text)
+                _LOGGER.warning(
+                    "Sonnen PutSiteLimits returnerade status %s: %s (payload: %s)",
+                    resp.status,
+                    resp_text,
+                    payload,
+                )
 
                 # Om Sonnen svarar att EM2 krävs: sätt Mode 2, vänta och prova igen
                 if "EM2" in resp_text:
@@ -262,9 +345,10 @@ class SonnenAPI:
                         except Exception:
                             retry_text = ""
                         _LOGGER.warning(
-                            "Sonnen PutSiteLimits misslyckades efter retry: status %s (%s)",
+                            "Sonnen PutSiteLimits misslyckades efter retry: status %s (%s) för payload %s",
                             retry_resp.status,
                             retry_text,
+                            payload,
                         )
 
             return False
