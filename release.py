@@ -171,7 +171,7 @@ def run_tests():
         print("✅ Alla tester godkända.")
     except FileNotFoundError:
         print("⚠️  Kunde inte hitta 'pytest'.")
-        print("👉 Kör: pip install -r requirements_test.txt")
+        print("👉 Kör: pip install -r requirements.txt")
         sys.exit(1)
     except subprocess.CalledProcessError:
         print("\n❌ Testerna misslyckades! Åtgärda felen innan release.")
@@ -187,6 +187,20 @@ def run_lint():
         print("⚠️  Kunde inte hitta 'ruff'. Installera det med 'pip install ruff' för att köra kodgranskning.")
     except subprocess.CalledProcessError:
         print("\n❌ Linting misslyckades! Åtgärda felen innan release.")
+        sys.exit(1)
+
+def run_pip_audit():
+    print("\n--- 🔒 KÖR SÄKERHETSGRANSKNING (pip-audit) ---")
+    try:
+        subprocess.run([sys.executable, "-m", "pip_audit"], cwd=str(BASE_DIR), check=True, shell=False)
+        print("✅ Säkerhetsgranskning godkänd (inga kända sårbarheter).")
+    except FileNotFoundError:
+        print("⚠️  Kunde inte hitta Python för att köra pip-audit.")
+        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        print(f"\n❌ pip-audit returnerade ett fel (kod {e.returncode}).")
+        print("   Kontrollera att pip-audit är installerat ('pip install pip-audit')")
+        print("   och åtgärda eventuella säkerhetssårbarheter innan release.")
         sys.exit(1)
 
 def check_license_headers():
@@ -628,6 +642,7 @@ def main():
     # via sys.exit(1) och ingen commit kommer att skapas!
     run_tests()
     run_lint()
+    run_pip_audit()
     check_license_headers()
     sort_manifest_keys(MANIFEST_PATH)
     run_hassfest_local()

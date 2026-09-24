@@ -201,6 +201,8 @@ class SonnenBattery(BatteryApi):
                     or self.coordinator.data.get("OperatingMode")
                     or ""
                 ).strip()
+            if not current_mode and getattr(self._api, "_last_operating_mode", None):
+                current_mode = str(self._api._last_operating_mode).strip()
 
             if current_mode != "2":
                 _LOGGER.info(
@@ -208,7 +210,7 @@ class SonnenBattery(BatteryApi):
                     current_mode or "okänt",
                 )
                 await self._api.async_set_operating_mode(2)
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(2.0)
 
             limits_payload = dict(sonnen_site_limits)
             if limits_payload.get("duration") in ("PT90S", None):

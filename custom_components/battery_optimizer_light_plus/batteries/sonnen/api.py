@@ -43,6 +43,7 @@ class SonnenAPI:
             "Content-Type": "application/json"
         }
         self._last_em_usoc: str | None = None
+        self._last_operating_mode: str | None = None
 
     async def async_get_status(self):
         """Hämtar status och konfiguration."""
@@ -64,6 +65,7 @@ class SonnenAPI:
                                 self._last_em_usoc = str(conf_data["EM_USOC"])
                             if "EM_OperatingMode" in conf_data:
                                 status_data["EM_OperatingMode"] = str(conf_data["EM_OperatingMode"])
+                                self._last_operating_mode = str(conf_data["EM_OperatingMode"])
                             if "DE_Software" in conf_data:
                                 status_data["DE_Software"] = conf_data["DE_Software"]
             except Exception as conf_e:
@@ -74,18 +76,17 @@ class SonnenAPI:
             _LOGGER.debug("Kunde inte hämta data från Sonnen: %s", e)
             raise
 
-    async def async_set_operating_mode(self, mode: int):
-        """Sätter driftläge via /api/v2/site/configurations (med fallback till /api/v2/configurations)."""
+    async def async_set_operating_mode(self, mode: int) -> bool:
+        """Sätter driftläge via /api/v2/configurations."""
+        config_url = f"{self._base_url}{API_CONFIG}"
         em_usoc = self._last_em_usoc if self._last_em_usoc is not None else "0"
         payload_with_usoc = {"EM_OperatingMode": str(mode), "EM_USOC": em_usoc}
         payload_mode_only = {"EM_OperatingMode": str(mode)}
 
-        # Prova först det officiella EMS Site Configurations API:et
-        site_url = f"{self._base_url}{API_SITE_CONFIG}"
         for payload in (payload_with_usoc, payload_mode_only):
             try:
                 async with self._session.put(
-                    site_url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
+                    config_url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
                 ) as resp:
                     try:
                         resp_text = await resp.text()
@@ -95,45 +96,23 @@ class SonnenAPI:
                         _LOGGER.info(
                             "Sonnen satte driftläge %s via %s: %s (payload: %s)",
                             mode,
-                            API_SITE_CONFIG,
+                            API_CONFIG,
                             resp_text,
                             payload,
                         )
+                        self._last_operating_mode = str(mode)
                         return True
                     _LOGGER.warning(
                         "Sonnen PUT %s returnerade status %s: %s (payload: %s)",
-                        API_SITE_CONFIG,
+                        API_CONFIG,
                         resp.status,
                         resp_text,
                         payload,
                     )
             except Exception as e:
-                _LOGGER.warning("Kunde inte sätta driftläge via %s: %s (payload: %s)", API_SITE_CONFIG, e, payload)
+                _LOGGER.warning("Kunde inte sätta driftläge via %s: %s (payload: %s)", API_CONFIG, e, payload)
 
-        # Legacy fallback (/api/v2/configurations)
-        legacy_url = f"{self._base_url}{API_CONFIG}"
-        legacy_payload = {"EM_OperatingMode": str(mode)}
-        try:
-            async with self._session.put(
-                legacy_url, json=legacy_payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
-            ) as resp:
-                try:
-                    resp_text = await resp.text()
-                except Exception:
-                    resp_text = ""
-                if resp.status in (200, 204):
-                    _LOGGER.info("Sonnen satte driftläge %s via legacy %s: %s", mode, API_CONFIG, resp_text)
-                    return True
-                _LOGGER.warning(
-                    "Sonnen PUT legacy %s returnerade status %s: %s",
-                    API_CONFIG,
-                    resp.status,
-                    resp_text,
-                )
-                return False
-        except Exception as e:
-            _LOGGER.error("Fel vid ändring av driftläge via %s: %s", API_CONFIG, e)
-            return False
+        return False
 
     async def async_charge(self, power: int):
         """Skicka laddningskommando."""
@@ -252,7 +231,7 @@ class SonnenAPI:
                     if not mode_set:
                         _LOGGER.warning("Kunde inte sätta Sonnen i Mode 2 (EM2), avbryter retry för Site Limits")
                         return False
-                    await asyncio.sleep(1.5)
+                    await asyncio.sleep(2.5)
                     async with self._session.put(
                         url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
                     ) as retry_resp:
