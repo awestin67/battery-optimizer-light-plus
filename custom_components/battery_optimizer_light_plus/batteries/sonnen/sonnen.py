@@ -195,8 +195,12 @@ class SonnenBattery(BatteryApi):
 
             # Säkerställ att batteriet ligger i Self-consumption (Mode 2)
             current_mode = None
-            if self.coordinator.data and "OperatingMode" in self.coordinator.data:
-                current_mode = str(self.coordinator.data["OperatingMode"]).strip()
+            if self.coordinator.data:
+                current_mode = str(
+                    self.coordinator.data.get("EM_OperatingMode")
+                    or self.coordinator.data.get("OperatingMode")
+                    or ""
+                ).strip()
 
             if current_mode != "2":
                 _LOGGER.info(

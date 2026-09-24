@@ -294,7 +294,7 @@ async def test_sonnen_api_methods():
     assert await api.async_set_operating_mode(1) is True
     mock_session.put.assert_called_once_with(
         "http://192.168.1.50:80/api/v2/site/configurations",
-        json={"EM_OperatingMode": "1"},
+        json={"EM_OperatingMode": "1", "EM_USOC": "5"},
         headers=expected_headers,
         timeout=aiohttp.ClientTimeout(total=5),
     )
@@ -386,7 +386,9 @@ async def test_sonnen_api_software_version_and_site_limits():
     mock_resp_em2 = MagicMock(status=400)
     mock_resp_em2.text = AsyncMock(return_value='{"error":"Site limits can only be set in EM2"}')
     mock_resp_mode2 = MagicMock(status=200)
+    mock_resp_mode2.text = AsyncMock(return_value='{"EM_OperatingMode":"2"}')
     mock_resp_ok = MagicMock(status=200)
+    mock_resp_ok.text = AsyncMock(return_value='{}')
     mock_session.put.side_effect = [
         MagicMock(__aenter__=AsyncMock(return_value=mock_resp_em2), __aexit__=AsyncMock()),
         MagicMock(__aenter__=AsyncMock(return_value=mock_resp_mode2), __aexit__=AsyncMock()),
