@@ -14,9 +14,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import datetime
 import pytest
 import aiohttp
 from unittest.mock import MagicMock, AsyncMock, patch
+from custom_components.battery_optimizer_light_plus import PeakGuard
 from custom_components.battery_optimizer_light_plus.battery_factory import create_battery_api
 from custom_components.battery_optimizer_light_plus.batteries.sonnen.sonnen import SonnenBattery
 from custom_components.battery_optimizer_light_plus.batteries.sonnen.api import SonnenAPI
@@ -588,4 +590,178 @@ async def test_coordinator_sonnen_payload_and_site_limits():
                 "p_gcp_max_import_limit": 4500,
             },
         )
+
+
+@pytest.mark.asyncio
+async def test_sonnen_apply_action_clears_export_limit_on_idle(sonnen_battery, mock_sonnen_api):
+    """Testar Edge Case A: apply_action("IDLE") utan limits rensar p_bess_inv_max_export_limit."""
+    sonnen_battery._software_version = "1.35.14"
+    sonnen_battery._is_modern_ems = True
+
+    # 1. Molnet skickar HOLD med exportspärr och GCP importgräns
+    initial_limits = {
+        "p_bess_inv_max_export_limit": 0,
+        "p_gcp_max_import_limit": 4500,
+    }
+    await sonnen_battery.apply_action("HOLD", sonnen_site_limits=initial_limits)
+    mock_sonnen_api.async_set_site_limits.assert_called_with({
+        "p_bess_inv_max_export_limit": 0,
+        "p_gcp_max_import_limit": 4500,
+        "duration": "PT10M",
+    })
+    mock_sonnen_api.reset_mock()
+
+    # 2. Lokalt anrop till IDLE utan limits (t.ex. CheckWatt släpper eller PeakGuard återställer)
+    await sonnen_battery.apply_action("IDLE")
+    mock_sonnen_api.async_set_operating_mode.assert_called_once_with(2)
+    mock_sonnen_api.async_set_site_limits.assert_called_once()
+    sent_limits = mock_sonnen_api.async_set_site_limits.call_args[0][0]
+
+    # Exportspärren ska vara borttagen så batteriet kan ladda ur till huset
+    assert "p_bess_inv_max_export_limit" not in sent_limits
+    # GCP-begränsningen ska finnas kvar
+    assert sent_limits.get("p_gcp_max_import_limit") == 4500
+    assert sent_limits.get("duration") == "PT10M"
+
+
+def _create_mock_battery(is_modern_ems: bool = True):
+    mock = MagicMock()
+    mock.is_modern_ems = is_modern_ems
+    mock.software_version = "1.35.14" if is_modern_ems else "1.34.0"
+    mock.get_current_soc = AsyncMock(return_value=50.0)
+    mock.get_min_soc = AsyncMock(return_value=None)
+    mock.get_virtual_load = AsyncMock(return_value=None)
+    mock.get_calculated_consumption = AsyncMock(return_value=None)
+    mock.get_battery_power = AsyncMock(return_value=None)
+    mock.get_grid_power = AsyncMock(return_value=None)
+    mock.get_house_consumption = AsyncMock(return_value=None)
+    mock.get_status_text = AsyncMock(return_value=None)
+    mock.get_solar_power = AsyncMock(return_value=None)
+    mock.is_offgrid = AsyncMock(return_value=False)
+    mock.apply_action = AsyncMock()
+    return mock
+
+
+@pytest.mark.asyncio
+async def test_peak_guard_modern_ems_disables_solar_override():
+    """Testar Edge Case B: PeakGuard aktiverar inte Solar Override under HOLD när is_modern_ems är aktivt."""
+    hass = MagicMock()
+    config = {
+        "api_key": "test_key",
+        "api_url": "https://battery-optimizer.example.com",
+        "battery_type": "sonnen",
+        "virtual_load_sensor": "sensor.husets_netto_last_virtuell",
+        "peak_limit_sensor": "sensor.optimizer_light_peak_limit",
+        "soc_sensor": "sensor.soc",
+        "enable_solar_override": True,
+    }
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": False,
+        "peakguard_status": "Off",
+    }
+
+    mock_battery = _create_mock_battery(is_modern_ems=True)
+
+    guard = PeakGuard(hass, config, coordinator, mock_battery)
+
+    # Sensorer indikerar stor solexport (-500W)
+    limit_state = MagicMock(state="5.0")
+    load_state = MagicMock(state="-500")
+    soc_state = MagicMock(state="50")
+
+    def get_state(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        return None
+
+    hass.states.get.side_effect = get_state
+
+    # Kör update 1
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard._solar_override_trigger_start is not None
+
+    # Snabbspola 35 sekunder
+    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+    # Override ska förbli False pga is_modern_ems = True
+    assert guard.is_solar_override is False
+    # Batteriet ska inte ha tvingats till IDLE
+    mock_battery.apply_action.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_peak_guard_modern_ems_hold_violation_ignores_solar_charging():
+    """Testar Edge Case C: PeakGuard under HOLD larmar inte vid sol-laddning (-2000W)
+    för modern EMS men vid urladdning (+500W).
+    """
+    hass = MagicMock()
+    config = {
+        "api_key": "test_key",
+        "api_url": "https://battery-optimizer.example.com",
+        "battery_type": "sonnen",
+        "virtual_load_sensor": "sensor.husets_netto_last_virtuell",
+        "peak_limit_sensor": "sensor.optimizer_light_peak_limit",
+        "soc_sensor": "sensor.soc",
+        "battery_power_sensor": "sensor.battery_power",
+    }
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
+
+    mock_battery = _create_mock_battery(is_modern_ems=True)
+
+    guard = PeakGuard(hass, config, coordinator, mock_battery)
+
+    limit_state = MagicMock(state="5.0")
+    load_state = MagicMock(state="2000")
+    soc_state = MagicMock(state="50")
+    # Solen laddar batteriet med 2000W (negativ effekt)
+    bat_charging_state = MagicMock(state="-2000")
+
+    def get_state(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        if entity_id == "sensor.battery_power":
+            return bat_charging_state
+        return None
+
+    hass.states.get.side_effect = get_state
+
+    # 1. Kör uppdatering när batteriet sol-laddas (-2000 W) under HOLD
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    # Ska INTE trigga HOLD-överskridelse eller skicka kommando
+    mock_battery.apply_action.assert_not_called()
+    assert guard._hold_command_sent is False
+
+    # 2. Nu ändras batterieffekten till +500W (aktiv urladdning till huset) under HOLD
+    bat_discharging_state = MagicMock(state="500")
+
+    def get_state_discharging(entity_id):
+        if entity_id == "sensor.battery_power":
+            return bat_discharging_state
+        return get_state(entity_id)
+
+    hass.states.get.side_effect = get_state_discharging
+
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    # Urladdning under HOLD är en överträdelse, ska skicka HOLD-kommando
+    mock_battery.apply_action.assert_called_once_with("HOLD")
+    assert guard._hold_command_sent is True
+
 

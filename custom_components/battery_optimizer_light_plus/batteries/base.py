@@ -24,6 +24,12 @@ class BatteryApi(ABC):
         """Firmware-version för batteriet/invertern om tillgänglig."""
         return None
 
+    @property
+    def is_modern_ems(self) -> bool:
+        """Indikerar om batteriet använder modernt EMS med site power limits."""
+        return False
+
+
     @abstractmethod
     async def get_current_soc(self) -> float | None:
         """Hämtar aktuell SoC (State of Charge)."""

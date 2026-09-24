@@ -161,13 +161,25 @@ class SonnenBattery(BatteryApi):
         self, action: str, target_kw: float = 0.0, sonnen_site_limits: dict | None = None, **kwargs
     ):
         """Verkställer ett beslut från molnet eller lokalt."""
-        if sonnen_site_limits:
+        if sonnen_site_limits is not None:
             self._last_site_limits = dict(sonnen_site_limits)
-        elif self._last_site_limits and action == "HOLD":
-            sonnen_site_limits = self._last_site_limits
+            if action == "HOLD":
+                sonnen_site_limits["p_bess_inv_max_export_limit"] = 0
+                self._last_site_limits["p_bess_inv_max_export_limit"] = 0
+            elif action == "IDLE":
+                sonnen_site_limits.pop("p_bess_inv_max_export_limit", None)
+                self._last_site_limits.pop("p_bess_inv_max_export_limit", None)
+        elif self._last_site_limits is not None and action in ("HOLD", "IDLE"):
+            sonnen_site_limits = dict(self._last_site_limits)
+            if action == "HOLD":
+                sonnen_site_limits["p_bess_inv_max_export_limit"] = 0
+                self._last_site_limits["p_bess_inv_max_export_limit"] = 0
+            elif action == "IDLE":
+                sonnen_site_limits.pop("p_bess_inv_max_export_limit", None)
+                self._last_site_limits.pop("p_bess_inv_max_export_limit", None)
 
         # Använd modern EMS för HOLD och IDLE när gränser finns
-        if self._is_modern_ems and sonnen_site_limits and action in ("HOLD", "IDLE"):
+        if self._is_modern_ems and sonnen_site_limits is not None and action in ("HOLD", "IDLE"):
             _LOGGER.debug("Verkställer beslut via Sonnen Site Limits (%s): %s", action, sonnen_site_limits)
 
             # Säkerställ att batteriet ligger kvar i Self-consumption (Mode 2)

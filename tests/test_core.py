@@ -59,6 +59,7 @@ def mock_battery():
     """Mockerar den nya Battery Controller Factoryn."""
     mock = MagicMock()
     mock.software_version = None
+    mock.is_modern_ems = False
     mock.get_current_soc = AsyncMock(return_value=None)
     mock.get_virtual_load = AsyncMock(return_value=None)
     mock.get_calculated_consumption = AsyncMock(return_value=None)

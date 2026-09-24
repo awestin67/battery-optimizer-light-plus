@@ -762,7 +762,10 @@ class PeakGuard:
                 new_override = False
 
                 if cloud_action == "HOLD":
-                    new_override = wants_override
+                    if getattr(self.battery, "is_modern_ems", False) is True:
+                        new_override = False
+                    else:
+                        new_override = wants_override
                 elif cloud_action == "IDLE":
                     # Om vi redan är i override, stanna kvar där för att undvika
                     # att backend pendlar mellan HOLD och IDLE när flaggan skickas.
@@ -856,7 +859,13 @@ class PeakGuard:
                     if bat_power is None:
                         bat_power = 0.0
 
-                    if abs(bat_power) > 100:
+                    is_hold_violation = (
+                        bat_power > 100
+                        if getattr(self.battery, "is_modern_ems", False) is True
+                        else abs(bat_power) > 100
+                    )
+
+                    if is_hold_violation:
                         if not self._hold_command_sent:
                             _LOGGER.info(
                                 f"⚙️ Executing HOLD command. Battery is active ({bat_power} W), "
