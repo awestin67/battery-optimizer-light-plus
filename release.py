@@ -70,7 +70,8 @@ MANIFEST_PATH = BASE_DIR / "custom_components" / "battery_optimizer_light_plus" 
 
 IGNORED_DIRS = {
     ".venv", "venv", "env", "__pycache__", ".git", ".pytest_cache",
-    "requests", "Lib", "site-packages", "build", "dist", "htmlcov"
+    "requests", "Lib", "site-packages", "build", "dist", "htmlcov",
+    "scripts",
 }
 
 def run_command(command, capture_output=False, exit_on_error=True):

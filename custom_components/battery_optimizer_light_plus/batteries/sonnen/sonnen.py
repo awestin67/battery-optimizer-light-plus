@@ -201,6 +201,9 @@ class SonnenBattery(BatteryApi):
             elif action == "IDLE":
                 sonnen_site_limits.pop("p_bess_inv_max_export_limit", None)
                 self._last_site_limits.pop("p_bess_inv_max_export_limit", None)
+        elif self.is_modern_ems and action == "HOLD":
+            sonnen_site_limits = {"p_bess_inv_max_export_limit": 0}
+            self._last_site_limits = dict(sonnen_site_limits)
 
         has_active_limits = any(k in (sonnen_site_limits or {}) for k in limit_keys)
 

@@ -26,6 +26,7 @@ Thumbs.db
 .coverage
 htmlcov/
 
-# --- Lokala Live-testskript (innehåller IP/tokens) ---
+# --- Lokala Live-testskript och verktyg (innehåller IP/tokens) ---
+scripts/
 test_*_live.py
 test_sonnen_live.py

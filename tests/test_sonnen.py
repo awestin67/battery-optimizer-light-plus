@@ -873,3 +873,151 @@ async def test_peak_guard_modern_ems_hold_violation_ignores_solar_charging():
     assert guard._hold_command_sent is True
 
 
+@pytest.mark.asyncio
+async def test_sonnen_eco8_em1_full_lifecycle_fallback():
+    """Testar komplett livscykel för eco 8.0 (EM1 med firmware 1.40.5).
+    Visar att när site limits avvisas med 'EM2' faller integrationen tillbaka
+    sömlöst på legacy-styrning och stannar kvar i det läget för alla kommandon.
+    """
+    hass = MagicMock()
+    mock_session = MagicMock()
+
+    # Firmware 1.40.5
+    resp_sw = MagicMock(status=200)
+    resp_sw.json = AsyncMock(return_value={"DE_Software": "1.40.5"})
+
+    # Site limits avvisas med EM2
+    resp_em2 = MagicMock(status=400)
+    resp_em2.text = AsyncMock(return_value='{"error":"Site limits can only be set in EM2"}')
+
+    # Mode-växlingar och setpoints lyckas alltid
+    resp_ok = MagicMock(status=200)
+    resp_ok.text = AsyncMock(return_value='{"EM_OperatingMode":"2"}')
+    resp_setpoint = MagicMock(status=201)
+    resp_setpoint.text = AsyncMock(return_value='true')
+
+    api = SonnenAPI("192.168.107.196", 80, "test-token", mock_session)
+    battery = SonnenBattery(hass, api, "sensor.soc")
+
+    # 1. Start och firmware-detektering
+    mock_session.get.return_value.__aenter__.return_value = resp_sw
+    await battery.async_init_version()
+    assert battery.software_version == "1.40.5"
+    assert battery.is_modern_ems is True
+
+    # 2. Första HOLD-kommandot med site limits
+    # api.async_set_site_limits kommer att få 400 EM2, prova sätta Mode 2, och få 400 EM2 igen.
+    # Därefter faller sonnen.py tillbaka till Mode 1 + setpoints (charge=0, discharge=0).
+    def mock_put_router(url, *args, **kwargs):
+        mock_cm = MagicMock()
+        if "site/limits" in url:
+            mock_cm.__aenter__ = AsyncMock(return_value=resp_em2)
+        else:
+            mock_cm.__aenter__ = AsyncMock(return_value=resp_ok)
+        mock_cm.__aexit__ = AsyncMock()
+        return mock_cm
+
+    mock_session.put.side_effect = mock_put_router
+    mock_session.post.return_value.__aenter__.return_value = resp_setpoint
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        res_hold = await battery.apply_action("HOLD", sonnen_site_limits={"p_bess_inv_max_export_limit": 0})
+    assert res_hold is True
+    # Verifiera att fallback avaktiverade EMS och att is_modern_ems nu är False
+    assert api.site_limits_supported is False
+    assert battery.is_modern_ems is False
+
+    # 3. Nästa IDLE-kommando ska gå direkt till Mode 2 UTAN anrop till site/limits
+    mock_session.put.reset_mock()
+    mock_session.put.side_effect = None
+    mock_session.put.return_value.__aenter__.return_value = resp_ok
+    res_idle = await battery.apply_action("IDLE")
+    assert res_idle is True
+    # Endast PUT configurations ska ha anropats, INGET till site/limits
+    assert mock_session.put.call_count == 1
+    assert "configurations" in mock_session.put.call_args[0][0]
+
+    # 4. Nästa HOLD-kommando ska gå direkt till Mode 1 + setpoint 0 UTAN anrop till site/limits
+    mock_session.put.reset_mock()
+    mock_session.post.reset_mock()
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        res_hold2 = await battery.apply_action("HOLD")
+    assert res_hold2 is True
+    assert mock_session.put.call_count == 1
+    assert "configurations" in mock_session.put.call_args[0][0]
+    assert mock_session.post.call_count == 2  # charge 0 och discharge 0
+
+    # 5. CHARGE och DISCHARGE körs som vanligt via manuellt läge (Mode 1)
+    mock_session.put.reset_mock()
+    mock_session.post.reset_mock()
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        res_charge = await battery.apply_action("CHARGE", target_kw=3.0)
+    assert res_charge is True
+    assert "setpoint/charge/3000" in mock_session.post.call_args[0][0]
+
+    mock_session.put.reset_mock()
+    mock_session.post.reset_mock()
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        res_discharge = await battery.apply_action("DISCHARGE", target_kw=2.0)
+    assert res_discharge is True
+    assert "setpoint/discharge/2000" in mock_session.post.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_sonnen_em2_full_lifecycle_success():
+    """Testar komplett livscykel för ett system med äkta EM2-stöd.
+    Visar att site limits används för HOLD och IDLE medan batteriet förblir i Mode 2,
+    och att CHARGE/DISCHARGE körs via aktiva setpoints.
+    """
+    hass = MagicMock()
+    mock_session = MagicMock()
+
+    resp_sw = MagicMock(status=200)
+    resp_sw.json = AsyncMock(return_value={"DE_Software": "1.40.5"})
+
+    resp_limits_ok = MagicMock(status=200)
+    resp_limits_ok.text = AsyncMock(return_value='{}')
+
+    resp_ok = MagicMock(status=200)
+    resp_ok.text = AsyncMock(return_value='{"EM_OperatingMode":"2"}')
+    resp_setpoint = MagicMock(status=201)
+    resp_setpoint.text = AsyncMock(return_value='true')
+
+    api = SonnenAPI("192.168.1.100", 80, "test-token", mock_session)
+    battery = SonnenBattery(hass, api, "sensor.soc")
+
+    # 1. Firmware initiering
+    mock_session.get.return_value.__aenter__.return_value = resp_sw
+    await battery.async_init_version()
+    assert battery.is_modern_ems is True
+
+    # 2. HOLD med site limits (sätter Mode 2 och anropar PUT site/limits)
+    mock_session.put.return_value.__aenter__.return_value = resp_limits_ok
+    limits = {"p_gcp_max_import_limit": 4500, "duration": "PT600S"}
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        res_hold = await battery.apply_action("HOLD", sonnen_site_limits=limits)
+    assert res_hold is True
+    assert api.site_limits_supported is True
+    assert battery.is_modern_ems is True
+    # Verifiera att PUT anropades med site/limits och export_limit: 0
+    put_urls = [call[0][0] for call in mock_session.put.call_args_list]
+    assert any("site/limits" in u for u in put_urls)
+
+    # 3. IDLE med site limits
+    mock_session.put.reset_mock()
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        res_idle = await battery.apply_action("IDLE", sonnen_site_limits={"p_gcp_max_import_limit": 4500})
+    assert res_idle is True
+    put_urls = [call[0][0] for call in mock_session.put.call_args_list]
+    assert any("site/limits" in u for u in put_urls)
+
+    # 4. CHARGE växlar till Mode 1 och skickar setpoint
+    mock_session.put.reset_mock()
+    mock_session.post.return_value.__aenter__.return_value = resp_setpoint
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        res_charge = await battery.apply_action("CHARGE", target_kw=2.5)
+    assert res_charge is True
+    assert "setpoint/charge/2500" in mock_session.post.call_args[0][0]
+
+
+

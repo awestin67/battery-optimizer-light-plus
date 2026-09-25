@@ -88,7 +88,7 @@ class SonnenAPI:
         site_config_url = f"{self._base_url}{API_SITE_CONFIG}"
         site_payloads = []
         if self._last_em_usoc is not None:
-            site_payloads.append({"EM_OperatingMode": mode_str, "EM_USOC": str(self._last_em_usoc)})
+            site_payloads.append({"EM_OperatingMode": mode_str, "EM_USOC": self._last_em_usoc})
         site_payloads.append({"EM_OperatingMode": mode_str})
 
         for payload in site_payloads:
@@ -276,7 +276,7 @@ class SonnenAPI:
                 if k in limit_keys:
                     if v is not None:
                         try:
-                            payload[k] = int(round(float(v)))
+                            payload[k] = round(float(v))
                         except (ValueError, TypeError):
                             payload[k] = v
                 elif k == "duration":
