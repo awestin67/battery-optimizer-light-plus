@@ -39,8 +39,14 @@ Systemet kombinerar **Molnintelligens** (för prisoptimering och arbitrage) med 
 ## 🔌 Stödda Batterier & Krav
 
 ### ☀️ Sonnen
-Kräver ett Sonnen-batteri med **API v2** aktiverat.
+Stödjer alla vanliga generationer av SonnenBatterie (inklusive **eco 8**, **eco 9** och **eco 10**). Kräver att **API v2** är aktiverat i batteriet.
 *   **Auth-Token:** Du behöver ditt Auth-Token för lokal styrning. Logga in på ditt batteri (`http://<IP-ADRESS>/dash/login`) som *User*, välj **Software integration**, slå på **JSON API** (Read & Write) och kopiera ditt Auth-Token.
+*   **Moderna system & EMS Site Limits (Firmware >= 1.35.14, t.ex. eco 10):**
+    Integrationen detekterar automatiskt mjukvaruversionen på ditt batteri vid uppstart och utnyttjar Sonnens officiella Site Power Limits API (`/api/v2/site/limits`):
+    *   **Permanent Egenförbrukning (Mode 2):** Batteriet stannar kvar i sitt naturliga självkonsumtionsläge. Inga onödiga driftlägesväxlingar till manuellt läge behövs vid HOLD eller IDLE!
+    *   **Smart HOLD:** Vid paus/hållning sätts exportgränsen (`p_bess_inv_max_export_limit`) till 0 W. Batteriet förhindras att ladda ur till huset, samtidigt som eventuellt solelöverskott fortfarande kan ladda batteriet fritt.
+    *   **Inbyggd Watchdog:** Varje styrkommando skickas med en säkerhetswatchdog (`PT600S`, 10 minuter). Om kontakten mellan Home Assistant och batteriet skulle brytas återgår batteriet automatiskt till normal drift.
+*   **Äldre system (< 1.35.14):** Har automatisk sömlös fallback till klassisk styrning (växling till manuellt driftläge och aktiva setpoints).
 *   **Backup Reserv (EM_USOC):** Om du använder Sonnens backup-funktion (reservström) läser integrationen automatiskt av din reserverade nivå (t.ex. 5%). Denna reserv döljs lokalt så att molnet ser ditt tillgängliga fönster som 0-100%. **Viktigt:** Du måste dra av denna procentandel från din *totala batterikapacitet* när du konfigurerar ditt batteri i molnportalen (t.ex. 22 kWh - 5% = 20.9 kWh) för att AI:n ska räkna rätt på tillgänglig energi.
 
 ### 🌑 Huawei Luna2000
@@ -736,7 +742,17 @@ series:
 
 ## 🐞 Felsökning (Debug)
 
-Om du upplever problem eller vill se exakt vilken data som skickas till och från molnet, kan du aktivera detaljerad debug-loggning. Lägg till följande i din `configuration.yaml` och starta om Home Assistant:
+Om du upplever problem, vill verifiera styrningen mot ditt batteri eller vill se exakt vilken data som skickas till och från molnet, kan du aktivera detaljerad debug-loggning på två sätt:
+
+### Alternativ 1: Direkt via Home Assistant UI (Rekommenderas – ingen omstart krävs)
+1. Gå till **Inställningar** -> **Enheter och tjänster** i Home Assistant.
+2. Leta upp kortet för **Battery Optimizer Light Plus**.
+3. Klicka på **tre prickar (⋮)** uppe till höger på kortet och välj **"Aktivera felsökningsloggning"** (*Enable debug logging*).
+4. Låt integrationen köra några minuter så att trafik hinner loggas.
+5. Klicka på de tre prickarna igen och välj **"Inaktivera felsökningsloggning"** (*Disable debug logging*). Home Assistant laddar då automatiskt ner en färdig textfil med alla relevanta debugloggar.
+
+### Alternativ 2: Permanent via `configuration.yaml`
+Lägg till följande i din `configuration.yaml` och starta om Home Assistant:
 
 ```yaml
 logger:
@@ -745,7 +761,13 @@ logger:
     custom_components.battery_optimizer_light_plus: debug
 ```
 
-Gå sedan till **Inställningar** -> **System** -> **Loggar** i Home Assistant för att se detaljerade händelser, felmeddelanden och nätverkstrafik (sök t.ex. på `Light-Request` för att se payloaden som skickas).
+Loggarna hittas sedan under **Inställningar** -> **System** -> **Loggar** (klicka på "Ladda ner fullständig logg").
+
+### 🔍 Nyckelord att söka efter i loggarna
+*   `Light-Request` – Visar payloaden som skickas från Home Assistant till molnet (inkl. batterityp, mjukvaruversion, SoC och förbrukning).
+*   `Verkställer beslut via Sonnen Site Limits` – Bekräftar att EMS Site Limits skickas lokalt till Sonnen eco/modern EMS.
+*   `Sonnen är i driftläge` – Visar driftlägeskontroller och eventuella växlingar till Mode 2.
+*   `PeakGuard` – Visar när den lokala effektvakten aktiveras eller justerar effekten.
 
 ## 🤖 Automationer för Generic / Övriga batterier
 
