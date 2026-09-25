@@ -336,7 +336,7 @@ class SonnenAPI:
                             retry_text = ""
 
                         if not self._site_limits_em2_logged:
-                            _LOGGER.warning(
+                            _LOGGER.info(
                                 "Sonnen tillåter inte dynamisk styrning via Site Limits (%s: %s). "
                                 "Växlar automatiskt till beprövad standard Sonnen-styrning (Manual Mode setpoints).",
                                 retry_resp.status,
