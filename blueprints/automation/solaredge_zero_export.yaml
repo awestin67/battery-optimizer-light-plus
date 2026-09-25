@@ -1,0 +1,78 @@
+blueprint:
+  name: ☀️ Battery Optimizer Light - SolarEdge Zero Export
+  description: >
+    Dynamisk exportbegränsning för SolarEdge-växelriktare vid negativa elpriser.
+    Lyssnar på `sensor.optimizer_light_dynamic_export_limit` från Battery Optimizer Light Plus
+    och justerar SolarEdge Active Power Limit i procent (0–100%) i realtid.
+    När priset är normalt (ingen gräns aktiv) återställs växelriktaren automatiskt till 100%.
+  domain: automation
+  input:
+    export_limit_sensor:
+      name: Dynamisk Exportbegränsning Sensor
+      description: Sensorn från Battery Optimizer Light Plus som anger tillåten export i kW.
+      default: sensor.optimizer_light_dynamic_export_limit
+      selector:
+        entity:
+          domain: sensor
+          device_class: power
+    solaredge_limit_entity:
+      name: SolarEdge Active Power Limit Entitet
+      description: Entiteten som styr SolarEdge-växelriktarens aktiva effektgräns i procent (0–100%).
+      selector:
+        entity:
+          domain: number
+    inverter_capacity_kw:
+      name: Växelriktarens Märkeffekt (kW)
+      description: Ange växelriktarens maximala AC-effekt i kW (t.ex. 10 för SE10k eller 15 för SE15k).
+      default: 15.0
+      selector:
+        number:
+          min: 1.0
+          max: 100.0
+          step: 0.5
+          unit_of_measurement: kW
+          mode: box
+
+variables:
+  limit_sensor: !input export_limit_sensor
+  capacity: !input inverter_capacity_kw
+  raw_state: "{{ states(limit_sensor) }}"
+
+trigger:
+  - platform: state
+    entity_id: !input export_limit_sensor
+
+action:
+  - choose:
+      # Fall 1: Ingen gräns aktiv (värdet är okänt, tomt eller inte ett tal) = normala priser -> 100% full effekt
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ raw_state in ['unknown', 'unavailable', 'none', 'None', ''] or not (raw_state | is_number) }}
+        sequence:
+          - service: number.set_value
+            target:
+              entity_id: !input solaredge_limit_entity
+            data:
+              value: 100
+
+      # Fall 2: Aktiv exportgräns i kW -> Räkna om kW till procent och sätt limit på SolarEdge
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ raw_state | is_number }}
+        sequence:
+          - service: number.set_value
+            target:
+              entity_id: !input solaredge_limit_entity
+            data:
+              value: >
+                {% set limit_kw = raw_state | float(0) %}
+                {% set cap = capacity | float(15) %}
+                {% if cap > 0 %}
+                  {% set pct = ((limit_kw / cap) * 100) | round(0) | int %}
+                  {{ [ [pct, 0] | max, 100 ] | min }}
+                {% else %}
+                  100
+                {% endif %}
+mode: restart
