@@ -299,6 +299,12 @@ class SonnenAPI:
                 url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
             ) as resp:
                 if resp.status in (200, 204):
+                    _LOGGER.info(
+                        "Sonnen satte Site Limits via %s: %s (status %s)",
+                        API_SITE_LIMITS,
+                        payload,
+                        resp.status,
+                    )
                     return True
                 try:
                     resp_text = await resp.text()

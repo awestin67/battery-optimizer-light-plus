@@ -535,7 +535,7 @@ async def test_sonnen_apply_action_modern_ems(sonnen_battery, mock_sonnen_api):
         "duration": "PT90S",
         "p_gcp_max_import_limit": 4500,
         "p_gcp_max_export_limit": 0,
-        "p_bess_inv_max_export_limit": 0,
+        "p_bess_inv_max_export_limit": 5000,
         "p_bess_inv_max_import_limit": 3300,
     }
 
@@ -544,9 +544,14 @@ async def test_sonnen_apply_action_modern_ems(sonnen_battery, mock_sonnen_api):
 
     # Ska säkerställa Self-consumption (Mode 2)
     mock_sonnen_api.async_set_operating_mode.assert_called_once_with(2)
-    # Ska anropa async_set_site_limits med uppgraderad duration (PT600S)
-    expected_limits = dict(limits)
-    expected_limits["duration"] = "PT600S"
+    # HOLD ska alltid frysa batteriet: export och import sätts till 0 oavsett inkommande värden
+    expected_limits = {
+        "duration": "PT600S",
+        "p_gcp_max_import_limit": 4500,
+        "p_gcp_max_export_limit": 0,
+        "p_bess_inv_max_export_limit": 0,
+        "p_bess_inv_max_import_limit": 0,
+    }
     mock_sonnen_api.async_set_site_limits.assert_called_once_with(expected_limits)
     # Inga manuella setpoint-kommandon
     mock_sonnen_api.async_charge.assert_not_called()
@@ -685,11 +690,13 @@ async def test_sonnen_apply_action_clears_export_limit_on_idle(sonnen_battery, m
     # 1. Molnet skickar HOLD med exportspärr och GCP importgräns
     initial_limits = {
         "p_bess_inv_max_export_limit": 0,
+        "p_bess_inv_max_import_limit": 0,
         "p_gcp_max_import_limit": 4500,
     }
     await sonnen_battery.apply_action("HOLD", sonnen_site_limits=initial_limits)
     mock_sonnen_api.async_set_site_limits.assert_called_with({
         "p_bess_inv_max_export_limit": 0,
+        "p_bess_inv_max_import_limit": 0,
         "p_gcp_max_import_limit": 4500,
         "duration": "PT600S",
     })
@@ -701,8 +708,9 @@ async def test_sonnen_apply_action_clears_export_limit_on_idle(sonnen_battery, m
     mock_sonnen_api.async_set_site_limits.assert_called_once()
     sent_limits = mock_sonnen_api.async_set_site_limits.call_args[0][0]
 
-    # Exportspärren ska vara borttagen så batteriet kan ladda ur till huset
+    # Export- och importspärren ska vara borttagna så batteriet kan ladda/ladda ur normalt
     assert "p_bess_inv_max_export_limit" not in sent_limits
+    assert "p_bess_inv_max_import_limit" not in sent_limits
     # GCP-begränsningen ska finnas kvar
     assert sent_limits.get("p_gcp_max_import_limit") == 4500
     assert sent_limits.get("duration") == "PT600S"
@@ -714,11 +722,12 @@ async def test_sonnen_apply_action_idle_without_remaining_limits(sonnen_battery,
     sonnen_battery._software_version = "1.35.14"
     sonnen_battery._is_modern_ems = True
 
-    # 1. Molnet skickar HOLD med enbart exportspärr (inga GCP-limits)
-    initial_limits = {"p_bess_inv_max_export_limit": 0}
+    # 1. Molnet skickar HOLD med enbart spärrar (inga GCP-limits)
+    initial_limits = {"p_bess_inv_max_export_limit": 0, "p_bess_inv_max_import_limit": 0}
     await sonnen_battery.apply_action("HOLD", sonnen_site_limits=initial_limits)
     mock_sonnen_api.async_set_site_limits.assert_called_with({
         "p_bess_inv_max_export_limit": 0,
+        "p_bess_inv_max_import_limit": 0,
         "duration": "PT600S",
     })
     mock_sonnen_api.reset_mock()

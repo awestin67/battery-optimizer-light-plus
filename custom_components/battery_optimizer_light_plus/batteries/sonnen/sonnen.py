@@ -175,7 +175,20 @@ class SonnenBattery(BatteryApi):
     async def apply_action(
         self, action: str, target_kw: float = 0.0, sonnen_site_limits: dict | None = None, **kwargs
     ):
-        """Verkställer ett beslut från molnet eller lokalt."""
+        """Verkställer ett beslut från molnet eller lokalt.
+
+        Metoden har tre faser:
+          Fas 1 – Förbered site limits beroende på action (HOLD/IDLE).
+          Fas 2 – Modern EMS-styrning: Skicka gränserna via PUT /api/v2/site/limits
+                   medan batteriet förblir i Mode 2 (Self-Consumption).
+          Fas 3 – Fallback / Legacy: Växla till Mode 1 (Manual) och använd setpoints.
+                   Används alltid för CHARGE/DISCHARGE och som fallback om Site Limits misslyckas.
+
+        HOLD-logik:  Fryser batteriet på 0 W (export=0 + import=0) så att all solel
+                     prioriteras för nätexport vid höga spotpriser.
+        IDLE-logik:  Rensar export- och importspärrarna så batteriet kan ladda från
+                     solel och ladda ur till huset normalt.
+        """
         limit_keys = {
             "p_gcp_max_import_limit",
             "p_gcp_max_export_limit",
@@ -185,29 +198,53 @@ class SonnenBattery(BatteryApi):
             "i_bess_storage_max_discharge_limit",
         }
 
+        # ─── Fas 1: Förbered site limits ────────────────────────────────────
+        # Tre möjliga ingångar:
+        #   A) Molnet skickar färska limits → spara dem och justera för HOLD/IDLE.
+        #   B) Inget skickades men vi har cachade limits → återanvänd dem.
+        #   C) Varken A eller B men modern EMS + HOLD → skapa minimal frys-payload.
+
         if sonnen_site_limits is not None:
+            # Fall A: Molnet skickade nya limits – cacha originalet
             self._last_site_limits = dict(sonnen_site_limits)
             if action == "HOLD":
+                # Fryser batteriet: varken laddning eller urladdning tillåts
                 sonnen_site_limits["p_bess_inv_max_export_limit"] = 0
+                sonnen_site_limits["p_bess_inv_max_import_limit"] = 0
                 self._last_site_limits["p_bess_inv_max_export_limit"] = 0
+                self._last_site_limits["p_bess_inv_max_import_limit"] = 0
             elif action == "IDLE":
+                # Släpper batteriet fritt: tar bort export- och importspärrar
                 sonnen_site_limits.pop("p_bess_inv_max_export_limit", None)
+                sonnen_site_limits.pop("p_bess_inv_max_import_limit", None)
                 self._last_site_limits.pop("p_bess_inv_max_export_limit", None)
+                self._last_site_limits.pop("p_bess_inv_max_import_limit", None)
         elif self._last_site_limits is not None and action in ("HOLD", "IDLE"):
+            # Fall B: Inga nya limits från molnet, men vi har cachade (t.ex. PeakGuard eller lokal automation)
             sonnen_site_limits = dict(self._last_site_limits)
             if action == "HOLD":
                 sonnen_site_limits["p_bess_inv_max_export_limit"] = 0
+                sonnen_site_limits["p_bess_inv_max_import_limit"] = 0
                 self._last_site_limits["p_bess_inv_max_export_limit"] = 0
+                self._last_site_limits["p_bess_inv_max_import_limit"] = 0
             elif action == "IDLE":
                 sonnen_site_limits.pop("p_bess_inv_max_export_limit", None)
+                sonnen_site_limits.pop("p_bess_inv_max_import_limit", None)
                 self._last_site_limits.pop("p_bess_inv_max_export_limit", None)
+                self._last_site_limits.pop("p_bess_inv_max_import_limit", None)
         elif self.is_modern_ems and action == "HOLD":
-            sonnen_site_limits = {"p_bess_inv_max_export_limit": 0}
+            # Fall C: Inga limits alls – skapa en minimal payload som enbart fryser batteriet
+            sonnen_site_limits = {
+                "p_bess_inv_max_export_limit": 0,
+                "p_bess_inv_max_import_limit": 0,
+            }
             self._last_site_limits = dict(sonnen_site_limits)
 
         has_active_limits = any(k in (sonnen_site_limits or {}) for k in limit_keys)
 
-        # Använd modern EMS för HOLD och IDLE när gränser finns
+        # ─── Fas 2: Modern EMS-styrning (Mode 2 + Site Limits) ───────────────
+        # Batteriet förblir i Self-Consumption (Mode 2) och gränserna sätts via
+        # PUT /api/v2/site/limits. Sonnens interna reglering sköter resten lokalt.
         if self.is_modern_ems and action in ("HOLD", "IDLE"):
             if not has_active_limits and action == "IDLE":
                 # Inga gränser kvar (t.ex. exportspärr borttagen och ingen GCP-gräns).
@@ -238,6 +275,7 @@ class SonnenBattery(BatteryApi):
                     await self._api.async_set_operating_mode(2)
                     await asyncio.sleep(2.0)
 
+                # Säkerställ att duration alltid är PT600S (10 min watchdog)
                 limits_payload = dict(sonnen_site_limits)
                 if limits_payload.get("duration") in ("PT90S", "PT10M", None):
                     limits_payload["duration"] = "PT600S"
@@ -254,7 +292,9 @@ class SonnenBattery(BatteryApi):
                 else:
                     _LOGGER.warning("Misslyckades att sätta Site Limits för Sonnen (%s), provar fallback...", action)
 
-        # För aktiv CHARGE och DISCHARGE (samt fallback för HOLD/IDLE) krävs manuellt driftläge (Mode 1)
+        # ─── Fas 3: Legacy-styrning (Mode 1 + Setpoints) ────────────────────
+        # Används alltid för CHARGE/DISCHARGE och som fallback om Site Limits misslyckades.
+        # Batteriet växlas till Manual Mode (1) och styrs med explicita effektkommandon.
         power_w = int(target_kw * 1000)
 
         if action == "CHARGE":
@@ -266,10 +306,12 @@ class SonnenBattery(BatteryApi):
             await asyncio.sleep(0.5)
             return await self.async_set_discharge(power_w)
         elif action == "HOLD":
+            # Legacy HOLD: Mode 1 + laddning 0 W + urladdning 0 W = batteriet står still
             await self._api.async_set_operating_mode(1)
             await asyncio.sleep(0.5)
             return await self.async_set_idle()
         elif action == "IDLE":
+            # Legacy IDLE: Växla tillbaka till Mode 2 (Self-Consumption)
             return await self._api.async_set_operating_mode(2)
     async def get_virtual_load(self) -> float | None:
         data = self.coordinator.data
