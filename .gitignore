@@ -27,6 +27,7 @@ Thumbs.db
 htmlcov/
 
 # --- Lokala Live-testskript och verktyg (innehåller IP/tokens) ---
-scripts/
+scripts/*
+!scripts/check_inverters.py
 test_*_live.py
 test_sonnen_live.py

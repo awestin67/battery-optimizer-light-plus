@@ -263,6 +263,52 @@ def check_license_headers():
 
     print("✅ Alla Python-filer har korrekt licens-header.")
 
+def check_inverter_contracts(pull: bool = False, skip_github: bool = False, strict: bool = False):
+    """Kontrollerar kontrakt och kompatibilitet för alla externa växelriktare."""
+    print("\n--- 🔌 KONTROLLERAR VÄXELRIKTAR-KONTRAKT ---")
+    script_path = BASE_DIR / "scripts" / "check_inverters.py"
+    if not script_path.exists():
+        print("⚠️  scripts/check_inverters.py saknas. Hoppar över.")
+        return
+
+    cmd = [str(python_exe), str(script_path)]
+    if pull:
+        cmd.append("--pull")
+    if skip_github:
+        cmd.append("--skip-github")
+    if strict:
+        cmd.append("--strict")
+
+    try:
+        subprocess.run(cmd, cwd=str(BASE_DIR), check=True, shell=False)
+        print("✅ Alla växelriktarkontrakt godkända!")
+    except subprocess.CalledProcessError:
+        print("\n❌ Kontraktsvalidering mot externa växelriktare misslyckades!")
+        choice = input("   Vill du avbryta för att åtgärda felen? (j/n, default: j): ").lower()
+        if choice != "n":
+            sys.exit(1)
+
+def get_inverter_compatibility_notes(fetch_github: bool = True) -> str:
+    """Hämtar markdown-tabell för verifierade växelriktare."""
+    script_path = BASE_DIR / "scripts" / "check_inverters.py"
+    if not script_path.exists():
+        return ""
+    try:
+        scripts_dir = str((BASE_DIR / "scripts").resolve())
+        sys_path_added = False
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+            sys_path_added = True
+        try:
+            from check_inverters import get_inverter_compatibility_markdown
+            return get_inverter_compatibility_markdown(fetch_github=fetch_github)
+        finally:
+            if sys_path_added and scripts_dir in sys.path:
+                sys.path.remove(scripts_dir)
+    except Exception as e:
+        print(f"⚠️ Kunde inte generera växelriktartabell för release: {e}")
+        return ""
+
 def sort_manifest_keys(file_path: Path):
     """Sorterar nycklar i manifest.json enligt Hassfest-krav: domain, name, sedan alfabetiskt."""
     print(f"\n--- 🔧 FIXAR SORTERING I {file_path.name} ---")
@@ -371,11 +417,17 @@ def check_images():
 
     logo_path = brand_dir / "logo.png"
     icon_path = brand_dir / "icon.png"
+    icon_2x_path = brand_dir / "icon@2x.png"
 
     if icon_path.exists() and icon_path.stat().st_size > 0:
         print(f"✅ brand/icon.png finns ({icon_path.stat().st_size // 1024} KB).")
     else:
         print("⚠️  brand/icon.png saknas eller är tom.")
+
+    if icon_2x_path.exists() and icon_2x_path.stat().st_size > 0:
+        print(f"✅ brand/icon@2x.png finns ({icon_2x_path.stat().st_size // 1024} KB).")
+    else:
+        print("⚠️  brand/icon@2x.png saknas eller är tom.")
 
     if logo_path.exists() and logo_path.stat().st_size > 0:
         print(f"✅ brand/logo.png finns ({logo_path.stat().st_size // 1024} KB).")
@@ -562,6 +614,13 @@ def create_github_release(version, repo_slug=None, diff_uncommitted=""):
     if not suggested_notes and commits:
         suggested_notes = commits
 
+    compat_table = get_inverter_compatibility_notes()
+    if compat_table:
+        if suggested_notes:
+            suggested_notes = f"{suggested_notes}\n\n{compat_table}".strip()
+        else:
+            suggested_notes = compat_table
+
     if suggested_notes:
         print("\n📝 Föreslagna release notes:")
         print("-" * 40)
@@ -596,6 +655,9 @@ def create_github_release(version, repo_slug=None, diff_uncommitted=""):
 
     if not notes:
         notes = f"Release v{version}"
+
+    if compat_table and compat_table not in notes:
+        notes = f"{notes}\n\n{compat_table}".strip()
 
     # Fråga om det är en pre-release
     is_prerelease_input = input("Är detta en pre-release? (j/n, default: n): ").lower()
@@ -653,6 +715,8 @@ def main():
     run_lint()
     run_pip_audit()
     check_license_headers()
+    skip_gh = (action_choice == '1')
+    check_inverter_contracts(pull=True, skip_github=skip_gh)
     sort_manifest_keys(MANIFEST_PATH)
     run_hassfest_local()
 

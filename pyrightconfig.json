@@ -30,6 +30,7 @@
     "./tests/test_ev_smart_charging.py",
     "./tests/test_homevolt.py",
     "./tests/test_huawei.py",
+    "./tests/test_inverter_contracts.py",
     "./tests/test_kostal.py",
     "./tests/test_modbus_solis.py",
     "./tests/test_sensor.py",
