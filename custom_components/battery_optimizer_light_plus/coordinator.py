@@ -403,11 +403,14 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                             action = "IDLE"
 
                         try:
-                            site_limits = data.get("sonnen_site_limits")
+                            site_limits = data.get("site_limits") or data.get("sonnen_site_limits")
                             try:
                                 if site_limits is not None:
                                     await self.battery_api.apply_action(
-                                        action, target_kw, sonnen_site_limits=site_limits
+                                        action,
+                                        target_kw,
+                                        site_limits=site_limits,
+                                        sonnen_site_limits=site_limits,
                                     )
                                 else:
                                     await self.battery_api.apply_action(action, target_kw)

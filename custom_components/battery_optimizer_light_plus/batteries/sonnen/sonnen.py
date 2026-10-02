@@ -173,7 +173,12 @@ class SonnenBattery(BatteryApi):
         return charge_ok and discharge_ok
 
     async def apply_action(
-        self, action: str, target_kw: float = 0.0, sonnen_site_limits: dict | None = None, **kwargs
+        self,
+        action: str,
+        target_kw: float = 0.0,
+        site_limits: dict | None = None,
+        sonnen_site_limits: dict | None = None,
+        **kwargs,
     ):
         """Verkställer ett beslut från molnet eller lokalt.
 
@@ -200,47 +205,72 @@ class SonnenBattery(BatteryApi):
 
         # ─── Fas 1: Förbered site limits ────────────────────────────────────
         # Tre möjliga ingångar:
-        #   A) Molnet skickar färska limits → spara dem och justera för HOLD/IDLE.
+        #   A) Molnet skickar färska limits (site_limits eller sonnen_site_limits).
         #   B) Inget skickades men vi har cachade limits → återanvänd dem.
         #   C) Varken A eller B men modern EMS + HOLD → skapa minimal frys-payload.
 
-        if sonnen_site_limits is not None:
-            # Fall A: Molnet skickade nya limits – cacha originalet
-            self._last_site_limits = dict(sonnen_site_limits)
+        incoming_limits = site_limits if site_limits is not None else sonnen_site_limits
+
+        if incoming_limits is not None:
+            # Fall A: Molnet skickade nya limits – arbeta på en kopia så anroparens objekt ej muteras
+            active_limits = dict(incoming_limits)
             if action == "HOLD":
-                # Fryser batteriet: varken laddning eller urladdning tillåts
-                sonnen_site_limits["p_bess_inv_max_export_limit"] = 0
-                sonnen_site_limits["p_bess_inv_max_import_limit"] = 0
-                self._last_site_limits["p_bess_inv_max_export_limit"] = 0
-                self._last_site_limits["p_bess_inv_max_import_limit"] = 0
+                # Alltid 0 W BESS import vid HOLD (tvingar solel ut på nätet)
+                active_limits["p_bess_inv_max_import_limit"] = 0
+                if (
+                    incoming_limits.get("p_bess_inv_max_export_limit") is None
+                    and "p_bess_inv_max_export_limit" in incoming_limits
+                ):
+                    # Smart Sol-Export: exportspärr släpps fri så batteriet kan stötta huset vid behov
+                    active_limits.pop("p_bess_inv_max_export_limit", None)
+                else:
+                    # Ren HOLD: fryser även urladdning på 0 W
+                    active_limits["p_bess_inv_max_export_limit"] = 0
+                self._last_site_limits = dict(active_limits)
             elif action == "IDLE":
-                # Släpper batteriet fritt: tar bort export- och importspärrar
-                sonnen_site_limits.pop("p_bess_inv_max_export_limit", None)
-                sonnen_site_limits.pop("p_bess_inv_max_import_limit", None)
-                self._last_site_limits.pop("p_bess_inv_max_export_limit", None)
-                self._last_site_limits.pop("p_bess_inv_max_import_limit", None)
+                if incoming_limits.get("p_bess_inv_max_export_limit") == 0:
+                    # Skyddad Solladdning: behåll exportspärr på 0 W för att spara laddning till kvällstopp
+                    active_limits["p_bess_inv_max_export_limit"] = 0
+                else:
+                    # Släpper batteriets urladdning fritt till huset
+                    active_limits.pop("p_bess_inv_max_export_limit", None)
+
+                if incoming_limits.get("p_bess_inv_max_import_limit") == 0:
+                    active_limits["p_bess_inv_max_import_limit"] = 0
+                else:
+                    # Släpper batteriets laddning fri från sol
+                    active_limits.pop("p_bess_inv_max_import_limit", None)
+                self._last_site_limits = dict(active_limits)
+            else:
+                self._last_site_limits = dict(active_limits)
         elif self._last_site_limits is not None and action in ("HOLD", "IDLE"):
             # Fall B: Inga nya limits från molnet, men vi har cachade (t.ex. PeakGuard eller lokal automation)
-            sonnen_site_limits = dict(self._last_site_limits)
+            active_limits = dict(self._last_site_limits)
             if action == "HOLD":
-                sonnen_site_limits["p_bess_inv_max_export_limit"] = 0
-                sonnen_site_limits["p_bess_inv_max_import_limit"] = 0
+                active_limits["p_bess_inv_max_export_limit"] = 0
+                active_limits["p_bess_inv_max_import_limit"] = 0
                 self._last_site_limits["p_bess_inv_max_export_limit"] = 0
                 self._last_site_limits["p_bess_inv_max_import_limit"] = 0
             elif action == "IDLE":
-                sonnen_site_limits.pop("p_bess_inv_max_export_limit", None)
-                sonnen_site_limits.pop("p_bess_inv_max_import_limit", None)
+                active_limits.pop("p_bess_inv_max_export_limit", None)
+                active_limits.pop("p_bess_inv_max_import_limit", None)
                 self._last_site_limits.pop("p_bess_inv_max_export_limit", None)
                 self._last_site_limits.pop("p_bess_inv_max_import_limit", None)
         elif self.is_modern_ems and action == "HOLD":
             # Fall C: Inga limits alls – skapa en minimal payload som enbart fryser batteriet
-            sonnen_site_limits = {
+            active_limits = {
                 "p_bess_inv_max_export_limit": 0,
                 "p_bess_inv_max_import_limit": 0,
             }
-            self._last_site_limits = dict(sonnen_site_limits)
+            self._last_site_limits = dict(active_limits)
+        else:
+            active_limits = None
 
-        has_active_limits = any(k in (sonnen_site_limits or {}) for k in limit_keys)
+        has_active_limits = (
+            any(active_limits.get(k) is not None for k in limit_keys)
+            if active_limits is not None
+            else False
+        )
 
         # ─── Fas 2: Modern EMS-styrning (Mode 2 + Site Limits) ───────────────
         # Batteriet förblir i Self-Consumption (Mode 2) och gränserna sätts via
@@ -253,8 +283,8 @@ class SonnenBattery(BatteryApi):
                 self._last_site_limits = None
                 return await self._api.async_set_operating_mode(2)
 
-            if sonnen_site_limits is not None and has_active_limits:
-                _LOGGER.debug("Verkställer beslut via Sonnen Site Limits (%s): %s", action, sonnen_site_limits)
+            if active_limits is not None and has_active_limits:
+                _LOGGER.debug("Verkställer beslut via Sonnen Site Limits (%s): %s", action, active_limits)
 
                 # Säkerställ att batteriet ligger i Self-consumption (Mode 2)
                 current_mode = None
@@ -276,7 +306,7 @@ class SonnenBattery(BatteryApi):
                     await asyncio.sleep(2.0)
 
                 # Säkerställ att duration alltid är PT600S (10 min watchdog)
-                limits_payload = dict(sonnen_site_limits)
+                limits_payload = dict(active_limits)
                 if limits_payload.get("duration") in ("PT90S", "PT10M", None):
                     limits_payload["duration"] = "PT600S"
 

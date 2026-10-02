@@ -652,6 +652,10 @@ async def test_coordinator_sonnen_payload_and_site_limits():
         mock_post.json = AsyncMock(return_value={
             "action": "HOLD",
             "target_power_kw": 0.0,
+            "site_limits": {
+                "p_bess_inv_max_export_limit": 0,
+                "p_gcp_max_import_limit": 4500,
+            },
             "sonnen_site_limits": {
                 "p_bess_inv_max_export_limit": 0,
                 "p_gcp_max_import_limit": 4500,
@@ -670,10 +674,14 @@ async def test_coordinator_sonnen_payload_and_site_limits():
         assert payload["inverter_brand"] == "sonnen"
         assert payload["inverter_software_version"] == "1.35.14"
 
-        # Verifiera att sonnen_site_limits vidarebefordrades till apply_action
+        # Verifiera att site_limits och sonnen_site_limits vidarebefordrades till apply_action
         mock_battery.apply_action.assert_called_once_with(
             "HOLD",
             0.0,
+            site_limits={
+                "p_bess_inv_max_export_limit": 0,
+                "p_gcp_max_import_limit": 4500,
+            },
             sonnen_site_limits={
                 "p_bess_inv_max_export_limit": 0,
                 "p_gcp_max_import_limit": 4500,
@@ -1030,3 +1038,79 @@ async def test_sonnen_em2_full_lifecycle_success():
 
 
 
+
+
+@pytest.mark.asyncio
+async def test_sonnen_apply_action_smart_sol_export(sonnen_battery, mock_sonnen_api):
+    """Testar Smart Sol-Export: HOLD med p_bess_inv_max_export_limit=None tillåter husstöd."""
+    sonnen_battery._software_version = "1.35.14"
+    sonnen_battery._is_modern_ems = True
+
+    limits = {
+        "duration": "PT600S",
+        "p_gcp_max_import_limit": 4500,
+        "p_gcp_max_export_limit": None,
+        "p_bess_inv_max_export_limit": None,  # Husstöd tillåts!
+        "p_bess_inv_max_import_limit": 0,     # Laddning från solel spärras
+    }
+
+    result = await sonnen_battery.apply_action("HOLD", site_limits=limits)
+    assert result is True
+
+    # Ska säkerställa Self-consumption (Mode 2)
+    mock_sonnen_api.async_set_operating_mode.assert_called_once_with(2)
+
+    # Exportspärr ska vara borttagen (popped), importspärr ska vara 0 W
+    mock_sonnen_api.async_set_site_limits.assert_called_once()
+    sent_limits = mock_sonnen_api.async_set_site_limits.call_args[0][0]
+    assert "p_bess_inv_max_export_limit" not in sent_limits
+    assert sent_limits.get("p_bess_inv_max_import_limit") == 0
+    assert sent_limits.get("p_gcp_max_import_limit") == 4500
+
+
+@pytest.mark.asyncio
+async def test_sonnen_apply_action_skyddad_solladdning(sonnen_battery, mock_sonnen_api):
+    """Testar Skyddad Solladdning: IDLE med p_bess_inv_max_export_limit=0 sparar batteriet till kvällen."""
+    sonnen_battery._software_version = "1.35.14"
+    sonnen_battery._is_modern_ems = True
+
+    limits = {
+        "duration": "PT600S",
+        "p_gcp_max_import_limit": 4500,
+        "p_gcp_max_export_limit": None,
+        "p_bess_inv_max_export_limit": 0,     # Urladdning till huset spärras!
+        "p_bess_inv_max_import_limit": None,  # Solladdning tillåts
+    }
+
+    result = await sonnen_battery.apply_action("IDLE", site_limits=limits)
+    assert result is True
+
+    mock_sonnen_api.async_set_operating_mode.assert_called_once_with(2)
+
+    mock_sonnen_api.async_set_site_limits.assert_called_once()
+    sent_limits = mock_sonnen_api.async_set_site_limits.call_args[0][0]
+    assert sent_limits.get("p_bess_inv_max_export_limit") == 0
+    assert "p_bess_inv_max_import_limit" not in sent_limits
+    assert sent_limits.get("p_gcp_max_import_limit") == 4500
+
+
+@pytest.mark.asyncio
+async def test_sonnen_apply_action_generic_site_limits_param(sonnen_battery, mock_sonnen_api):
+    """Testar att det nya generiska parameternamnet site_limits fungerar identiskt med sonnen_site_limits."""
+    sonnen_battery._software_version = "1.35.14"
+    sonnen_battery._is_modern_ems = True
+
+    limits = {
+        "duration": "PT600S",
+        "p_bess_inv_max_export_limit": 0,
+        "p_bess_inv_max_import_limit": 0,
+    }
+
+    result = await sonnen_battery.apply_action("HOLD", site_limits=limits)
+    assert result is True
+
+    mock_sonnen_api.async_set_site_limits.assert_called_once_with({
+        "duration": "PT600S",
+        "p_bess_inv_max_export_limit": 0,
+        "p_bess_inv_max_import_limit": 0,
+    })

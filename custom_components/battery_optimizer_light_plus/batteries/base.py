@@ -44,11 +44,14 @@ class BatteryApi(ABC):
         return None
 
     @abstractmethod
-    async def apply_action(self, action: str, target_kw: float = 0.0, **kwargs):
+    async def apply_action(
+        self, action: str, target_kw: float = 0.0, site_limits: dict | None = None, **kwargs
+    ):
         """
         Verkställer ett beslut från molnet eller lokalt.
         action: 'CHARGE', 'DISCHARGE', 'HOLD', 'IDLE'
         target_kw: Måleffekt i kW (t.ex. 5.0 för 5000W).
+        site_limits: Valfria hårdvarubegränsningar (SunSpec/IEC Site Limits för BESS & GCP).
         """
         pass
 
