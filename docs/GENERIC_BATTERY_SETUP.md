@@ -115,3 +115,74 @@ actions:
 * Integrationen uppdaterar besluten exakt var 5:e minut. Din automation triggas omedelbart så fort värdet ändras (t.ex. från `IDLE` till `CHARGE`).
 * Effekten från `charge_target` och `discharge_target` har redan korrigerats i molnet så den överskrider aldrig batteriets inställda maxeffekt och skyddar även din huvudsäkring från att gå (om du angett säkringsstorlek i webbportalen). Du kan därmed lita blint på siffran i variablerna.
 * Du behöver inte hantera minustecken. Siffran för urladdning (`discharge_target`) är alltid ett rent, positivt watt-tal (t.ex. `4200`). Hur din växelriktare sedan vill ta emot detta tal (som positivt eller negativt) hanterar du smidigast i dina egna anrop.
+
+## Exempel: Tillhörande skript (scripts.yaml)
+Eftersom alla växelriktare styrs olika (Fronius, Sungrow, GoodWe etc.) måste du anpassa innehållet i dessa skript så att de gör exakt det som krävs för din anläggning. Ofta handlar det om att sätta ett `number`-värde för effekten och ändra ett driftläge via en `select`-entitet eller via ett Modbus-kommando.
+
+Se till att skript-ID:na (`din_inverter_auto` osv) matchar de du anropar i automationen ovan. Här är ett konkret exempel på hur skripten i din `scripts.yaml` kan se ut:
+
+```yaml
+din_inverter_auto:
+  alias: "Batteri: Autoläge"
+  sequence:
+    # Exempel: Byt ut mot din egen entitet för att återgå till självkonsumtion (Auto)
+    - action: select.select_option
+      target:
+        entity_id: select.inverter_mode
+      data:
+        option: "Auto"
+
+din_inverter_charge:
+  alias: "Batteri: Tvinga Laddning"
+  fields:
+    power:
+      description: Effekt i Watt
+      default: 0
+  sequence:
+    # Exempel: 1. Sätt växelriktaren i manuellt laddningsläge
+    - action: select.select_option
+      target:
+        entity_id: select.inverter_mode
+      data:
+        option: "Manual Charge"
+    # Exempel: 2. Bestäm effekten i Watt (skickas in automatiskt via automationen)
+    - action: number.set_value
+      target:
+        entity_id: number.inverter_charge_power
+      data:
+        value: "{{ power }}"
+
+din_inverter_discharge:
+  alias: "Batteri: Tvinga Urladdning"
+  fields:
+    power:
+      description: Effekt i Watt
+      default: 0
+  sequence:
+    - action: select.select_option
+      target:
+        entity_id: select.inverter_mode
+      data:
+        option: "Manual Discharge"
+    - action: number.set_value
+      target:
+        entity_id: number.inverter_discharge_power
+      data:
+        value: "{{ power }}"
+
+din_inverter_hold:
+  alias: "Batteri: Pausa (Hold)"
+  sequence:
+    # Ofta pausas ett batteri genom att man aktiverar ett manuellt läge, men sätter maxeffekten till 0 W
+    - action: select.select_option
+      target:
+        entity_id: select.inverter_mode
+      data:
+        option: "Manual Discharge"
+    - action: number.set_value
+      target:
+        entity_id: number.inverter_discharge_power
+      data:
+        value: 0
+
+```
