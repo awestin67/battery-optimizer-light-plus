@@ -33,7 +33,6 @@ Eftersom Home Assistant fungerar som en "Edge"-klient, är exekveringen uppdelad
 ## 3. Säkerhetsmekanismer & Filter
 För att garantera fysisk säkerhet och förhindra slitage på reläer implementerar integrationen flera lokala skydd:
 
-*   **Solar Override (Anti-fladder):** Om solelexporten är massiv (> 400W), tvingas batteriet till `IDLE` (Auto) så att det kan laddas upp av överskottet. För att undvika "fladder" när moln passerar, tillämpas en **3-minuters hysteres** innan denna spärr släpps, *såvida* inte batteriet tvingas ladda ur, varpå spärren släpps direkt för att skydda SoC.
 *   **Maintenance Override:** Om batteriets status-sensor (t.ex. växelriktarens felkods-entitet) rapporterar ett ord som matchar `battery_status_keywords` (t.ex. "Service", "Calibrating"), släpper integrationen all kontroll.
 *   **Lokal Throttling av Laddning:** Även om molnet ber om `CHARGE`, beräknar PeakGuard tillgängligt utrymme upp till gränsvärdet. Om marginalen är för liten stryps (throttlas) laddningseffekten lokalt innan den skickas till batteriet.
 *   **Hardware Reserve (EM_USOC):** För Sonnen-batterier läser integrationen in hårdvarureserven. Om användaren har 5% reserverat för strömavbrott, skalar integrationen om SoC (så att molnet ser 0%) och lokalt nekar alla `DISCHARGE`-kommandon om den fysiska nivån går ner till 5%.

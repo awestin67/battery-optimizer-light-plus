@@ -137,10 +137,8 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                         reported_soc = self._last_valid_soc
                 self._last_valid_soc = reported_soc
 
-                is_solar_override = False
                 is_in_maintenance = False
                 if hasattr(self, "peak_guard") and self.peak_guard:
-                    is_solar_override = self.peak_guard.is_solar_override
                     is_in_maintenance = self.peak_guard.in_maintenance
 
                 # --- EV CHARGING SENSOR ---
@@ -307,7 +305,6 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                 # 5. Payload (Endast det backend behöver)
                 payload = {
                     "soc": reported_soc,
-                    "is_solar_override": is_solar_override,
                     "is_in_maintenance": is_in_maintenance,
                     "is_ev_charging": is_ev_charging,
                     "is_offgrid": is_offgrid,
@@ -391,7 +388,6 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                         _LOGGER.debug("Passive mode active. Not applying actions to battery from cloud.")
                     elif (
                         not is_in_maintenance
-                        and not is_solar_override
                         and not (hasattr(self, "peak_guard") and self.peak_guard.is_active)
                     ):
                         # Spärra manuell urladdning om vi har nått hårdvarureserven (t.ex. Sonnen Backup)

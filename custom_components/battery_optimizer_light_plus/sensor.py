@@ -157,13 +157,7 @@ class BatteryLightActionSensor(BatteryOptimizerSensorBase):
 
     @property
     def state(self):
-        raw_action = (self.coordinator.data or {}).get("action", "UNKNOWN")
-
-        # Om PeakGuard har aktiverat Solar Override, visa IDLE (Auto) istället för HOLD
-        if hasattr(self.coordinator, "peak_guard") and self.coordinator.peak_guard.is_solar_override:
-            if raw_action == "HOLD":
-                return "IDLE"
-        return raw_action
+        return (self.coordinator.data or {}).get("action", "UNKNOWN")
 
 class BatteryLightReasonSensor(BatteryOptimizerSensorBase):
     def __init__(self, coordinator):
@@ -181,8 +175,6 @@ class BatteryLightReasonSensor(BatteryOptimizerSensorBase):
             pg = self.coordinator.peak_guard
             if pg.is_active:
                 return "Local Peak Guard Triggered"
-            if pg.is_solar_override:
-                return "Solar Override (Local)"
 
         # 2. Annars visa vad molnet säger (t.ex. "Charging due to cheap price")
         return (self.coordinator.data or {}).get("reason", "Unknown")
@@ -257,20 +249,15 @@ class BatteryLightStatusSensor(BatteryOptimizerSensorBase):
         is_triggered = False
         in_maintenance = False
         maintenance_reason = None
-        is_solar_override = False
 
         if hasattr(self.coordinator, "peak_guard"):
             pg = self.coordinator.peak_guard
             is_triggered = pg.is_active
             in_maintenance = pg.in_maintenance
             maintenance_reason = pg.maintenance_reason
-            is_solar_override = pg.is_solar_override
 
         if in_maintenance:
             return f"Maintenance mode detected ({maintenance_reason}). Pausing control."
-
-        if is_solar_override:
-            return "Solar Override Active"
 
         if is_triggered:
             return "Triggered"
@@ -307,8 +294,6 @@ class BatteryLightStatusSensor(BatteryOptimizerSensorBase):
             return "mdi:shield-alert"
         if "Maintenance" in status:
             return "mdi:tools"
-        if "Solar Override" in status:
-            return "mdi:solar-panel"
         return "mdi:shield-search"
 
     @property

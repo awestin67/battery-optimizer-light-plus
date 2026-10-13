@@ -52,11 +52,6 @@ _LOGGER = logging.getLogger(__name__)
 # --- KONFIGURATION ---
 LIMIT_ENTITY = "sensor.optimizer_light_peak_limit"
 
-# --- SOLAR OVERRIDE KONSTANTER ---
-SOLAR_TRIGGER_W = -400.0  # Gräns för att starta override (Export)
-SOLAR_RESET_W = -100.0    # Gräns för att stoppa override (Minskad export)
-BATTERY_DISCHARGE_THRESHOLD_W = 200.0 # Gräns för att anse att batteriet laddar ur
-
 async def async_setup_entry(hass: HomeAssistant, entry):
     """Set up from a config entry."""
     config = dict(entry.data)
@@ -249,9 +244,6 @@ class PeakGuard:
         self._has_reported = False
         self._hold_command_sent = False  # Flagga för att undvika upprepade kommandon
         self._capacity_exceeded_logged = False  # Flagga för att logga överlast en gång
-        self._is_solar_override = False  # Flagga för sol-override
-        self._solar_override_trigger_start = None  # Tidsstämpel för fördröjning
-        self._solar_override_clear_start = None  # Tidsstämpel för deaktiveringsfördröjning
         self._in_maintenance = False  # Flagga för underhållsläge
         self._maintenance_reason = None  # Orsak till underhållsläge
         self._maintenance_cooldown_start = None # Tidsstämpel för när underhållssignalen försvann
@@ -261,10 +253,6 @@ class PeakGuard:
     @property
     def is_active(self):
         return self._has_reported
-
-    @property
-    def is_solar_override(self):
-        return self._is_solar_override
 
     @property
     def in_maintenance(self):
@@ -335,9 +323,6 @@ class PeakGuard:
                 # Återställ lokala flaggor så de inte stör dashboards.
                 if self.is_active:
                     self._set_reported_state(False)
-                if self._is_solar_override:
-                    self._is_solar_override = False
-                    self.coordinator.async_update_listeners()
                 if self._in_maintenance:
                     self._in_maintenance = False
                     self._maintenance_reason = None
@@ -351,7 +336,7 @@ class PeakGuard:
                     _LOGGER.info("PeakGuard is disabled by backend. Clearing active peak.")
                     self._set_reported_state(False)
                 # OBS! Vi avbryter INTE (return) här längre.
-                # Solar Override ska fortsätta fungera oavsett molnets inställning.
+                # Molnets action ska fortsätta respekteras lokalt oavsett denna inställning.
 
             # 0.1 Kontrollera Extern Paus (CheckWatt/FCR)
             ext_entity = self.config.get(CONF_EXTERNAL_CONTROL_SENSOR)
@@ -554,21 +539,14 @@ class PeakGuard:
                 if bat_val is not None and abs(bat_val) > 100:
                     bat_is_moving = True
 
-            enable_solar_override = self.config.get("enable_solar_override", False)
-
             # Avbryt bara om:
             # 1. Ingen peak är aktiv.
-            # 2. Ingen Solar Override är aktiv (vi måste kunna stänga av den).
-            # 3. Lasten är under varningsgränsen.
-            # 4. Vi INTE exporterar (för då måste vi kolla Solar Override).
-            # 5. Vi INTE laddar (för då måste vi kolla säkringen).
-            # 6. Vi INTE behöver tvinga stopp (HOLD + Battery Moving).
+            # 2. Lasten är under varningsgränsen.
+            # 3. Vi INTE laddar (för då måste vi kolla säkringen).
+            # 4. Vi INTE behöver tvinga stopp (HOLD + Battery Moving).
             if (
                 not self._has_reported
-                and not self._is_solar_override
-                and self._solar_override_trigger_start is None
                 and current_load < wake_up_threshold
-                and (current_load > -200 or not enable_solar_override)
                 and cloud_action != "CHARGE"
                 and not (cloud_action == "HOLD" and bat_is_moving)
             ):
@@ -639,156 +617,6 @@ class PeakGuard:
             else:
                 # TILLSTÅND AV: Återgå till molnstrategi
                 # cloud_action är redan hämtad ovan
-
-                # --- SOLAR OVERRIDE ---
-                current_bat_power = None
-
-                # --- FÖRSÖK 1: Användarens konfigurerade HA-sensorer ---
-                bat_entity = self.config.get(CONF_BATTERY_POWER_SENSOR)
-                if bat_entity:
-                    b_state = self.hass.states.get(bat_entity)
-                    if b_state and b_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
-                        try:
-                            current_bat_power = float(b_state.state)
-                            if self.config.get(CONF_BATTERY_SENSOR_INVERT, False):
-                                current_bat_power = -current_bat_power
-                        except ValueError:
-                            pass
-
-                # --- FÖRSÖK 2: Interna batterimetoder ---
-                if current_bat_power is None and hasattr(self.battery, "get_battery_power"):
-                    current_bat_power = await self.battery.get_battery_power()
-
-                if current_bat_power is None:
-                    current_bat_power = 0.0
-
-                # --- EXTRA SÄKERHETSKONTROLL (Natt/Buffer Fill & Sensor Lag) ---
-                is_importing = False
-                g_val = None
-
-                # --- FÖRSÖK 1: Användarens konfigurerade HA-sensorer ---
-                grid_id = self.config.get(CONF_GRID_SENSOR)
-                if grid_id:
-                    g_state = self.hass.states.get(grid_id)
-                    if g_state and g_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
-                        try:
-                            g_val = float(g_state.state)
-                            if self.config.get(CONF_GRID_SENSOR_INVERT, False):
-                                g_val = -g_val
-                            if g_val > 200:
-                                is_importing = True
-                                _LOGGER.debug(
-                                    f"Grid importing detected (Sensor): {g_val} W. "
-                                    "Blocking Solar Override."
-                                )
-                        except ValueError:
-                            pass
-
-                # --- FÖRSÖK 2: Interna batterimetoder ---
-                if g_val is None and hasattr(self.battery, "get_grid_power"):
-                    g_val = await self.battery.get_grid_power()
-                    if g_val is not None and g_val > 200:
-                        is_importing = True
-                        _LOGGER.debug(f"Grid importing detected (API): {g_val} W. Blocking Solar Override.")
-
-                is_discharging = current_bat_power > BATTERY_DISCHARGE_THRESHOLD_W
-
-                # Beräkna önskat läge baserat på last (oberoende av moln-status)
-                wants_override = self._is_solar_override
-
-                if not enable_solar_override:
-                    wants_override = False
-                    self._solar_override_trigger_start = None
-                    self._solar_override_clear_start = None
-                elif current_load < SOLAR_TRIGGER_W and not is_importing and not is_discharging:
-                    self._solar_override_clear_start = None
-                    if not self._is_solar_override:
-                        # Starta timer för att kräva att värdet hålls i 30 sekunder (filtrerar bort sensor-lag)
-                        if self._solar_override_trigger_start is None:
-                            self._solar_override_trigger_start = dt_util.utcnow()
-                            _LOGGER.debug(
-                                f"☀️ Potential Solar Override detected (Load: {current_load} W). "
-                                "Waiting 30s to verify."
-                            )
-                        elif dt_util.utcnow() - self._solar_override_trigger_start >= timedelta(seconds=30):
-                            wants_override = True
-                    else:
-                        wants_override = True
-                elif current_load > SOLAR_RESET_W or is_importing or is_discharging:
-                    if self._solar_override_trigger_start is not None:
-                        _LOGGER.debug(
-                            f"🛑 Solar Override timer reset. Load: {current_load} W, "
-                            f"Importing: {is_importing}, Discharging: {is_discharging}"
-                        )
-                    self._solar_override_trigger_start = None
-
-                    if self._is_solar_override:
-                        # Om batteriet aktivt laddar ur för att täcka upp ett underskott,
-                        # avbryt direkt för att skydda SoC (kringgå 3-minutersregeln).
-                        if is_discharging:
-                            _LOGGER.info(
-                                f"🛑 Battery is discharging ({current_bat_power} W)! "
-                                "Bypassing 3-min delay to protect SoC."
-                            )
-                            wants_override = False
-                            self._solar_override_clear_start = None
-                        else:
-                            if self._solar_override_clear_start is None:
-                                self._solar_override_clear_start = dt_util.utcnow()
-                                _LOGGER.debug(
-                                    f"🛑 Solar Override stop condition met (Load: {current_load} W). "
-                                    "Waiting 3 minutes to prevent flapping."
-                                )
-                            elif dt_util.utcnow() - self._solar_override_clear_start >= timedelta(minutes=3):
-                                wants_override = False
-                    else:
-                        wants_override = False
-                else:
-                    # Inom hysteres-zonen (-400 till -100)
-                    if not self._is_solar_override:
-                        # Återställ timer om vi studsar upp över trigg-gränsen innan 30 sekunder har gått
-                        if self._solar_override_trigger_start is not None:
-                            _LOGGER.debug(f"🛑 Solar Override timer reset (Hysteresis bounce). Load: {current_load} W")
-                        self._solar_override_trigger_start = None
-                    else:
-                        # Återställ clear-timer om vi studsar ner i hysteres-zonen
-                        if self._solar_override_clear_start is not None:
-                            _LOGGER.debug(
-                                "☀️ Solar Override clear timer reset (Hysteresis bounce). "
-                                f"Load: {current_load} W"
-                            )
-                            self._solar_override_clear_start = None
-
-                new_override = False
-
-                if cloud_action == "HOLD":
-                    if getattr(self.battery, "is_modern_ems", False) is True:
-                        new_override = False
-                    else:
-                        new_override = wants_override
-                elif cloud_action == "IDLE":
-                    # Om vi redan är i override, stanna kvar där för att undvika
-                    # att backend pendlar mellan HOLD och IDLE när flaggan skickas.
-                    if self._is_solar_override:
-                        new_override = wants_override
-                else:
-                    # CHARGE / DISCHARGE
-                    new_override = False
-
-                if new_override:
-                    cloud_action = "IDLE"  # Tvinga Auto-läge lokalt
-
-                if self._is_solar_override != new_override:
-                    self._is_solar_override = new_override
-                    self._last_sent_command = None  # Tvinga uppdatering till batteriet
-                    self.coordinator.async_update_listeners()  # Uppdatera sensorer
-
-                    if new_override:
-                        _LOGGER.info(f"☀️ Solar Override Activated. Load: {current_load} W. Enabling Auto Mode.")
-                        await self._report_solar_override(current_load, limit_w)
-                    else:
-                        _LOGGER.info(f"🌑 Solar Override Deactivated. Load: {current_load} W. Resuming Cloud Control.")
-                        await self._report_solar_override_clear(current_load, limit_w)
 
                 if cloud_action != "HOLD":
                     self._hold_command_sent = False  # Återställ om molnet vill något annat
@@ -894,7 +722,7 @@ class PeakGuard:
                     if self._last_sent_command != "IDLE":
                         _LOGGER.info(
                             "⚙️ Executing IDLE (Auto) command to battery. "
-                            f"(CloudAction={cloud_action}, SolarOverride={self._is_solar_override})"
+                            f"(CloudAction={cloud_action})"
                         )
                         site_limits = (
                             self.coordinator.data.get("sonnen_site_limits") if self.coordinator.data else None
@@ -966,36 +794,6 @@ class PeakGuard:
                     _LOGGER.debug(f"Cloud report sent: PeakGuard Failure: {payload['grid_power_kw']} kW")
         except Exception as e:
             _LOGGER.error(f"Failed to report peak failure: {e}")
-
-    async def _report_solar_override(self, grid_w, limit_w):
-        try:
-            api_url = f"{self._base_api_url}/report_solar_override"
-            payload = {
-                "grid_power_kw": round(grid_w / 1000.0, 2),
-                "limit_kw": round(limit_w / 1000.0, 2)
-            }
-            headers = {"X-API-Key": self.config[CONF_API_KEY]}
-            session = async_get_clientsession(self.hass)
-            async with session.post(api_url, json=payload, headers=headers, timeout=10) as resp:
-                if resp.status == 200:
-                    _LOGGER.debug(f"Cloud report sent: Solar Override: {payload['grid_power_kw']} kW")
-        except Exception as e:
-            _LOGGER.error(f"Failed to report solar override: {e}")
-
-    async def _report_solar_override_clear(self, grid_w, limit_w):
-        try:
-            api_url = f"{self._base_api_url}/report_solar_override_clear"
-            payload = {
-                "grid_power_kw": round(grid_w / 1000.0, 2),
-                "limit_kw": round(limit_w / 1000.0, 2)
-            }
-            headers = {"X-API-Key": self.config[CONF_API_KEY]}
-            session = async_get_clientsession(self.hass)
-            async with session.post(api_url, json=payload, headers=headers, timeout=10) as resp:
-                if resp.status == 200:
-                    _LOGGER.debug(f"Cloud report sent: Solar Override Cleared: {payload['grid_power_kw']} kW")
-        except Exception as e:
-            _LOGGER.error(f"Failed to report solar override clear: {e}")
 
 
 async def update_listener(hass, entry):

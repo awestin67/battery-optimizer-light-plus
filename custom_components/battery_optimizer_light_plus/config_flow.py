@@ -515,7 +515,6 @@ class BatteryOptimizerLightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _opt(
                 CONF_WATER_HEATER_TEMP_SENSOR, get_val(CONF_WATER_HEATER_TEMP_SENSOR)
             ): EntitySelector(EntitySelectorConfig(domain="sensor")),
-            vol.Optional("enable_solar_override", default=get_val("enable_solar_override", False)): bool,
             vol.Optional(CONF_GRAPH_HISTORY_HOURS, default=get_val(CONF_GRAPH_HISTORY_HOURS, "24")): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=["12", "24", "48", "72", "168"],
@@ -734,7 +733,6 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             _opt(CONF_VIRTUAL_LOAD_SENSOR, get_default(CONF_VIRTUAL_LOAD_SENSOR)): EntitySelector(
                 EntitySelectorConfig(domain="sensor", device_class="power")
             ),
-            vol.Optional("enable_solar_override", default=get_default("enable_solar_override", False)): bool,
             vol.Optional(CONF_GRAPH_HISTORY_HOURS, default=get_default(CONF_GRAPH_HISTORY_HOURS, "24")): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=["12", "24", "48", "72", "168"],

@@ -39,7 +39,6 @@ MOCK_CONFIG = {
     "grid_sensor": "sensor.grid",
     "battery_power_sensor": "sensor.bat_power",
     "virtual_load_sensor": "sensor.husets_netto_last_virtuell",
-    "enable_solar_override": True,
 }
 
 @pytest.fixture
@@ -230,46 +229,6 @@ async def test_peak_guard_disabled_by_backend(mock_hass_instance, mock_battery):
     # Verify NO calls were made
     mock_battery.apply_action.assert_not_called()
 
-@pytest.mark.asyncio
-async def test_solar_override_works_when_peak_shaving_disabled(mock_hass_instance, mock_battery):
-    """Krav: Solar Override ska fortfarande övervakas och fungera även om Peak Shaving inaktiverats från molnet."""
-    coordinator = MagicMock()
-    # Backend säger att peak shaving är Off (is_active blir False)
-    coordinator.data = {"action": "HOLD", "is_active": True, "is_peak_shaving_active": False, "peakguard_status": "Off"}
-
-    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
-
-    # Setup sensorer för stor solexport (-500W)
-    limit_state = MagicMock()
-    limit_state.state = "5.0"
-    load_state = MagicMock()
-    load_state.state = "-500"
-    soc_state = MagicMock()
-    soc_state.state = "50"
-
-    def get_state_side_effect(entity_id):
-        if entity_id == "sensor.optimizer_light_peak_limit":
-            return limit_state
-        if entity_id == "sensor.husets_netto_last_virtuell":
-            return load_state
-        if entity_id == "sensor.soc":
-            return soc_state
-        return None
-    mock_hass_instance.states.get.side_effect = get_state_side_effect
-
-    # Kör update 1 - timern ska starta trots att Peak Shaving är inaktivt
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-    assert guard.is_solar_override is False
-    assert guard._solar_override_trigger_start is not None
-
-    # Spola fram tiden och kör update 2
-    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-
-    # Override måste bli True, och skicka kommandot IDLE
-    assert guard.is_solar_override is True
-    mock_battery.apply_action.assert_called_with("IDLE")
-
 def test_status_sensor():
     """Testar att status-sensorn visar rätt text (Disabled/Monitoring/Triggered)."""
     coordinator = MagicMock()
@@ -281,7 +240,6 @@ def test_status_sensor():
     peak_guard.is_active = False
     peak_guard.in_maintenance = False
     peak_guard.maintenance_reason = None
-    peak_guard.is_solar_override = False
     coordinator.peak_guard = peak_guard
 
     sensor = BatteryLightStatusSensor(coordinator)
@@ -323,12 +281,6 @@ def test_status_sensor():
     peak_guard.maintenance_reason = "Service Mode"
     assert sensor.state == "Maintenance mode detected (Service Mode). Pausing control."
     assert sensor.icon == "mdi:tools"
-
-    # Fall 5: Solar Override
-    peak_guard.in_maintenance = False
-    peak_guard.is_solar_override = True
-    assert sensor.state == "Solar Override Active"
-    assert sensor.icon == "mdi:solar-panel"
 
 @pytest.mark.asyncio
 async def test_peak_guard_reports_failure_on_overload(mock_hass_instance, mock_battery):
@@ -382,106 +334,6 @@ async def test_peak_guard_reports_failure_on_overload(mock_hass_instance, mock_b
 
     # Verifiera att _report_peak_failure anropades med (current_load, limit_w)
     guard._report_peak_failure.assert_called_with(9000.0, 5000.0)
-
-@pytest.mark.asyncio
-async def test_solar_override_reports_to_cloud(mock_hass_instance, mock_battery):
-    """Krav: När Solar Override aktiveras ska det rapporteras till molnet."""
-    coordinator = MagicMock()
-    coordinator.data = {
-        "action": "HOLD",
-        "is_active": True,
-        "is_peak_shaving_active": True,
-        "peakguard_status": "Active",
-    }
-
-    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
-
-    # Mocka rapport-metoden
-    guard._report_solar_override = AsyncMock()
-
-    # Setup sensorer
-    limit_state = MagicMock()
-    limit_state.state = "5.0"
-
-    # Last: -500 W (Export)
-    load_state = MagicMock()
-    load_state.state = "-500"
-
-    soc_state = MagicMock()
-    soc_state.state = "50"
-
-    def get_state_side_effect(entity_id):
-        if entity_id == "sensor.optimizer_light_peak_limit":
-            return limit_state
-        if entity_id == "sensor.husets_netto_last_virtuell":
-            return load_state
-        if entity_id == "sensor.soc":
-            return soc_state
-        return None
-    mock_hass_instance.states.get.side_effect = get_state_side_effect
-
-    # Kör update
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-
-    # Verifiera att override inte triggats direkt (väntar på 30s)
-    assert guard.is_solar_override is False
-
-    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-
-    # Verifiera att override aktiverades och rapport skickades
-    assert guard.is_solar_override is True
-    guard._report_solar_override.assert_called_with(-500.0, 5000.0)
-
-@pytest.mark.asyncio
-async def test_coordinator_sends_solar_override_flag(mock_hass_instance):
-    """Krav: Coordinator ska skicka med is_solar_override flaggan till backend."""
-    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG, version="1.2.3")
-
-    # Mocka SoC state och last
-    def mock_get_state(entity_id):
-        mock_state = MagicMock()
-        if entity_id == "sensor.soc":
-            mock_state.state = "50"
-        elif entity_id == "sensor.husets_netto_last_virtuell":
-            mock_state.state = "4500"
-        return mock_state
-    mock_hass_instance.states.get.side_effect = mock_get_state
-
-    # Mocka PeakGuard och sätt override till True
-    peak_guard = MagicMock()
-    peak_guard.is_solar_override = True
-    peak_guard.in_maintenance = False
-    coordinator.peak_guard = peak_guard
-
-    # Mocka aiohttp session och response
-    # Vi patchar där den används: custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession
-    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
-    with patch(patch_target) as mock_get_session:
-        mock_session = MagicMock()
-        mock_get_session.return_value = mock_session
-
-        mock_post = mock_session.post.return_value
-        mock_post.__aenter__.return_value = mock_post
-        mock_post.status = 200
-        mock_post.json = AsyncMock(return_value={"status": "ok"})
-
-        mock_get = mock_session.get.return_value.__aenter__.return_value
-        mock_get.status = 200
-        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
-
-        await coordinator._async_update_data()
-
-        # Verifiera anropet
-        _, kwargs = mock_session.post.call_args
-        payload = kwargs['json']
-
-
-        assert payload["is_solar_override"] is True
-        assert payload["is_in_maintenance"] is False
-        assert payload["soc"] == 50.0
-        assert payload["ha_version"] == "1.2.3"
-        assert payload["current_consumption_kw"] == 4.5
 
 @pytest.mark.asyncio
 async def test_coordinator_sends_solar_kw(mock_hass_instance, mock_battery):
@@ -770,18 +622,13 @@ async def test_peak_guard_calculates_load_with_inverted_grid(mock_hass_instance,
     }
 
     guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+    guard._report_peak = AsyncMock()
 
-    # Setup sensorer
-    limit_state = MagicMock()
-    limit_state.state = "5.0"
-
-    # Grid: 5000 W (Positivt). Med invert=True betyder detta Export (-5000 W).
-    grid_state = MagicMock()
-    grid_state.state = "5000"
-
-    # Batteri: 0 W
-    bat_state = MagicMock()
-    bat_state.state = "0"
+    limit_state = MagicMock(state="5.0")
+    # Grid: -7000 W. Med invert=True betyder detta Import (+7000 W) -> över gränsen 5000 W.
+    grid_state = MagicMock(state="-7000")
+    bat_state = MagicMock(state="0")
+    soc_state = MagicMock(state="50")
 
     def get_state_side_effect(entity_id):
         if entity_id == "sensor.optimizer_light_peak_limit":
@@ -790,17 +637,17 @@ async def test_peak_guard_calculates_load_with_inverted_grid(mock_hass_instance,
             return grid_state
         if entity_id == "sensor.bat_power":
             return bat_state
+        if entity_id == "sensor.soc":
+            return soc_state
         return None
     mock_hass_instance.states.get.side_effect = get_state_side_effect
 
     # Kör update utan virtuell sensor-ID
     await guard.update(None, "sensor.optimizer_light_peak_limit")
 
-    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
-    await guard.update(None, "sensor.optimizer_light_peak_limit")
-
-    # Om inverteringen fungerade är lasten -5000. -5000 < -200 -> Solar Override.
-    assert guard.is_solar_override is True
+    # Om inverteringen fungerade är lasten +7000 W > 5000 W -> Peak detekteras
+    guard._report_peak.assert_called_with(7000.0, 5000.0)
+    assert guard.is_active is True
 
 @pytest.mark.asyncio
 async def test_peak_guard_calculates_load_with_inverted_battery(mock_hass_instance, mock_battery):
@@ -818,17 +665,14 @@ async def test_peak_guard_calculates_load_with_inverted_battery(mock_hass_instan
     }
 
     guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+    guard._report_peak = AsyncMock()
 
-    limit_state = MagicMock()
-    limit_state.state = "5.0"
-
-    # Grid: 0 W
-    grid_state = MagicMock()
-    grid_state.state = "0"
-
-    # Batteri: -1500 W (Vilket pga invert=True betyder 1500 W Urladdning)
-    bat_state = MagicMock()
-    bat_state.state = "-1500"
+    limit_state = MagicMock(state="5.0")
+    # Grid: 4000 W
+    grid_state = MagicMock(state="4000")
+    # Batteri: -2000 W (Vilket pga invert=True betyder +2000 W i lastberäkningen)
+    bat_state = MagicMock(state="-2000")
+    soc_state = MagicMock(state="50")
 
     def get_state_side_effect(entity_id):
         if entity_id == "sensor.optimizer_light_peak_limit":
@@ -837,14 +681,15 @@ async def test_peak_guard_calculates_load_with_inverted_battery(mock_hass_instan
             return grid_state
         if entity_id == "sensor.bat_power":
             return bat_state
+        if entity_id == "sensor.soc":
+            return soc_state
         return None
     mock_hass_instance.states.get.side_effect = get_state_side_effect
 
     await guard.update(None, "sensor.optimizer_light_peak_limit")
 
-    # Lasten beräknas till 0 + (-(-1500)) = 1500.
-    # 1500 > -400, så Solar Override ska INTE aktiveras.
-    assert guard.is_solar_override is False
+    # Lasten beräknas till 4000 + (-(-2000)) = 6000 W > 5000 W -> Peak detekteras
+    guard._report_peak.assert_called_with(6000.0, 5000.0)
 
 def test_virtual_load_sensor_calculation():
     """Testar att den virtuella lastsensorn räknar rätt."""
@@ -885,163 +730,6 @@ def test_virtual_load_sensor_calculation():
     peak_guard.config["grid_sensor_invert"] = True
     # (-5000 + 1000 = -4000)
     assert sensor.state == -4000
-
-@pytest.mark.asyncio
-async def test_peak_guard_solar_override_hysteresis(mock_hass_instance, mock_battery):
-    """Krav: Solar Override ska ha hysteres för att undvika 'flapping' vid gränsvärdet."""
-    coordinator = MagicMock()
-    coordinator.data = {
-        "action": "HOLD",
-        "is_active": True,
-        "is_peak_shaving_active": True,
-        "peakguard_status": "Active",
-    }
-
-    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
-
-    # Mocka sensorer
-    limit_state = MagicMock()
-    limit_state.state = "5.0"
-    soc_state = MagicMock()
-    soc_state.state = "50"
-
-    # Helper för att simulera last-ändringar
-    async def set_load(load_w):
-        load_state = MagicMock()
-        load_state.state = str(load_w)
-
-        def get_state_side_effect(entity_id):
-            if entity_id == "sensor.optimizer_light_peak_limit":
-                return limit_state
-            if entity_id == "sensor.husets_netto_last_virtuell":
-                return load_state
-            if entity_id == "sensor.soc":
-                return soc_state
-            return None
-        mock_hass_instance.states.get.side_effect = get_state_side_effect
-
-        await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-
-    # 1. Trigga Override (Last < -400, t.ex. -450)
-    await set_load(-450)
-    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
-    await set_load(-450)
-    assert guard.is_solar_override is True
-
-    # 2. Minska exporten till -200 (Fortfarande export, men över trigg-gränsen -400)
-    # Utan hysteres skulle denna stängas av här och orsaka flapping.
-    await set_load(-200)
-    assert guard.is_solar_override is True
-
-    # 3. Gå över reset-gränsen (t.ex. -100) för att stänga av
-    await set_load(-50)
-    # På grund av den nya "fladder"-spärren ska den ligga kvar i 3 minuter
-    assert guard.is_solar_override is True
-    assert guard._solar_override_clear_start is not None
-
-    guard._solar_override_clear_start -= datetime.timedelta(minutes=3, seconds=5)
-    await set_load(-50)
-    assert guard.is_solar_override is False
-
-@pytest.mark.asyncio
-async def test_peak_guard_solar_override_clear_delay(mock_hass_instance, mock_battery):
-    """Krav: Solar Override ska ha en 3-minuters fördröjning vid avstängning för att undvika fladder."""
-    coordinator = MagicMock()
-    coordinator.data = {
-        "action": "HOLD",
-        "is_active": True,
-        "is_peak_shaving_active": True,
-        "peakguard_status": "Active",
-    }
-
-    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
-
-    # 1. Trigga Override (Last < -400)
-    limit_state = MagicMock()
-    limit_state.state = "5.0"
-    load_state = MagicMock()
-    load_state.state = "-500"
-    soc_state = MagicMock()
-    soc_state.state = "50"
-
-    def get_state_side_effect(entity_id):
-        if entity_id == "sensor.optimizer_light_peak_limit":
-            return limit_state
-        if entity_id == "sensor.husets_netto_last_virtuell":
-            return load_state
-        if entity_id == "sensor.soc":
-            return soc_state
-        return None
-    mock_hass_instance.states.get.side_effect = get_state_side_effect
-
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-
-    assert guard.is_solar_override is True
-
-    # 2. Simulera en storförbrukare (Last > -100)
-    load_state.state = "1000"
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-
-    # 3. Direkt avstängning ska INTE ske!
-    assert guard.is_solar_override is True
-    assert guard._solar_override_clear_start is not None
-
-    # 4. Spola fram tiden > 3 minuter
-    guard._solar_override_clear_start -= datetime.timedelta(minutes=3, seconds=5)
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-
-    # 5. Nu ska den stängas av
-    assert guard.is_solar_override is False
-
-@pytest.mark.asyncio
-async def test_peak_guard_bypasses_delay_when_discharging(mock_hass_instance, mock_battery):
-    """Krav: Om batteriet börjar ladda ur under Solar Override, avbryt direkt för att skydda SoC."""
-    coordinator = MagicMock()
-    coordinator.data = {
-        "action": "HOLD",
-        "is_active": True,
-        "is_peak_shaving_active": True,
-        "peakguard_status": "Active",
-    }
-
-    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
-
-    # 1. Trigga Override (Last < -400)
-    limit_state = MagicMock()
-    limit_state.state = "5.0"
-    load_state = MagicMock()
-    load_state.state = "-500"
-    soc_state = MagicMock()
-    soc_state.state = "50"
-    bat_state = MagicMock()
-    bat_state.state = "0"
-
-    def get_state_side_effect(entity_id):
-        if entity_id == "sensor.optimizer_light_peak_limit":
-            return limit_state
-        if entity_id == "sensor.husets_netto_last_virtuell":
-            return load_state
-        if entity_id == "sensor.soc":
-            return soc_state
-        if entity_id == "sensor.bat_power":
-            return bat_state
-        return None
-    mock_hass_instance.states.get.side_effect = get_state_side_effect
-
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-    assert guard.is_solar_override is True
-
-    # 2. Simulera att moln går i moln och batteriet börjar ladda ur (t.ex. 300W urladdning)
-    load_state.state = "500"
-    bat_state.state = "300"
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-
-    # 3. Direkt avstängning SKA ske, utan 3 minuters fördröjning!
-    assert guard.is_solar_override is False
 
 @pytest.mark.asyncio
 async def test_peak_guard_pauses_on_custom_keyword(mock_hass_instance, mock_battery):
@@ -1230,51 +918,8 @@ async def test_peak_guard_throttles_charge(mock_hass_instance, mock_battery):
     mock_battery.apply_action.assert_called_with("CHARGE", 0.8)
 
 @pytest.mark.asyncio
-async def test_peak_guard_sticky_solar_override_on_idle(mock_hass_instance, mock_battery):
-    """Krav: Om Solar Override är aktiv och molnet svarar IDLE, ska override ligga kvar."""
-    coordinator = MagicMock()
-    coordinator.data = {
-        "action": "IDLE",
-        "is_active": True,
-        "is_peak_shaving_active": True,
-        "peakguard_status": "Active",
-    }
-
-    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
-
-    # Simulera att vi redan är i Solar Override
-    guard._is_solar_override = True
-
-    # Setup sensorer
-    limit_state = MagicMock()
-    limit_state.state = "5.0"
-    soc_state = MagicMock()
-    soc_state.state = "50"
-
-    # Last: -200 W (Export, men inte tillräckligt för att trigga nytt (-400),
-    # men tillräckligt för att ligga kvar (< -100)).
-    load_state = MagicMock()
-    load_state.state = "-200"
-
-    def get_state_side_effect(entity_id):
-        if entity_id == "sensor.optimizer_light_peak_limit":
-            return limit_state
-        if entity_id == "sensor.husets_netto_last_virtuell":
-            return load_state
-        if entity_id == "sensor.soc":
-            return soc_state
-        return None
-    mock_hass_instance.states.get.side_effect = get_state_side_effect
-
-    # Kör update
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-
-    # Verifiera att override ligger kvar (Sticky)
-    assert guard.is_solar_override is True
-
-@pytest.mark.asyncio
-async def test_peak_guard_forces_idle_on_solar_override_after_stale_idle(mock_hass_instance, mock_battery):
-    """Krav: När Solar Override aktiveras MÅSTE den skicka IDLE, även om den tror att IDLE redan var skickat."""
+async def test_peak_guard_respects_cloud_hold_during_high_export(mock_hass_instance, mock_battery):
+    """Regression: Molnets HOLD får aldrig brytas lokalt pga stor solexport (t.ex. morgonexport)."""
     coordinator = MagicMock()
     coordinator.data = {
         "action": "HOLD",
@@ -1285,188 +930,37 @@ async def test_peak_guard_forces_idle_on_solar_override_after_stale_idle(mock_ha
 
     guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
 
-    # 1. Simulera att PeakGuard tidigare har skickat IDLE och sedan inte uppdaterat sin state
-    # (Händer när Coordinator skickar HOLD utan PeakGuards inblandning pga bat_power < 100)
-    guard._last_sent_command = "IDLE"
-
-    # Setup sensorer
-    limit_state = MagicMock()
-    limit_state.state = "5.0"
-    load_state = MagicMock()
-    load_state.state = "-500" # Hög export
-    soc_state = MagicMock()
-    soc_state.state = "50"
+    limit_state = MagicMock(state="5.0")
+    load_state = MagicMock(state="-4500")  # Stor export
+    bat_state = MagicMock(state="0")  # Batteriet är stilla
+    soc_state = MagicMock(state="50")
 
     def get_state_side_effect(entity_id):
         if entity_id == "sensor.optimizer_light_peak_limit":
             return limit_state
         if entity_id == "sensor.husets_netto_last_virtuell":
             return load_state
-        if entity_id == "sensor.soc":
-            return soc_state
-        return None
-    mock_hass_instance.states.get.side_effect = get_state_side_effect
-
-    # Trigga timern och snabbspola
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-
-    assert guard.is_solar_override is True
-    mock_battery.apply_action.assert_called_with("IDLE")
-
-@pytest.mark.asyncio
-async def test_peak_guard_handles_high_export_as_solar_override(mock_hass_instance, mock_battery):
-    """Krav: Vid hög export ska Solar Override aktiveras (inte blockeras)."""
-    coordinator = MagicMock()
-    coordinator.data = {
-        "action": "HOLD",
-        "is_active": True,
-        "is_peak_shaving_active": True,
-        "peakguard_status": "Active",
-    }
-
-    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
-
-    # Setup sensorer
-    limit_state = MagicMock()
-    limit_state.state = "5.0" # 5000W limit
-
-    # Last: -6000 W (Export > Limit)
-    load_state = MagicMock()
-    load_state.state = "-6000"
-
-    soc_state = MagicMock()
-    soc_state.state = "50"
-
-    def get_state_side_effect(entity_id):
-        if entity_id == "sensor.optimizer_light_peak_limit":
-            return limit_state
-        if entity_id == "sensor.husets_netto_last_virtuell":
-            return load_state
-        if entity_id == "sensor.soc":
-            return soc_state
-        return None
-    mock_hass_instance.states.get.side_effect = get_state_side_effect
-
-    # Kör update
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-
-    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-
-    # Verifiera att PeakGuard INTE är aktiv (ingen urladdning)
-    assert guard.is_active is False
-    # Verifiera att Solar Override ÄR aktiv (tillåt laddning)
-    assert guard.is_solar_override is True
-
-@pytest.mark.asyncio
-async def test_peak_guard_solar_override_disabled_in_config(mock_hass_instance, mock_battery):
-    """Krav: Om enable_solar_override är False i config ska Solar Override aldrig triggas."""
-    config = MOCK_CONFIG.copy()
-    config["enable_solar_override"] = False
-
-    coordinator = MagicMock()
-    coordinator.data = {
-        "action": "HOLD",
-        "is_active": True,
-        "is_peak_shaving_active": True,
-        "peakguard_status": "Active",
-    }
-
-    guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
-
-    limit_state = MagicMock()
-    limit_state.state = "5.0"
-    load_state = MagicMock()
-    load_state.state = "-6000"
-    soc_state = MagicMock()
-    soc_state.state = "50"
-
-    def get_state_side_effect(entity_id):
-        if entity_id == "sensor.optimizer_light_peak_limit":
-            return limit_state
-        if entity_id == "sensor.husets_netto_last_virtuell":
-            return load_state
-        if entity_id == "sensor.soc":
-            return soc_state
-        return None
-    mock_hass_instance.states.get.side_effect = get_state_side_effect
-
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-
-    # Timern ska inte ha startat och flaggan ska vara False
-    assert guard.is_solar_override is False
-    assert guard._solar_override_trigger_start is None
-
-@pytest.mark.asyncio
-async def test_peak_guard_prevents_solar_override_during_buffer_fill_lag(mock_hass_instance, mock_battery):
-    """
-    Krav: När batteriet laddas från nätet (Buffer Fill) kan sensor-lag göra att
-    vi ser en falsk export (Grid sjunker innan Batteri hinner rapportera lasten).
-
-    Scenario:
-    - Batteri laddar 3000W (Visas som -3000W).
-    - Grid levererar 3000W, men laggar och visar bara 2500W Import just nu.
-    - Virtuell last = 2500 + (-3000) = -500W.
-    - -500W < -400W (Solar Trigger).
-
-    Utan fixen hade detta aktiverat Solar Override.
-    Med fixen ska vi se att Grid Import > 100W och blockera det.
-    """
-    coordinator = MagicMock()
-    coordinator.data = {
-        "action": "HOLD",
-        "is_active": True,
-        "is_peak_shaving_active": True,
-        "peakguard_status": "Active",
-    }
-
-    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
-
-    # Setup sensorer
-    limit_state = MagicMock()
-    limit_state.state = "5.0"
-
-    soc_state = MagicMock()
-    soc_state.state = "15" # Låg SoC, därför vi buffrar
-
-    # Grid: 2500 W Import (Positivt). > 100W spärren.
-    grid_state = MagicMock()
-    grid_state.state = "2500"
-
-    # Batteri: -3000 W (Laddar)
-    bat_state = MagicMock()
-    bat_state.state = "-3000"
-
-    # Virtuell Last: -500 W (Falsk export pga lag)
-    load_state = MagicMock()
-    load_state.state = "-500"
-
-    def get_state_side_effect(entity_id):
-        if entity_id == "sensor.optimizer_light_peak_limit":
-            return limit_state
-        if entity_id == "sensor.grid":
-            return grid_state
         if entity_id == "sensor.bat_power":
             return bat_state
-        if entity_id == "sensor.husets_netto_last_virtuell":
-            return load_state
         if entity_id == "sensor.soc":
             return soc_state
         return None
+
     mock_hass_instance.states.get.side_effect = get_state_side_effect
 
-    # Kör update
+    # Kör flera uppdateringar, även efter att en gammal override-timer skulle ha löpt ut
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
     await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
 
-    if guard._solar_override_trigger_start:
-        guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    # Molnets HOLD ska ligga kvar: inget IDLE får skickas och action får inte skrivas om
+    mock_battery.apply_action.assert_not_called()
+    assert coordinator.data["action"] == "HOLD"
 
-    # Verifiera att Solar Override INTE aktiveras, trots att lasten är -500W
-    # Detta bevisar att "Import-spärren" fungerar.
-    assert guard.is_solar_override is False
+    # Om batteriet däremot börjar röra sig under HOLD ska HOLD fortfarande upprätthållas
+    bat_state.state = "500"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_called_with("HOLD")
+    assert coordinator.data["action"] == "HOLD"
 
 @pytest.mark.asyncio
 async def test_peak_guard_prioritizes_ha_sensors_over_internal_api(mock_hass_instance, mock_battery):
@@ -1482,41 +976,32 @@ async def test_peak_guard_prioritizes_ha_sensors_over_internal_api(mock_hass_ins
     config = MOCK_CONFIG.copy()
 
     guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+    guard._report_peak = AsyncMock()
 
-    # Mocka interna batterimetoder till att indikera IMPORT (Skulle normalt blockera Solar Override)
-    mock_battery.get_virtual_load.return_value = 5000.0  # Import
-    mock_battery.get_grid_power.return_value = 5000.0    # Grid importerar
-    mock_battery.get_battery_power.return_value = 0.0     # Batteriet är stilla
+    # Interna batterimetoder indikerar låg last (skulle inte trigga någon peak)
+    mock_battery.get_virtual_load.return_value = 1000.0
+    mock_battery.get_grid_power.return_value = 1000.0
+    mock_battery.get_battery_power.return_value = 0.0
     mock_battery.get_current_soc.return_value = 50.0
 
-    # Skapa riktiga HA-sensorer som indikerar extrem EXPORT
+    # HA-sensorer indikerar hög last (7000 W > gräns 5000 W)
     good_state = MagicMock()
-    good_state.state = "-4581"
+    good_state.state = "7000"
     limit_state = MagicMock()
     limit_state.state = "5.0"
 
     def get_state_side_effect(entity_id):
         if entity_id == "sensor.optimizer_light_peak_limit":
             return limit_state
-        return good_state # Alla andra (grid, bat, load) ger export-värdet "-4581"
+        return good_state  # Alla andra (last, batteri, soc) ger värdet "7000"
 
     mock_hass_instance.states.get.side_effect = get_state_side_effect
 
-    # Första körningen: Systemet ser -4581W export från HA-sensorer och startar timern
-    # (struntar i interna API:ets "5000W")
     await guard.update(config.get("virtual_load_sensor"), "sensor.optimizer_light_peak_limit")
-    assert guard.is_solar_override is False
 
-    assert guard._solar_override_trigger_start is not None, (
-        "Timern startade inte! HA-sensorerna ignorerades till förmån för interna metoder."
-    )
-
-    # Snabbspola tiden förbi 30 sekunder
-    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
-
-    # Andra körningen: Nu har tiden gått, override ska aktiveras!
-    await guard.update(config.get("virtual_load_sensor"), "sensor.optimizer_light_peak_limit")
-    assert guard.is_solar_override is True
+    assert guard.is_active is True, "Peak detekterades inte! HA-sensorerna ignorerades till förmån för interna metoder."
+    guard._report_peak.assert_called_with(7000.0, 5000.0)
+    mock_battery.apply_action.assert_called_with("DISCHARGE", 2.0)
 
 @pytest.mark.asyncio
 async def test_coordinator_scheduling_and_cleanup(mock_hass_instance):
@@ -1592,18 +1077,20 @@ async def test_peak_guard_fallback_to_ha_sensors(mock_hass_instance):
         # get_virtual_load, get_grid_power och get_battery_power SAKNAS med flit.
 
     dummy_battery = DummyGenericBattery()
+    dummy_battery.apply_action = AsyncMock()
 
     # Konfiguration som tvingar PeakGuard att räkna Grid + Batteri manuellt
     config = MOCK_CONFIG.copy()
     config["virtual_load_sensor"] = None
 
     guard = PeakGuard(mock_hass_instance, config, coordinator, dummy_battery)
+    guard._report_peak = AsyncMock()
 
-    # Setup HA-sensorer: Grid exporterar 4500W, Batteriet är stilla
+    # Setup HA-sensorer: Grid importerar 6500W, Batteriet är stilla
     limit_state = MagicMock()
     limit_state.state = "5.0"
     grid_state = MagicMock()
-    grid_state.state = "-4500" # Export enligt branschstandard
+    grid_state.state = "6500"
     bat_state = MagicMock()
     bat_state.state = "0"
 
@@ -1618,14 +1105,11 @@ async def test_peak_guard_fallback_to_ha_sensors(mock_hass_instance):
 
     mock_hass_instance.states.get.side_effect = get_state_side_effect
 
-    # Kör update första gången
     await guard.update(None, "sensor.optimizer_light_peak_limit")
-    assert guard._solar_override_trigger_start is not None, "Timern startade inte via HA-sensorer!"
 
-    # Snabbspola och verifiera aktivering
-    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
-    await guard.update(None, "sensor.optimizer_light_peak_limit")
-    assert guard.is_solar_override is True
+    # Lasten (6500 W) beräknades från HA-sensorerna och triggade peak
+    guard._report_peak.assert_called_with(6500.0, 5000.0)
+    dummy_battery.apply_action.assert_called_with("DISCHARGE", 1.5)
 
 @pytest.mark.asyncio
 async def test_coordinator_auth_failure(mock_hass_instance, mock_battery):
@@ -1815,10 +1299,8 @@ async def test_peakguard_reporting_methods(mock_hass_instance, mock_battery):
         await guard._report_peak(5000, 4000)
         await guard._report_peak_clear(3000, 4000)
         await guard._report_peak_failure(7000, 4000)
-        await guard._report_solar_override(-500, 4000)
-        await guard._report_solar_override_clear(-100, 4000)
 
-        assert mock_session.post.call_count == 5
+        assert mock_session.post.call_count == 3
 
 @pytest.mark.asyncio
 async def test_peak_guard_update_exception(mock_hass_instance, mock_battery):
@@ -2444,7 +1926,6 @@ async def test_peak_guard_clears_state_when_switching_to_passive_mode(mock_hass_
 
     # Sätt PeakGuard i ett "smutsigt" läge där den tidigare var aktiv med olika åtgärder
     guard._has_reported = True
-    guard._is_solar_override = True
     guard._in_maintenance = True
     guard._maintenance_reason = "Test Override"
 
@@ -2453,7 +1934,6 @@ async def test_peak_guard_clears_state_when_switching_to_passive_mode(mock_hass_
 
     # Verifiera att flaggorna omedelbart återställdes för att inte störa HA-dashboards
     assert guard.is_active is False
-    assert guard.is_solar_override is False
     assert guard.in_maintenance is False
     assert guard.maintenance_reason is None
 

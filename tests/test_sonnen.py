@@ -14,7 +14,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import datetime
 import pytest
 import aiohttp
 from unittest.mock import MagicMock, AsyncMock, patch
@@ -768,8 +767,8 @@ def _create_mock_battery(is_modern_ems: bool = True):
 
 
 @pytest.mark.asyncio
-async def test_peak_guard_modern_ems_disables_solar_override():
-    """Testar Edge Case B: PeakGuard aktiverar inte Solar Override under HOLD när is_modern_ems är aktivt."""
+async def test_peak_guard_modern_ems_hold_not_broken_by_solar_export():
+    """Regression: PeakGuard får inte bryta molnets HOLD vid stor solexport (modern EMS)."""
     hass = MagicMock()
     config = {
         "api_key": "test_key",
@@ -778,7 +777,6 @@ async def test_peak_guard_modern_ems_disables_solar_override():
         "virtual_load_sensor": "sensor.husets_netto_last_virtuell",
         "peak_limit_sensor": "sensor.optimizer_light_peak_limit",
         "soc_sensor": "sensor.soc",
-        "enable_solar_override": True,
     }
     coordinator = MagicMock()
     coordinator.data = {
@@ -808,17 +806,11 @@ async def test_peak_guard_modern_ems_disables_solar_override():
 
     hass.states.get.side_effect = get_state
 
-    # Kör update 1
     await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-    assert guard._solar_override_trigger_start is not None
-
-    # Snabbspola 35 sekunder
-    guard._solar_override_trigger_start -= datetime.timedelta(seconds=35)
     await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
 
-    # Override ska förbli False pga is_modern_ems = True
-    assert guard.is_solar_override is False
-    # Batteriet ska inte ha tvingats till IDLE
+    # Molnets HOLD ska ligga kvar, batteriet ska inte tvingas till IDLE
+    assert coordinator.data["action"] == "HOLD"
     mock_battery.apply_action.assert_not_called()
 
 

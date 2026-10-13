@@ -111,7 +111,6 @@
                     "water_heater_temp_sensor": "Varmvattentemperatur Sensor (Valfritt)",
                     "device_status_entity": "Device Status (Entitet)",
                     "max_discharge_entity": "Max Urladdning (Entitet)",
-                    "enable_solar_override": "Aktivera Solar Override (Pausar urladdning vid solelexport)",
                     "graph_history_hours": "Graf-historik"
                 },
                 "data_description": {
@@ -131,7 +130,6 @@
                     "water_heater_temp_sensor": "Peka ut en temperatursensor för ditt varmvatten. Om temperaturen överstiger inställd maxtemperatur (t.ex. 65 °C) spärras boosten automatiskt.",
                     "device_status_entity": "Peka ut sensorn för status (t.ex. 'sensor.inverter_device_status') så känner PeakGuard automatiskt av fel och underhållslägen.",
                     "max_discharge_entity": "Peka ut Number-entiteten för Maximal Urladdningseffekt. Lämna tom för automatisk sökning.",
-                    "enable_solar_override": "Kryssa i denna för att automatiskt pausa PeakGuard och moln-urladdning när du har ett stort överskott av solel.",
                     "graph_history_hours": "Välj hur mycket historik som ska hämtas för graf-sensorn (168 = 1 vecka)."
                 }
             }
@@ -173,7 +171,6 @@
                     "battery_device_id": "Batteri-enhet",
                     "device_status_entity": "Device Status (Entitet)",
                     "max_discharge_entity": "Max Urladdning (Entitet)",
-                    "enable_solar_override": "Aktivera Solar Override",
                     "graph_history_hours": "Graf-historik",
                     "ev_c1_name": "Namn på Bil 1",
                     "ev_c1_target_kwh": "Mål kWh (Bil 1)",
@@ -211,7 +208,6 @@
                     "battery_device_id": "Välj ditt batteri eller växelriktare i listan.",
                     "device_status_entity": "Peka ut sensorn för status (t.ex. 'sensor.inverter_device_status').",
                     "max_discharge_entity": "Peka ut Number-entiteten för Maximal Urladdningseffekt. Lämna tom för automatisk sökning.",
-                    "enable_solar_override": "Kryssa i denna för att automatiskt pausa PeakGuard och moln-urladdning när du har ett stort överskott av solel.",
                     "graph_history_hours": "Välj hur mycket historik som ska hämtas för graf-sensorn.",
                     "ev_c1_name": "Valfritt namn för bilen i webbgränssnittet.",
                     "ev_c1_target_kwh": "Input Number för hur mycket energi som ska laddas (kWh).",

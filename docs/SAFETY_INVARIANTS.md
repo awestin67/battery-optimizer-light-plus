@@ -4,8 +4,7 @@
 This covers critical system invariants, physical safety constraints (e.g., hardware/battery limits), and non-negotiable code rules for the Home Assistant integration.
 
 ## 1. Effektvakt (PeakGuard) & Lokal Säkerhet
-* **Solar Override Hysteres:** För att förhindra "fladder" (relä-slitage) MÅSTE PeakGuard respektera sin 3-minuters fördröjning innan en Solar Override stängs av. **Undantag:** Om batteriet aktivt börjar *ladda ur*, måste spärren kringgås och stängas av direkt för att skydda laddningsnivån (SoC).
-* **Sticky IDLE vid Solar Override:** När Solar Override aktiveras MÅSTE kommandot `IDLE` (Auto) skickas till batterikontrollern, även om systemet internt tror att batteriet redan står i `IDLE`. Detta säkerställer att ingen moln-laddning råkar ligga kvar.
+* **Molnets HOLD respekteras:** PeakGuard får inte lokalt ändra molnets `HOLD` till `IDLE` (t.ex. vid solelexport). En `HOLD` kan vara ekonomiskt motiverad (t.ex. morgonexport), så endast peak-skydd, throttling av laddning, underhållsläge eller extern paus får åsidosätta molnets beslut lokalt.
 * **Maintenance Mode:** Systemet MÅSTE omedelbart släppa all styrning av batteriet om växelriktarstatusen (`battery_status_sensor`) matchar något av de konfigurerade nyckelorden för underhåll (t.ex. "Service", "Calibrating").
 * **Lokal Throttling:** Om backend begär laddning (`CHARGE`), men lasten närmar sig PeakGuard-gränsen, MÅSTE systemet lokalt strypa (throttle) laddningseffekten för att förhindra att batteriet orsakar en effekttopp.
 

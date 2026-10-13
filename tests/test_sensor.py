@@ -104,21 +104,17 @@ def test_basic_sensors():
     action_sensor = BatteryLightActionSensor(coordinator)
     assert action_sensor.state == "CHARGE"
 
-    coordinator.peak_guard = MagicMock(is_solar_override=True)
+    coordinator.peak_guard = MagicMock()
     coordinator.peak_guard.is_active = False
     coordinator.data["action"] = "HOLD"
-    assert action_sensor.state == "IDLE"
-    coordinator.peak_guard.is_solar_override = False
+    # Molnets HOLD ska aldrig skrivas om till IDLE lokalt
+    assert action_sensor.state == "HOLD"
 
     reason_sensor = BatteryLightReasonSensor(coordinator)
     assert reason_sensor.state == "Cheap price"
 
     coordinator.peak_guard.is_active = True
     assert reason_sensor.state == "Local Peak Guard Triggered"
-
-    coordinator.peak_guard.is_active = False
-    coordinator.peak_guard.is_solar_override = True
-    assert reason_sensor.state == "Solar Override (Local)"
 
     assert BatteryLightBufferSensor(coordinator).state == 20.0
     assert BatteryLightPeakSensor(coordinator).state == 10.0

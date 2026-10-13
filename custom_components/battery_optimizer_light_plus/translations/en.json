@@ -111,7 +111,6 @@
                     "water_heater_temp_sensor": "Water Heater Temperature Sensor (Optional)",
                     "device_status_entity": "Device Status (Entity)",
                     "max_discharge_entity": "Max Discharge (Entity)",
-                    "enable_solar_override": "Enable Solar Override (Pauses discharge on high solar export)",
                     "graph_history_hours": "Graph History"
                 },
                 "data_description": {
@@ -131,7 +130,6 @@
                     "water_heater_temp_sensor": "Select a temperature sensor for your water heater. If the temperature exceeds the maximum limit (e.g. 65 °C), boost is automatically prevented.",
                     "device_status_entity": "Select the status sensor (e.g., 'sensor.inverter_device_status') to allow PeakGuard to automatically detect errors and maintenance modes.",
                     "max_discharge_entity": "Select the Number entity for Maximum Discharging Power. Leave empty for auto-discovery.",
-                    "enable_solar_override": "Check this to automatically pause PeakGuard and cloud discharging when exporting a large amount of solar power.",
                     "graph_history_hours": "Select the amount of history to fetch for the graph data sensor (168 = 1 week)."
                 }
             }
@@ -173,7 +171,6 @@
                     "battery_device_id": "Battery Device",
                     "device_status_entity": "Device Status (Entity)",
                     "max_discharge_entity": "Max Discharge (Entity)",
-                    "enable_solar_override": "Enable Solar Override",
                     "graph_history_hours": "Graph History",
                     "ev_c1_name": "Car 1 Name",
                     "ev_c1_target_kwh": "Target kWh (Car 1)",
@@ -211,7 +208,6 @@
                     "battery_device_id": "Select your battery or inverter from the list.",
                     "device_status_entity": "Select the status sensor (e.g., 'sensor.inverter_device_status').",
                     "max_discharge_entity": "Select the Number entity for Maximum Discharging Power. Leave empty for auto-discovery.",
-                    "enable_solar_override": "Check this to automatically pause PeakGuard and cloud discharging when exporting a large amount of solar power.",
                     "graph_history_hours": "Select the amount of history to fetch for the graph data sensor.",
                     "ev_c1_name": "Optional name for the car in the web interface.",
                     "ev_c1_target_kwh": "Input Number for how much energy to charge (kWh).",
