@@ -152,6 +152,59 @@ async def test_peak_guard_triggers_discharge(mock_hass_instance, mock_battery):
     guard._report_peak.assert_called_with(7000.0, 5000.0)
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status,expect_discharge",
+    [
+        ("Active", True),
+        ("Active (Low-Peak)", True),
+        ("Active (Kapning: 25A Säkr)", True),
+        ("Kapar till 5.0 kW", True),
+        ("Tillåter max 5.0 kW", True),
+        ("Paused", False),
+        ("Pausad (Elbilsladdning)", False),
+        ("Pausad (Sol > Elbil)", False),
+        ("Off", False),
+    ],
+)
+async def test_peak_guard_status_strings(mock_hass_instance, mock_battery, status, expect_discharge):
+    """Krav: Bara Pausad/Paused/Off-statusar stänger av peak-detektering, övriga Active-varianter ska fungera."""
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": status,
+    }
+    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
+    guard._report_peak = AsyncMock()
+
+    limit_state = MagicMock()
+    limit_state.state = "5.0"
+    load_state = MagicMock()
+    load_state.state = "7000"
+    soc_state = MagicMock()
+    soc_state.state = "50"
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        return None
+
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+    if expect_discharge:
+        mock_battery.apply_action.assert_called_with("DISCHARGE", 2.0)
+    else:
+        discharge_calls = [c for c in mock_battery.apply_action.call_args_list if c.args and c.args[0] == "DISCHARGE"]
+        assert not discharge_calls
+
+@pytest.mark.asyncio
 async def test_peak_guard_respects_safe_limit(mock_hass_instance, mock_battery):
     """Krav: Om lasten är låg ska vi återgå till molnets plan (eller Auto)."""
     coordinator = MagicMock()
@@ -228,6 +281,66 @@ async def test_peak_guard_disabled_by_backend(mock_hass_instance, mock_battery):
 
     # Verify NO calls were made
     mock_battery.apply_action.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_charge_throttling_respects_peak_shaving_active(mock_hass_instance, mock_battery):
+    """Krav: Laddning ska strypas om PeakGuard är aktivt, men ALDRIG när PeakGuard är inaktivt."""
+    coordinator = MagicMock()
+    limit_state = MagicMock()
+    limit_state.state = "5.0"  # 5000 W limit
+    load_state = MagicMock()
+    load_state.state = "4000"  # 4000 W load (available = 5000 - 4000 - 200 = 800 W)
+    soc_state = MagicMock()
+    soc_state.state = "50"
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        return None
+
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    # Fall 1: PeakGuard är AKTIVT -> Laddning ska strypas till 800 W (0.8 kW)
+    coordinator.data = {
+        "action": "CHARGE",
+        "target_power_kw": 3.0,
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
+    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_called_with("CHARGE", 0.8)
+
+    # Fall 2: PeakGuard är INAKTIVT -> Laddning ska INTE strypas (full 3.0 kW)
+    mock_battery.apply_action.reset_mock()
+    coordinator.data = {
+        "action": "CHARGE",
+        "target_power_kw": 3.0,
+        "is_active": True,
+        "is_peak_shaving_active": False,
+        "peakguard_status": "Off",
+    }
+    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_called_with("CHARGE", 3.0)
+
+    # Fall 3: Statussträng som inte är "Active"/"Monitoring" men gräns gäller -> ska strypas
+    mock_battery.apply_action.reset_mock()
+    coordinator.data = {
+        "action": "CHARGE",
+        "target_power_kw": 3.0,
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active (Low-Peak)",
+    }
+    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_called_with("CHARGE", 0.8)
 
 def test_status_sensor():
     """Testar att status-sensorn visar rätt text (Disabled/Monitoring/Triggered)."""

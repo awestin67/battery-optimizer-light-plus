@@ -295,6 +295,7 @@ class PeakGuard:
         try:
             # 0. Kontrollera om Peak Shaving är aktivt
             is_active = True
+            limit_enforced = True
             client_mode = "ACTIVE"
             if self.coordinator.data:
                 def _parse_bool(val, default=False):
@@ -310,12 +311,16 @@ class PeakGuard:
 
                 global_active = _parse_bool(self.coordinator.data.get("is_active"), True)
                 is_active = _parse_bool(self.coordinator.data.get("is_peak_shaving_active"), True)
+                # Styr strypning av nätladdning enbart på backendens boolean, inte på statussträngen
+                limit_enforced = global_active and is_active
                 pg_status = self.coordinator.data.get("peakguard_status")
                 client_mode = self.coordinator.data.get("client_mode", "ACTIVE")
 
                 if not global_active:
                     is_active = False
-                elif pg_status and pg_status.strip().lower() not in ("active", "monitoring"):
+                elif pg_status and str(pg_status).strip().lower().startswith(("paus", "off")):
+                    # Backend skickar t.ex. "Paused", "Pausad (Elbilsladdning)", "Off".
+                    # Övriga statusar ("Active (Low-Peak)", "Kapar till X kW" m.fl.) betyder att vakten är aktiv.
                     is_active = False
 
             if client_mode == "PASSIVE":
@@ -631,10 +636,10 @@ class PeakGuard:
                             target_kw = float(self.coordinator.data.get("target_power_kw", 0.0))
 
                     target_w = target_kw * 1000.0
-                    # Marginal på 200W för att vara säker
-                    available_w = limit_w - current_load - 200.0
+                    # Marginal på 200W för att vara säker (endast om en effektgräns gäller)
+                    available_w = (limit_w - current_load - 200.0) if limit_enforced else target_w
 
-                    if target_w > available_w:
+                    if limit_enforced and target_w > available_w:
                         throttled_w = max(0, int(available_w))
                         # Avrunda till närmaste 50W för att minska fladder
                         throttled_w = int(throttled_w / 50) * 50
