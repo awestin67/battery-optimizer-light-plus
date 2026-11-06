@@ -753,17 +753,32 @@ def main():
     except Exception:
         uncommitted_diff = ""
 
+    if action_choice == '1' and not uncommitted_diff.strip():
+        print("\nℹ️  Inga nya osparade ändringar att committa – allt är redan sparat i en lokal commit!")
+        print("👉 Kör 'python release.py' och välj alternativ 2 (Full Release) om du vill publicera till GitHub.")
+        return
+
+    # Vid Full Release (val 2): inkludera både opushade lokala commits och osparade ändringar
+    release_diff = uncommitted_diff
+    if action_choice == '2':
+        try:
+            full_diff = run_command(["git", "diff", "origin/HEAD"], capture_output=True, exit_on_error=False)
+            if full_diff.strip():
+                release_diff = full_diff
+        except Exception:
+            pass
+
     api_key = os.getenv("GEMINI_API_KEY")
     suggested_commit_msg = f"Release {new_ver}" if action_choice == '2' else "Update"
 
-    if api_key and uncommitted_diff:
+    if api_key and release_diff:
         print("\n🤖 Ber Gemini AI att generera ett commit-meddelande baserat på dina ändringar...")
         prompt = (
             "Generate a concise, professional git commit message in English for the following diff. "
             "Do NOT wrap it in quotes or markdown blocks. Just return the raw text.\n\n"
             "Diff:\n"
         )
-        diff_trunc = uncommitted_diff[:20000] if len(uncommitted_diff) > 20000 else uncommitted_diff
+        diff_trunc = release_diff[:20000] if len(release_diff) > 20000 else release_diff
         prompt += diff_trunc
 
         url_gemini = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
@@ -830,7 +845,7 @@ def main():
     run_command(["git", "push"])
     run_command(["git", "push", "--tags"])
 
-    create_github_release(new_ver, repo_slug, uncommitted_diff)
+    create_github_release(new_ver, repo_slug, release_diff)
 
     print(f"\n✨ KLART! Version {new_ver} är publicerad.")
 

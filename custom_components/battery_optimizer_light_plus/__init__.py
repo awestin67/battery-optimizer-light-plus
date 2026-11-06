@@ -642,18 +642,6 @@ class PeakGuard:
                     self._set_local_action("DISCHARGE", power_to_discharge / 1000.0)
                     await self.battery.apply_action("DISCHARGE", power_to_discharge / 1000.0)
                     self._last_sent_command = "PEAK"
-                elif self._last_sent_command == "PEAK":
-                    # Lasten har sjunkit under limit_w men är kvar i hysteresbandet (> safe_limit).
-                    # Stoppa manuell peak-urladdning så att batteriet inte ligger kvar på föregående effekt.
-                    self._set_local_action("HOLD", 0.0)
-                    try:
-                        if site_limits_check is not None:
-                            await self.battery.apply_action("HOLD", sonnen_site_limits=site_limits_check)
-                        else:
-                            await self.battery.apply_action("HOLD")
-                    except TypeError:
-                        await self.battery.apply_action("HOLD")
-                    self._last_sent_command = "PEAK_HOLD"
 
             else:
                 # TILLSTÅND AV: Återgå till molnstrategi

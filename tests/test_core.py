@@ -2555,16 +2555,6 @@ async def test_peak_guard_does_not_throttle_discharge_during_unrestricted_idle(m
     guard._report_peak.assert_called_once_with(4500.0, 4000.0)
     mock_battery.apply_action.assert_called_with("DISCHARGE", 0.5)
 
-    # Fall 4: Om lasten sjunker till 3500 W (under limit 4000 W, men över safe_limit 3000 W)
-    # ska manuell peak-urladdning stoppas (HOLD) utan att lämna batteriet låst på 0.5 kW!
-    mock_battery.apply_action.reset_mock()
-    load_state.state = "3500"
-    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
-    assert guard._has_reported is True
-    mock_battery.apply_action.assert_called_with(
-        "HOLD", sonnen_site_limits=coordinator.data["sonnen_site_limits"]
-    )
-
 
 
 
