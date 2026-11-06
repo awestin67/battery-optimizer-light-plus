@@ -578,10 +578,34 @@ class PeakGuard:
             # 4. Gränser
             safe_limit = limit_w - 1000
 
+            # Kontrollera om molnet redan kör obegränsad IDLE (egenförbrukning / Mode 2).
+            # I obegränsad IDLE täcker växelriktaren automatiskt 100 % av husets last ned till 0 W
+            # (vilket är betydligt strängare än limit_w). Om PeakGuard då skulle tvinga in manuell
+            # DISCHARGE(current_load - limit_w) stryps batteriurladdningen till endast överskottet
+            # ovanför limit_w! Undantag: om Skyddad Solladdning spärrar urladdning (export_limit == 0).
+            site_limits_check = (
+                (self.coordinator.data.get("site_limits") or self.coordinator.data.get("sonnen_site_limits"))
+                if self.coordinator.data
+                else None
+            )
+            is_protected_solar_idle = (
+                isinstance(site_limits_check, dict)
+                and site_limits_check.get("p_bess_inv_max_export_limit") == 0
+            )
+            is_unrestricted_idle = (cloud_action == "IDLE" and not is_protected_solar_idle)
+
             # --- NY LOGIK MED HYSTERES ---
 
             # Steg 1: Bestäm tillstånd (På / Av)
-            if is_active and not self._has_reported and current_load > limit_w and soc > 0:
+            if is_unrestricted_idle:
+                if self._has_reported:
+                    _LOGGER.info(
+                        f"✅ PEAK CLEARED (Cloud is in unrestricted IDLE / Self-Consumption). "
+                        f"Load: {current_load} W. Returning to IDLE so battery covers full house load."
+                    )
+                    self._set_reported_state(False)
+                    await self._report_peak_clear(current_load, limit_w)
+            elif is_active and not self._has_reported and current_load > limit_w and soc > 0:
                 _LOGGER.info(f"🚨 PEAK DETECTED! Load: {current_load} W > Limit: {limit_w} W. Engaging battery.")
                 self._set_reported_state(True)
                 await self._report_peak(current_load, limit_w)
@@ -618,6 +642,18 @@ class PeakGuard:
                     self._set_local_action("DISCHARGE", power_to_discharge / 1000.0)
                     await self.battery.apply_action("DISCHARGE", power_to_discharge / 1000.0)
                     self._last_sent_command = "PEAK"
+                elif self._last_sent_command == "PEAK":
+                    # Lasten har sjunkit under limit_w men är kvar i hysteresbandet (> safe_limit).
+                    # Stoppa manuell peak-urladdning så att batteriet inte ligger kvar på föregående effekt.
+                    self._set_local_action("HOLD", 0.0)
+                    try:
+                        if site_limits_check is not None:
+                            await self.battery.apply_action("HOLD", sonnen_site_limits=site_limits_check)
+                        else:
+                            await self.battery.apply_action("HOLD")
+                    except TypeError:
+                        await self.battery.apply_action("HOLD")
+                    self._last_sent_command = "PEAK_HOLD"
 
             else:
                 # TILLSTÅND AV: Återgå till molnstrategi

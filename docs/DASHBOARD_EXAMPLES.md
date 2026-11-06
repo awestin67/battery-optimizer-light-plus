@@ -54,6 +54,45 @@ template:
 
 Gå sedan till **Utvecklarverktyg (Developer Tools)** -> **YAML** och klicka på **Ladda om Mallentiteter (Template Entities)**. Därefter har du en ny sensor `sensor.battery_optimizer_next_action` som du enkelt kan visa i ett standard entitetskort på din Dashboard!
 
+## 🚗 Planerat Laddschema (Elbil)
+
+Om du använder den dynamiska elbilsladdningen (`sensor.optimizer_light_ev_schedule`) kan du visa en tydlig tabell med bilarnas planerade laddfönster, effekt och energimängd via ett inbyggt **Markdown-kort**:
+
+```yaml
+type: markdown
+title: 🚗 Planerat Laddschema
+content: >
+  {% set schedules = state_attr('sensor.optimizer_light_ev_schedule', 'schedules') %}
+  {% if schedules and schedules is mapping and schedules | count > 0 %}
+  | Bil | Datum | Tid (Start – Slut) | Effekt | Energi | Status |
+  | :--- | :---: | :---: | :---: | :---: | :---: |
+  {%- for car_name, slots in schedules.items() %}
+    {%- if slots and slots | count > 0 %}
+      {%- for slot in slots %}
+        {%- set s_dt = slot.start | as_datetime | as_local %}
+        {%- set e_dt = slot.end | as_datetime | as_local %}
+        {%- set dur_h = ((e_dt - s_dt).total_seconds() / 3600) | round(2) %}
+        {%- set kw = slot.charge_kw | float(0) %}
+        {%- set kwh = (kw * dur_h) | round(1) %}
+        {%- set now_ts = now() %}
+        {%- if now_ts >= s_dt and now_ts < e_dt %}
+          {%- set status = '🟢 Laddar' %}
+        {%- elif now_ts < s_dt %}
+          {%- set status = '⏳ Planerad' %}
+        {%- else %}
+          {%- set status = '✅ Klar' %}
+        {%- endif %}
+  | **{{ car_name }}** | {{ s_dt.strftime('%d/%m') }} | `{{ s_dt.strftime('%H:%M') }} – {{ e_dt.strftime('%H:%M') }}` | **{{ kw | round(1) }} kW** | {{ kwh }} kWh | {{ status }} |
+      {%- endfor %}
+    {%- else %}
+  | **{{ car_name }}** | – | *Inget aktivt schema* | – | – | – |
+    {%- endif %}
+  {%- endfor %}
+  {% else %}
+  *Inga aktiva laddscheman just nu. Koppla in laddkabeln för att beräkna billigaste laddtiderna.*
+  {% endif %}
+```
+
 ## 📈 ApexCharts
 
 Med hjälp av komponenten ApexCharts Card (installeras via HACS) kan du bygga upp en komplett översikt för ditt batteri. Nedan finns tre exempel på grafer.

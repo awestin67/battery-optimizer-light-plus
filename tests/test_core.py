@@ -2481,6 +2481,92 @@ def test_manifest_and_hacs_compliance():
     assert manifest.get("requirements") == ["pymodbus>=3.6.8"]
 
 
+@pytest.mark.asyncio
+async def test_peak_guard_does_not_throttle_discharge_during_unrestricted_idle(mock_hass_instance, mock_battery):
+    """Krav: När molnet är i obegränsad IDLE (egenförbrukning / Mode 2) täcker batteriet redan
+    hela husets last ned till 0 W. PeakGuard får INTE strypa batteriet genom att tvinga fram
+    manuell DISCHARGE(current_load - limit_w), och ska dessutom släppa en aktiv peak om molnet
+    övergår till obegränsad IDLE. Vid Skyddad Solladdning (export_limit == 0) ska PeakGuard
+    däremot gripa in som vanligt."""
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "IDLE",
+        "cloud_action": "IDLE",
+        "max_discharge_kw": 3.3,
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+        "sonnen_site_limits": {
+            "p_gcp_max_import_limit": 4000,
+            "p_gcp_max_export_limit": None,
+            "p_bess_inv_max_export_limit": None,
+            "p_bess_inv_max_import_limit": None,
+        },
+    }
+
+    guard = PeakGuard(mock_hass_instance, MOCK_CONFIG, coordinator, mock_battery)
+    guard._report_peak = AsyncMock()
+    guard._report_peak_clear = AsyncMock()
+
+    limit_state = MagicMock()
+    limit_state.state = "4.0"  # 4000 W
+    load_state = MagicMock()
+    load_state.state = "4500"  # 4500 W (> 4000 W limit)
+    soc_state = MagicMock()
+    soc_state.state = "55"
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        return None
+
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+    mock_battery.get_current_soc = AsyncMock(return_value=55.0)
+
+    # Fall 1: Obegränsad IDLE och last > limit_w -> Ska INTE trigga PeakGuard DISCHARGE(0.5 kW)
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard._has_reported is False
+    guard._report_peak.assert_not_called()
+    mock_battery.apply_action.assert_called_with(
+        "IDLE", sonnen_site_limits=coordinator.data["sonnen_site_limits"]
+    )
+
+    # Fall 2: PeakGuard var redan låst (_has_reported=True) när molnet bytte till obegränsad IDLE
+    mock_battery.apply_action.reset_mock()
+    guard._has_reported = True
+    guard._last_sent_command = "PEAK"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard._has_reported is False
+    guard._report_peak_clear.assert_called_once_with(4500.0, 4000.0)
+    mock_battery.apply_action.assert_called_with(
+        "IDLE", sonnen_site_limits=coordinator.data["sonnen_site_limits"]
+    )
+
+    # Fall 3: Skyddad Solladdning (p_bess_inv_max_export_limit == 0) -> Batteriurladdning är spärrad,
+    # så PeakGuard MÅSTE gripa in vid överlast!
+    mock_battery.apply_action.reset_mock()
+    coordinator.data["sonnen_site_limits"]["p_bess_inv_max_export_limit"] = 0
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard._has_reported is True
+    guard._report_peak.assert_called_once_with(4500.0, 4000.0)
+    mock_battery.apply_action.assert_called_with("DISCHARGE", 0.5)
+
+    # Fall 4: Om lasten sjunker till 3500 W (under limit 4000 W, men över safe_limit 3000 W)
+    # ska manuell peak-urladdning stoppas (HOLD) utan att lämna batteriet låst på 0.5 kW!
+    mock_battery.apply_action.reset_mock()
+    load_state.state = "3500"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard._has_reported is True
+    mock_battery.apply_action.assert_called_with(
+        "HOLD", sonnen_site_limits=coordinator.data["sonnen_site_limits"]
+    )
+
+
+
 
 
 
