@@ -19,6 +19,7 @@ import subprocess
 import sys
 import os
 import shutil
+import time
 from collections import OrderedDict
 from pathlib import Path
 
@@ -67,6 +68,7 @@ except ImportError:
 # Korrekt sökväg baserat på ditt domännamn
 BASE_DIR = Path(__file__).resolve().parent
 MANIFEST_PATH = BASE_DIR / "custom_components" / "battery_optimizer_light_plus" / "manifest.json"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 IGNORED_DIRS = {
     ".venv", "venv", "env", "__pycache__", ".git", ".pytest_cache",
@@ -514,6 +516,58 @@ def check_github_metadata(repo_slug, token):
     except Exception as e:
         print(f"⚠️  Fel vid metadatakontroll: {e}")
 
+def call_gemini_with_retry(prompt: str, api_key: str, max_retries: int = 3) -> str | None:
+    """Anropar Google Gemini API med retry-logik, utökad timeout och tydlig felutskrift."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key}"
+    headers = {"Content-Type": "application/json"}
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.post(url, json=payload, headers=headers, timeout=(10, 45))
+            if resp.status_code == 200:
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if not candidates:
+                    reason = data.get("promptFeedback", {}).get("blockReason", "okänd")
+                    print(f"⚠️ Gemini returnerade inget svar (blockReason: {reason})")
+                    return None
+                parts = candidates[0].get("content", {}).get("parts", [])
+                if parts:
+                    text = parts[0].get("text", "").strip()
+                    if text:
+                        print("✅ AI-förslag skapat!")
+                        return text
+                return None
+            elif resp.status_code in (429, 500, 502, 503, 504):
+                print(
+                    f"⚠️ Gemini API svarade {resp.status_code} "
+                    f"(försök {attempt}/{max_retries}): {resp.text[:200]}"
+                )
+                if attempt < max_retries:
+                    wait_s = 2 * attempt
+                    print(f"⏳ Försöker igen om {wait_s}s...")
+                    time.sleep(wait_s)
+            else:
+                print(f"❌ Gemini API fel: {resp.status_code} - {resp.text}")
+                return None
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as te:
+            if attempt < max_retries:
+                wait_s = 2 * attempt
+                print(
+                    f"⚠️ Gemini API {type(te).__name__} (försök {attempt}/{max_retries}), "
+                    f"försöker igen om {wait_s}s... ({te})"
+                )
+                time.sleep(wait_s)
+            else:
+                print(f"❌ Fel vid anrop till Gemini efter {max_retries} försök: {te}")
+                return None
+        except Exception as e:
+            print(f"❌ Fel vid anrop till Gemini: {e}")
+            return None
+
+    return None
+
 def create_github_release(version, repo_slug=None, diff_uncommitted=""):
     print("\n--- 🚀 SKAPA GITHUB RELEASE ---")
 
@@ -593,22 +647,9 @@ def create_github_release(version, repo_slug=None, diff_uncommitted=""):
         if diff:
             prompt += f"Här är osparade kodändringar (diff):\n{diff}\n\n"
 
-        url_gemini = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={api_key}"
-        headers_gemini = {"Content-Type": "application/json"}
-        payload_gemini = {"contents": [{"parts": [{"text": prompt}]}]}
-
-        try:
-            resp_gemini = requests.post(url_gemini, json=payload_gemini, headers=headers_gemini, timeout=30)
-            if resp_gemini.status_code == 200:
-                data = resp_gemini.json()
-                ai_text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                if ai_text:
-                    print("✅ AI-förslag skapat!")
-                    suggested_notes = ai_text.strip()
-            else:
-                print(f"⚠️ Kunde inte generera AI-release notes: API svarade med {resp_gemini.status_code}")
-        except Exception as e:
-            print(f"⚠️ Kunde inte generera AI-release notes: {e}")
+        ai_text = call_gemini_with_retry(prompt, api_key)
+        if ai_text:
+            suggested_notes = ai_text
 
     # Fallback om vi inte har AI eller det misslyckades
     if not suggested_notes and commits:
@@ -781,30 +822,18 @@ def main():
         diff_trunc = release_diff[:20000] if len(release_diff) > 20000 else release_diff
         prompt += diff_trunc
 
-        url_gemini = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={api_key}"
-        headers_gemini = {"Content-Type": "application/json"}
-        payload_gemini = {"contents": [{"parts": [{"text": prompt}]}]}
+        ai_text = call_gemini_with_retry(prompt, api_key)
+        if ai_text:
+            cleaned_text = ai_text.strip().strip("`")
+            if cleaned_text.startswith("text\n"):
+                cleaned_text = cleaned_text[5:]
+            elif cleaned_text.startswith("plaintext\n"):
+                cleaned_text = cleaned_text[10:]
 
-        try:
-            resp_gemini = requests.post(url_gemini, json=payload_gemini, headers=headers_gemini, timeout=30)
-            if resp_gemini.status_code == 200:
-                data = resp_gemini.json()
-                ai_text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                if ai_text:
-                    cleaned_text = ai_text.strip().strip("`")
-                    if cleaned_text.startswith("text\n"):
-                        cleaned_text = cleaned_text[5:]
-                    elif cleaned_text.startswith("plaintext\n"):
-                        cleaned_text = cleaned_text[10:]
-
-                    if action_choice == '2':
-                        suggested_commit_msg = f"Release {new_ver} - {cleaned_text.strip()}"
-                    else:
-                        suggested_commit_msg = cleaned_text.strip()
+            if action_choice == '2':
+                suggested_commit_msg = f"Release {new_ver} - {cleaned_text.strip()}"
             else:
-                print(f"⚠️ Kunde inte generera AI-commitmeddelande: API svarade med {resp_gemini.status_code}")
-        except Exception as e:
-            print(f"⚠️ Kunde inte generera AI-commitmeddelande: {e}")
+                suggested_commit_msg = cleaned_text.strip()
 
     print("\n📝 Föreslaget commit-meddelande:")
     print("-" * 40)

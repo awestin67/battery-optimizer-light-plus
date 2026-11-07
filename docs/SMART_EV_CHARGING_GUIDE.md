@@ -75,9 +75,10 @@ Skapa följande Helpers i Home Assistant (*Inställningar -> Enheter och tjänst
 4. *(Har du en andra bil?)* Fyll i motsvarande rullistor för **Bil 2** längre ner på samma sida.
 
 #### Steg 3: Så här fungerar det i praktiken
-1. **Du pluggar i kabeln:** Din `cable_connected`-sensor slår om till `on`.
-2. **Schemat skapas:** Integrationen läser av dina Helpers och beräknar den billigaste tidslinjen. Om du pluggar in båda bilarna skapas ett optimerat körschema för båda samtidigt!
-3. **Data exponeras:** Schemat sparas i sensorn `sensor.optimizer_light_ev_schedule`. Attributet `schedules` innehåller start- och stopptider för dina bilar.
+1. **Du pluggar i kabeln:** Din `cable_connected`-sensor slår om till `on` (fungerar även direkt om kabeln redan sitter i när du sparar inställningarna eller startar om Home Assistant).
+2. **Schemat skapas (och uppdateras automatiskt):** Integrationen läser av dina Helpers och beräknar den billigaste tidslinjen. Om du ändrar mål-kWh, avresetid eller maxeffekt medan bilen är inkopplad räknas schemat automatiskt om efter några sekunder! Om du pluggar in båda bilarna skapas ett optimerat körschema för båda samtidigt.
+3. **Laddar så mycket som hinns med ("Best Effort"):** Om du kopplar in bilen sent eller begär fler kWh än vad som fysiskt hinner laddas före avresetiden (med hänsyn till bilens maxeffekt och huvudsäkringen), avbryts inte planeringen – istället schemalägger optimeraren maximal möjlig laddning under all tillgänglig tid fram till avresa.
+4. **Data exponeras:** Det dynamiska V2-schemat sparas i sensorn `sensor.optimizer_light_ev_schedule` (attributet `schedules` innehåller start- och stopptider för dina bilar) och synkas även löpande från molnet. *(Observera att fasta veckoscheman från Alternativ 1 i webbappen hanteras helt internt av molnet och visas inte i denna sensor).*
 
 #### Steg 4: Din Automation (Exempel)
 Skapa en automation i Home Assistant för respektive bil. Använd `Template` i din trigger för att trigga på starttiden, och passa även på att ställa in laddboxens effekt (`charge_kw`) till det värde som molnet har räknat ut är optimalt!

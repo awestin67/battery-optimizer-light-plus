@@ -776,6 +776,11 @@ class BatteryLightEVScheduleSensor(BatteryOptimizerSensorBase):
         self._attr_icon = "mdi:ev-station"
 
     @property
+    def available(self) -> bool:
+        """Håll alltid EV-schemats sensor tillgänglig även vid tillfälliga /signal-fel."""
+        return True
+
+    @property
     def state(self):
         schedules = getattr(self.coordinator, "ev_schedules", {})
         active_count = sum(1 for plan in schedules.values() if plan)
@@ -787,7 +792,8 @@ class BatteryLightEVScheduleSensor(BatteryOptimizerSensorBase):
     def extra_state_attributes(self):
         schedules = getattr(self.coordinator, "ev_schedules", {})
         return {
-            "schedules": schedules
+            "schedules": schedules,
+            "is_preliminary": bool(getattr(self.coordinator, "ev_preliminary_cars", None)),
         }
 
 class BatteryOptimizerWaterHeaterReasonSensor(BatteryOptimizerSensorBase):

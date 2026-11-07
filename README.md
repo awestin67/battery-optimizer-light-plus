@@ -213,9 +213,9 @@ När systemet är igång skapas sensorer för att övervaka optimeringen.
 | 📉 `sensor.battery_optimizer_graph_data` | Graf-data (historik och prognos) i JSON-attribut, används av ApexCharts. |
 | 🚿 `binary_sensor.optimizer_light_vvb_boost` | `on` när varmvatten/plusvärme ska aktiveras. |
 | ℹ️ `sensor.optimizer_light_vvb_orsak` | Förklaring till varför VVB körs eller pausas. |
-| 🚗 `sensor.optimizer_light_ev_schedule` | Laddschema för elbilar (JSON i attributet `schedules`). |
+| 🚗 `sensor.optimizer_light_ev_schedule` | Dynamiskt laddschema för elbilar (V2, JSON i attributet `schedules`). |
 
-📊 Färdiga dashboard-kort för AI-sammanfattning, nästa planerade åtgärd och ApexCharts finns i [`docs/DASHBOARD_EXAMPLES.md`](docs/DASHBOARD_EXAMPLES.md).
+📊 Färdiga dashboard-kort för AI-sammanfattning, nästa planerade åtgärd, EV-laddschema och ApexCharts finns i [`docs/DASHBOARD_EXAMPLES.md`](docs/DASHBOARD_EXAMPLES.md).
 
 ---
 

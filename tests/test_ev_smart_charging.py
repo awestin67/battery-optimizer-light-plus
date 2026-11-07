@@ -270,3 +270,287 @@ async def test_ev_plan_created_at_setup_when_cable_connected(mock_hass_instance)
     coord, _, _, _ = await _setup_ev_entry(mock_hass_instance, "on")
     assert mock_hass_instance.async_create_task.called
     coord.async_plan_ev_charging.assert_called_once_with("car1")
+
+
+async def test_ev_preliminary_plan_and_afternoon_replan(mock_hass_instance):
+    """Preliminär plan före kl 13:15 ska spåras och automatiskt planeras om efter kl 13:15."""
+    from datetime import datetime
+    from custom_components.battery_optimizer_light_plus.coordinator import BatteryOptimizerLightCoordinator
+
+    config = {
+        "api_url": "http://test-api",
+        "api_key": "123",
+        CONF_EV_C1_NAME: "Testbil",
+        CONF_EV_C1_TARGET_KWH: "input_number.target",
+        "ev_c1_depart_time": "input_datetime.depart",
+        "ev_c1_max_kw": "input_number.max_kw",
+    }
+
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config)
+    coordinator.async_request_refresh = AsyncMock()
+
+    mock_hass_instance.states.get.side_effect = lambda entity_id: MagicMock(
+        state={
+            "input_number.target": "25.0",
+            "input_datetime.depart": "07:00:00",
+            "input_number.max_kw": "11.0",
+        }.get(entity_id, "unknown")
+    )
+
+    patch_session = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_session) as mock_get_session:
+        mock_session = MagicMock()
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={
+                "schedules": {"Testbil": [{"start": "2026-11-07T22:00:00"}]},
+                "is_preliminary": True,
+            }
+        )
+        mock_session.post.return_value.__aenter__.return_value = mock_response
+        mock_get_session.return_value = mock_session
+
+        await coordinator.async_plan_ev_charging("car1")
+        assert "car1" in coordinator.ev_preliminary_cars
+
+        # Fånga _update_interval från setup_timer
+        captured_cb = None
+
+        def fake_track_time(hass, action, **kwargs):
+            nonlocal captured_cb
+            captured_cb = action
+            return MagicMock()
+
+        with patch(
+            "custom_components.battery_optimizer_light_plus.coordinator.async_track_time_change",
+            side_effect=fake_track_time,
+        ):
+            coordinator.setup_timer()
+
+        assert captured_cb is not None
+
+        # 1. Före kl 13:15 (t.ex. 12:15) ska ingen ny EV-planering triggas
+        mock_session.post.reset_mock()
+        with patch(
+            "custom_components.battery_optimizer_light_plus.coordinator.dt_util.now",
+            return_value=datetime(2026, 11, 7, 12, 15, 0),
+        ):
+            await captured_cb(None)
+        mock_session.post.assert_not_called()
+        assert "car1" in coordinator.ev_preliminary_cars
+
+        # 2. Vid kl 13:15 (men fel minut, t.ex. 13:20) ska ingen ny EV-planering triggas
+        with patch(
+            "custom_components.battery_optimizer_light_plus.coordinator.dt_util.now",
+            return_value=datetime(2026, 11, 7, 13, 20, 0),
+        ):
+            await captured_cb(None)
+        mock_session.post.assert_not_called()
+
+        # 3. Vid kl 13:15 (kvartsminut 15) ska omplanering triggas och rensa is_preliminary när priserna finns
+        mock_response.json = AsyncMock(
+            return_value={
+                "schedules": {"Testbil": [{"start": "2026-11-08T02:00:00"}]},
+                "is_preliminary": False,
+            }
+        )
+        with patch(
+            "custom_components.battery_optimizer_light_plus.coordinator.dt_util.now",
+            return_value=datetime(2026, 11, 7, 13, 15, 0),
+        ):
+            await captured_cb(None)
+        mock_session.post.assert_called_once()
+        assert "car1" not in coordinator.ev_preliminary_cars
+
+
+async def test_ev_preliminary_flag_cleared_on_disconnect(mock_hass_instance):
+    """Att koppla ur kabeln (async_clear_ev_charging) ska även rensa ev_preliminary_cars."""
+    from custom_components.battery_optimizer_light_plus.coordinator import BatteryOptimizerLightCoordinator
+
+    config = {
+        "api_url": "http://test-api",
+        "api_key": "123",
+        CONF_EV_C1_NAME: "Testbil",
+    }
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config)
+    coordinator.ev_schedules = {"Testbil": [{"start": "now"}]}
+    coordinator.ev_preliminary_cars = {"car1"}
+    coordinator.data = None
+
+    patch_session = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_session) as mock_get_session:
+        mock_session = MagicMock()
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_session.delete.return_value.__aenter__.return_value = mock_response
+        mock_get_session.return_value = mock_session
+
+        await coordinator.async_clear_ev_charging("car1")
+        assert "car1" not in coordinator.ev_preliminary_cars
+        assert "Testbil" not in coordinator.ev_schedules
+
+
+async def test_ev_schedule_sensor_always_available_and_preliminary_attribute():
+    """BatteryLightEVScheduleSensor ska alltid vara available=True och exponera is_preliminary."""
+    from custom_components.battery_optimizer_light_plus.sensor import BatteryLightEVScheduleSensor
+
+    coordinator = MagicMock()
+    coordinator.api_key = "test_key"
+    coordinator.last_update_success = False
+    coordinator.data = None
+    coordinator.ev_schedules = {}
+    coordinator.ev_preliminary_cars = set()
+
+    sensor = BatteryLightEVScheduleSensor(coordinator)
+    assert sensor.available is True
+    assert sensor.state == "Inga scheman"
+    assert sensor.extra_state_attributes == {"schedules": {}, "is_preliminary": False}
+
+    # När preliminärt schema finns
+    coordinator.ev_schedules = {"Testbil": [{"start": "2026-11-07T22:00:00"}]}
+    coordinator.ev_preliminary_cars = {"car1"}
+    assert sensor.available is True
+    assert sensor.state == "1 bilar planerade"
+    assert sensor.extra_state_attributes["is_preliminary"] is True
+
+    # När definitivt schema ersatt det preliminära
+    coordinator.ev_preliminary_cars.clear()
+    assert sensor.extra_state_attributes["is_preliminary"] is False
+
+
+async def test_plan_and_clear_ev_charging_refreshes_only_graph_data(mock_hass_instance):
+    """EV-planering och rensning ska uppdatera /ha_graph_data men INTE anropa async_request_refresh (/signal)."""
+    from custom_components.battery_optimizer_light_plus.coordinator import BatteryOptimizerLightCoordinator
+
+    config = {
+        "api_url": "http://test-api",
+        "api_key": "123",
+        CONF_EV_C1_NAME: "Testbil",
+        CONF_EV_C1_TARGET_KWH: "input_number.target",
+        "ev_c1_depart_time": "input_datetime.depart",
+        "ev_c1_max_kw": "input_number.max_kw",
+    }
+
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config)
+    coordinator.data = {"action": "IDLE", "graph_data": {}}
+    coordinator.async_request_refresh = AsyncMock()
+
+    mock_hass_instance.states.get.side_effect = lambda entity_id: MagicMock(
+        state={
+            "input_number.target": "20.0",
+            "input_datetime.depart": "07:00:00",
+            "input_number.max_kw": "11.0",
+        }.get(entity_id, "unknown")
+    )
+
+    patch_session = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_session) as mock_get_session:
+        mock_session = MagicMock()
+
+        mock_post_resp = AsyncMock()
+        mock_post_resp.status = 200
+        mock_post_resp.json = AsyncMock(return_value={"schedules": {"Testbil": [{"start": "2026-11-07T02:00:00"}]}})
+        mock_session.post.return_value.__aenter__.return_value = mock_post_resp
+
+        mock_get_resp = AsyncMock()
+        mock_get_resp.status = 200
+        mock_get_resp.json = AsyncMock(
+            return_value={"history": [{"timestamp": "2026-11-07T00:00:00Z", "current_solar_kw": 1.5}]}
+        )
+        mock_session.get.return_value.__aenter__.return_value = mock_get_resp
+
+        mock_del_resp = AsyncMock()
+        mock_del_resp.status = 200
+        mock_session.delete.return_value.__aenter__.return_value = mock_del_resp
+
+        mock_get_session.return_value = mock_session
+
+        await coordinator.async_plan_ev_charging("car1")
+
+        coordinator.async_request_refresh.assert_not_called()
+        mock_session.get.assert_called_once()
+        assert coordinator.data["graph_data"]["history"][0]["solar_kw"] == 1.5
+
+        mock_session.get.reset_mock()
+        await coordinator.async_clear_ev_charging("car1")
+
+        coordinator.async_request_refresh.assert_not_called()
+        mock_session.get.assert_called_once()
+
+
+async def test_coordinator_429_rate_limit_preserves_existing_data_without_retries(mock_hass_instance):
+    """Vid HTTP 429 ska befintlig coordinator.data behållas direkt utan 3 retries eller IDLE-fallback."""
+    from custom_components.battery_optimizer_light_plus.coordinator import (
+        BatteryOptimizerLightCoordinator,
+        UpdateFailed,
+    )
+
+    config = {
+        "api_url": "http://test-api",
+        "api_key": "123",
+        "soc_sensor": "sensor.soc",
+    }
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config)
+    mock_battery = MagicMock()
+    mock_battery.software_version = None
+    mock_battery.is_modern_ems = False
+    mock_battery.get_current_soc = AsyncMock(return_value=60.0)
+    mock_battery.get_min_soc = AsyncMock(return_value=0.0)
+    mock_battery.get_grid_power = AsyncMock(return_value=500.0)
+    mock_battery.get_battery_power = AsyncMock(return_value=0.0)
+    mock_battery.get_solar_power = AsyncMock(return_value=0.0)
+    mock_battery.get_virtual_load = AsyncMock(return_value=500.0)
+    mock_battery.get_calculated_consumption = AsyncMock(return_value=500.0)
+    mock_battery.get_house_consumption = AsyncMock(return_value=500.0)
+    mock_battery.get_status_text = AsyncMock(return_value=None)
+    mock_battery.apply_action = AsyncMock()
+    coordinator.battery_api = mock_battery
+
+    patch_session = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    patch_sleep = "custom_components.battery_optimizer_light_plus.coordinator.asyncio.sleep"
+    with patch(patch_session) as mock_get_session, patch(patch_sleep, new_callable=AsyncMock) as mock_sleep:
+        mock_session = MagicMock()
+        mock_resp = AsyncMock()
+        mock_resp.status = 429
+        mock_resp.text = AsyncMock(return_value='{"error":"Rate limit exceeded: 5 per 1 minute"}')
+        mock_session.post.return_value.__aenter__.return_value = mock_resp
+        mock_get_session.return_value = mock_session
+
+        # Fall 1: coordinator.data finns redan -> ska returnera befintlig data direkt utan retry
+        existing_data = {"action": "CHARGE", "target_power_kw": 3.5}
+        coordinator.data = existing_data
+        res = await coordinator._async_update_data()
+        assert res is existing_data
+        assert mock_session.post.call_count == 1
+        mock_sleep.assert_not_called()
+        mock_battery.apply_action.assert_not_called()
+
+        # Fall 2: coordinator.data är None (första uppstart) -> ska kasta UpdateFailed direkt utan 3 retries
+        mock_session.post.reset_mock()
+        coordinator.data = None
+        with pytest.raises(UpdateFailed) as excinfo:
+            await coordinator._async_update_data()
+        assert "Server 429:" in str(excinfo.value)
+        assert mock_session.post.call_count == 1
+        mock_sleep.assert_not_called()
+
+        # Fall 3: 200 OK med ev_smart_plans -> ska synka till coordinator.ev_schedules
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(
+            return_value={
+                "action": "IDLE",
+                "target_power_kw": 0.0,
+                "ev_smart_plans": {"Testbil": [{"start": "2026-11-08T01:00:00", "charge_kw": 11.0}]},
+            }
+        )
+        mock_get_resp = AsyncMock()
+        mock_get_resp.status = 200
+        mock_get_resp.json = AsyncMock(return_value={"history": []})
+        mock_session.get.return_value.__aenter__.return_value = mock_get_resp
+
+        res_ok = await coordinator._async_update_data()
+        assert res_ok["action"] == "IDLE"
+        assert coordinator.ev_schedules == {"Testbil": [{"start": "2026-11-08T01:00:00", "charge_kw": 11.0}]}
+
+

@@ -76,6 +76,18 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         """
         async def _update_interval(now):
             await self.async_request_refresh()
+            prelim_cars = getattr(self, "ev_preliminary_cars", None)
+            if prelim_cars:
+                local_now = dt_util.now()
+                if (local_now.hour > 13 or (local_now.hour == 13 and local_now.minute >= 15)) and (
+                    local_now.minute in (0, 15, 30, 45)
+                ):
+                    for c_key in list(prelim_cars):
+                        _LOGGER.info(
+                            "Uppdaterar preliminärt EV-schema för %s nu när morgondagens priser bör finnas...",
+                            c_key,
+                        )
+                        await self.async_plan_ev_charging(c_key)
 
         self.unsub_timer = async_track_time_change(
             self.hass,
@@ -336,6 +348,15 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                         text = await response.text()
                         raise UpdateFailed(f"Authentication failed: {text}")
 
+                    if response.status == 429:
+                        text = await response.text()
+                        if self.data:
+                            _LOGGER.warning(
+                                "Rate limit (429) mot molnet – behåller senaste kända data till nästa uppdatering."
+                            )
+                            return self.data
+                        raise UpdateFailed(f"Server 429: {text}")
+
                     if response.status != 200:
                         text = await response.text()
                         raise UpdateFailed(f"Server {response.status}: {text}")
@@ -470,7 +491,9 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     return data
 
             except Exception as err:
-                if isinstance(err, UpdateFailed) and "Authentication failed" in str(err):
+                if isinstance(err, UpdateFailed) and (
+                    "Authentication failed" in str(err) or "Server 429:" in str(err)
+                ):
                     raise
 
                 # Get a more descriptive error message
@@ -579,17 +602,61 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                 if resp.status == 200:
                     data = await resp.json()
                     schedules = data.get("schedules", {})
-                    _LOGGER.info(f"Mottog ny EV-laddplan: {schedules}")
+                    is_prelim = bool(data.get("is_preliminary", False))
+                    if not hasattr(self, "ev_preliminary_cars"):
+                        self.ev_preliminary_cars = set()
+                    if is_prelim:
+                        if car_id == "all":
+                            if c1:
+                                self.ev_preliminary_cars.add("car1")
+                            if c2:
+                                self.ev_preliminary_cars.add("car2")
+                        else:
+                            self.ev_preliminary_cars.add(car_id)
+                    else:
+                        if car_id == "all":
+                            self.ev_preliminary_cars.clear()
+                        else:
+                            self.ev_preliminary_cars.discard(car_id)
+                    _LOGGER.info(f"Mottog ny EV-laddplan (preliminär={is_prelim}): {schedules}")
                     if not hasattr(self, "ev_schedules"):
                         self.ev_schedules = {}
                     self.ev_schedules.update(schedules)
-                    self.async_set_updated_data(self.data)
-                    # Tvinga fram en uppdatering av grafdatan
-                    await self.async_request_refresh()
+                    if hasattr(self, "async_set_updated_data"):
+                        self.async_set_updated_data(self.data)
+                    elif hasattr(self, "async_update_listeners"):
+                        self.async_update_listeners()
+                    # Uppdatera grafdatan utan att spamma POST /signal (som har 5/min rate limit)
+                    await self._async_refresh_graph_data()
                 else:
                     _LOGGER.error(f"Fel vid hämtning av EV-laddplan: {resp.status} {await resp.text()}")
         except Exception as e:
             _LOGGER.error(f"Kunde inte anropa EV-API: {e}")
+
+    async def _async_refresh_graph_data(self):
+        """Hämtar enbart ny grafdata (/ha_graph_data) utan att trigga ett fullt /signal-anrop."""
+        if not self.data or not isinstance(self.data, dict):
+            return
+        try:
+            session = async_get_clientsession(self.hass)
+            history_hours = int(self.config.get("graph_history_hours", 24))
+            base_api_url = getattr(self, "base_api_url", self.config.get("api_url", "").rstrip("/"))
+            graph_url = f"{base_api_url}/ha_graph_data?history_hours={history_hours}"
+            async with session.get(
+                graph_url, headers={"X-API-Key": self.api_key}, timeout=aiohttp.ClientTimeout(total=30)
+            ) as graph_response:
+                if graph_response.status == 200:
+                    graph_data = await graph_response.json()
+                    for entry in graph_data.get("history", []):
+                        if "current_solar_kw" in entry:
+                            entry["solar_kw"] = entry.pop("current_solar_kw")
+                    self.data["graph_data"] = graph_data
+                    if hasattr(self, "async_set_updated_data"):
+                        self.async_set_updated_data(self.data)
+                    elif hasattr(self, "async_update_listeners"):
+                        self.async_update_listeners()
+        except Exception as e:
+            _LOGGER.debug("Kunde inte uppdatera grafdata efter EV-ändring: %s", e)
 
     async def async_clear_ev_charging(self, car_id):
         """Wrapper för att förhindra race conditions."""
@@ -610,9 +677,14 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             return
 
         # 1. Rensa sensorn lokalt
+        if hasattr(self, "ev_preliminary_cars"):
+            self.ev_preliminary_cars.discard(car_id)
         if hasattr(self, "ev_schedules") and cname in self.ev_schedules:
             self.ev_schedules.pop(cname, None)
-            self.async_set_updated_data(self.data)
+            if hasattr(self, "async_set_updated_data"):
+                self.async_set_updated_data(self.data)
+            elif hasattr(self, "async_update_listeners"):
+                self.async_update_listeners()
             _LOGGER.info(f"Nollställde EV-schemat lokalt för {cname}")
 
         # 2. Skicka DELETE till backend
@@ -625,8 +697,8 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             async with session.delete(url, headers=headers, timeout=10) as resp:
                 if resp.status == 200:
                     _LOGGER.info(f"Schemat för {cname} raderades i molnet.")
-                    # Tvinga fram en uppdatering av grafdatan
-                    await self.async_request_refresh()
+                    # Uppdatera grafdatan utan att spamma POST /signal (som har 5/min rate limit)
+                    await self._async_refresh_graph_data()
                 else:
                     _LOGGER.error(f"Kunde inte radera EV-schema i molnet: {resp.status} {await resp.text()}")
         except Exception as e:
