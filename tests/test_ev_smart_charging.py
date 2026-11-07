@@ -471,6 +471,7 @@ async def test_plan_and_clear_ev_charging_refreshes_only_graph_data(mock_hass_in
         coordinator.async_request_refresh.assert_not_called()
         mock_session.get.assert_called_once()
         assert coordinator.data["graph_data"]["history"][0]["solar_kw"] == 1.5
+        assert "last_update_time" in coordinator.data
 
         mock_session.get.reset_mock()
         await coordinator.async_clear_ev_charging("car1")

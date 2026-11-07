@@ -651,6 +651,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                         if "current_solar_kw" in entry:
                             entry["solar_kw"] = entry.pop("current_solar_kw")
                     self.data["graph_data"] = graph_data
+                    self.data["last_update_time"] = dt_util.now().isoformat()
                     if hasattr(self, "async_set_updated_data"):
                         self.async_set_updated_data(self.data)
                     elif hasattr(self, "async_update_listeners"):
