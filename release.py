@@ -59,7 +59,7 @@ except ImportError:
 # Försök ladda .env om python-dotenv finns
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv(override=True)
 except ImportError:
     pass
 
@@ -593,7 +593,7 @@ def create_github_release(version, repo_slug=None, diff_uncommitted=""):
         if diff:
             prompt += f"Här är osparade kodändringar (diff):\n{diff}\n\n"
 
-        url_gemini = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+        url_gemini = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={api_key}"
         headers_gemini = {"Content-Type": "application/json"}
         payload_gemini = {"contents": [{"parts": [{"text": prompt}]}]}
 
@@ -781,7 +781,7 @@ def main():
         diff_trunc = release_diff[:20000] if len(release_diff) > 20000 else release_diff
         prompt += diff_trunc
 
-        url_gemini = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+        url_gemini = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={api_key}"
         headers_gemini = {"Content-Type": "application/json"}
         payload_gemini = {"contents": [{"parts": [{"text": prompt}]}]}
 

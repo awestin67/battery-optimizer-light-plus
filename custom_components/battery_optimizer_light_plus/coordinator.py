@@ -342,6 +342,9 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                     data = await response.json()
 
+                    if not getattr(self, "ev_schedules", None) and isinstance(data.get("ev_smart_plans"), dict):
+                        self.ev_schedules = dict(data["ev_smart_plans"])
+
                     # --- Hämta graf-data ---
                     fallback_graph_data = self.data.get("graph_data", {}) if self.data else {}
                     try:
@@ -526,10 +529,14 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             if target and depart and max_kw and target.state not in ("unknown", "unavailable"):
                 try:
                     cname = self.config.get(name_key, f"Bil {cid}")
+                    raw_dep = str(depart.state).strip()
+                    if " " in raw_dep or "T" in raw_dep:
+                        sep = "T" if "T" in raw_dep else " "
+                        raw_dep = raw_dep.split(sep)[-1]
                     return {
                         "id": cname,
                         "target_kwh": float(target.state),
-                        "departure_time": depart.state[:5], # Cloud expects HH:MM
+                        "departure_time": raw_dep[:5], # Cloud expects HH:MM
                         "max_charge_kw": float(max_kw.state)
                     }
                 except ValueError:

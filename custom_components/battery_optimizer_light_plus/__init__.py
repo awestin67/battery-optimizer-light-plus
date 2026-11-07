@@ -19,7 +19,7 @@ from datetime import timedelta
 import homeassistant.util.dt as dt_util
 from homeassistant.core import HomeAssistant, ServiceCall, CoreState # type: ignore
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN # type: ignore
-from homeassistant.helpers.event import async_track_state_change_event # type: ignore
+from homeassistant.helpers.event import async_track_state_change_event, async_call_later # type: ignore
 from homeassistant.helpers.aiohttp_client import async_get_clientsession # type: ignore
 try:
     from homeassistant.components.http import HomeAssistantView # type: ignore
@@ -197,8 +197,17 @@ async def async_setup_entry(hass: HomeAssistant, entry):
 
     hass.services.async_register(DOMAIN, "plan_ev_charging", handle_plan_ev_charging)
 
-    # Lyssna på ev_cable_connected för automatiskt anrop
-    from .const import CONF_EV_C1_CABLE_CONNECTED, CONF_EV_C2_CABLE_CONNECTED
+    # Lyssna på ev_cable_connected och EV-helpers för automatiskt anrop
+    from .const import (
+        CONF_EV_C1_CABLE_CONNECTED,
+        CONF_EV_C1_TARGET_KWH,
+        CONF_EV_C1_DEPART_TIME,
+        CONF_EV_C1_MAX_KW,
+        CONF_EV_C2_CABLE_CONNECTED,
+        CONF_EV_C2_TARGET_KWH,
+        CONF_EV_C2_DEPART_TIME,
+        CONF_EV_C2_MAX_KW,
+    )
 
     async def _on_ev_connected(event):
         new_state = event.data.get("new_state")
@@ -228,8 +237,83 @@ async def async_setup_entry(hass: HomeAssistant, entry):
             async_track_state_change_event(hass, ev_triggers, _on_ev_connected)
         )
 
+    c1_helpers = [
+        config.get(k)
+        for k in (CONF_EV_C1_TARGET_KWH, CONF_EV_C1_DEPART_TIME, CONF_EV_C1_MAX_KW)
+        if config.get(k)
+    ]
+    c2_helpers = [
+        config.get(k)
+        for k in (CONF_EV_C2_TARGET_KWH, CONF_EV_C2_DEPART_TIME, CONF_EV_C2_MAX_KW)
+        if config.get(k)
+    ]
+
+    # Debounce: väntar tills användaren slutat ändra (t.ex. dra i ett reglage) innan planen skapas om
+    EV_REPLAN_DEBOUNCE_S = 3
+    pending_replans = {}
+
+    def _schedule_replan(car_key):
+        unsub = pending_replans.pop(car_key, None)
+        if unsub:
+            unsub()
+
+        async def _run(_now):
+            pending_replans.pop(car_key, None)
+            await coordinator.async_plan_ev_charging(car_key)
+
+        pending_replans[car_key] = async_call_later(hass, EV_REPLAN_DEBOUNCE_S, _run)
+
+    def _cancel_pending_replans():
+        for unsub in list(pending_replans.values()):
+            unsub()
+        pending_replans.clear()
+
+    entry.async_on_unload(_cancel_pending_replans)
+
+    async def _on_ev_helper_changed(event):
+        old_state = event.data.get("old_state")
+        new_state = event.data.get("new_state")
+        if not new_state or new_state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+            return
+        # Ignorera första tillståndet (uppstart/återställning) och oförändrade värden
+        if old_state is None or old_state.state == new_state.state:
+            return
+
+        ent_id = event.data.get("entity_id")
+        if ent_id in c1_helpers:
+            c1_cable_ent = config.get(CONF_EV_C1_CABLE_CONNECTED)
+            c1_cable = hass.states.get(c1_cable_ent) if c1_cable_ent else None
+            if c1_cable and getattr(c1_cable, "state", None) == "on":
+                _LOGGER.info(f"EV Helper {ent_id} changed while Car 1 connected, regenerating plan...")
+                _schedule_replan("car1")
+        if ent_id in c2_helpers:
+            c2_cable_ent = config.get(CONF_EV_C2_CABLE_CONNECTED)
+            c2_cable = hass.states.get(c2_cable_ent) if c2_cable_ent else None
+            if c2_cable and getattr(c2_cable, "state", None) == "on":
+                _LOGGER.info(f"EV Helper {ent_id} changed while Car 2 connected, regenerating plan...")
+                _schedule_replan("car2")
+
+    all_ev_helpers = list(dict.fromkeys(c1_helpers + c2_helpers))
+    if all_ev_helpers:
+        entry.async_on_unload(
+            async_track_state_change_event(hass, all_ev_helpers, _on_ev_helper_changed)
+        )
+
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "binary_sensor", "switch"])
     entry.async_on_unload(entry.add_update_listener(update_listener))
+
+    # Om laddkabeln redan är inkopplad vid uppstart eller när inställningar sparas, skapa laddplan direkt
+    for car_key, cable_conf in (("car1", CONF_EV_C1_CABLE_CONNECTED), ("car2", CONF_EV_C2_CABLE_CONNECTED)):
+        cable_ent = config.get(cable_conf)
+        if cable_ent:
+            cable_state = hass.states.get(cable_ent)
+            if cable_state and getattr(cable_state, "state", None) == "on":
+                _LOGGER.info(
+                    "EV Cable %s already connected at setup, generating initial plan for %s...",
+                    cable_ent,
+                    car_key,
+                )
+                hass.async_create_task(coordinator.async_plan_ev_charging(car_key))
 
     return True
 
