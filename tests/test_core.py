@@ -2821,6 +2821,127 @@ async def test_three_tier_priority_hierarchy(mock_hass_instance, mock_battery):
     assert coordinator.data["action"] == "IDLE"
 
 
+@pytest.mark.asyncio
+async def test_coordinator_and_peak_guard_respect_ev_solar_excess_and_prio2(mock_hass_instance, mock_battery):
+    """Testar att coordinator.py inte skriver över Prio 2 HOLD med vanlig IDLE/DISCHARGE,
+    men tillåter backends 'Pausad (Sol > Elbil)' (IDLE) både i coordinator och PeakGuard."""
+    config = MOCK_CONFIG.copy()
+    config["ev_charging_sensor"] = "binary_sensor.ev_charging"
+
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+    coordinator.peak_guard = guard
+    guard._ev_charging_paused = True
+
+    ev_state = MagicMock(state="on")
+    limit_state = MagicMock(state="5.0")
+    load_state = MagicMock(state="3000")
+    bat_state = MagicMock(state="0")
+    soc_state = MagicMock(state="50")
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "binary_sensor.ev_charging":
+            return ev_state
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.bat_power":
+            return bat_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        return None
+
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        # 1. Om ev_charging_paused är True och molnsvaret skulle råka vara vanlig IDLE (utan Sol > Elbil)
+        # får koordinatorn INTE skicka IDLE och bryta Prio 2 HOLD.
+        mock_post.json = AsyncMock(return_value={"action": "IDLE", "peakguard_status": "Active"})
+        await coordinator._async_update_data()
+        mock_battery.apply_action.assert_not_called()
+
+        # 2. Om backend däremot svarar "Pausad (Sol > Elbil)" + "IDLE" ska både koordinatorn
+        # och PeakGuard tillåta IDLE så att solöverskottet kan ladda batteriet!
+        mock_post.json = AsyncMock(return_value={"action": "IDLE", "peakguard_status": "Pausad (Sol > Elbil)"})
+        data = await coordinator._async_update_data()
+        coordinator.data = data
+        mock_battery.apply_action.assert_called_once_with("IDLE", 0.0)
+
+        mock_battery.apply_action.reset_mock()
+        await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+        assert coordinator.data["action"] == "IDLE"
+
+
+@pytest.mark.asyncio
+async def test_on_load_change_only_refreshes_on_boolean_priority_transition(mock_hass_instance):
+    """Testar att numeriskt effektfladder på ev_charging_sensor (t.ex. 7100 W -> 7250 W)
+    INTE spammar coordinator.async_request_refresh(), utan endast vid omslag False <-> True."""
+    entry = MagicMock()
+    entry.data = MOCK_CONFIG.copy()
+    entry.data["ev_charging_sensor"] = "sensor.ev_power_w"
+    entry.data["external_control_sensor"] = "input_boolean.ext_ctrl"
+    entry.options = {}
+    entry.entry_id = "test_prio_debounce"
+
+    patch_int = "custom_components.battery_optimizer_light_plus.async_get_integration"
+    patch_coord = "custom_components.battery_optimizer_light_plus.BatteryOptimizerLightCoordinator"
+    patch_guard = "custom_components.battery_optimizer_light_plus.PeakGuard"
+    patch_track = "custom_components.battery_optimizer_light_plus.async_track_state_change_event"
+
+    with patch(patch_int, new_callable=AsyncMock) as mock_get_int, \
+         patch(patch_coord) as mock_coord_class, \
+         patch(patch_guard) as mock_guard_class, \
+         patch(patch_track) as mock_track:
+
+        mock_get_int.return_value = MagicMock(version="1.0.0")
+        mock_coord = mock_coord_class.return_value
+        mock_coord.async_config_entry_first_refresh = AsyncMock()
+        mock_coord.async_request_refresh = AsyncMock()
+        mock_guard = mock_guard_class.return_value
+        mock_guard.update = AsyncMock()
+
+        assert await async_setup_entry(mock_hass_instance, entry) is True
+        on_load_change = mock_track.call_args[0][2]
+        mock_hass_instance.state = CoreState.running
+
+        def make_event(entity_id, old_val, new_val):
+            ev = MagicMock()
+            ev.data = {
+                "entity_id": entity_id,
+                "old_state": MagicMock(state=old_val),
+                "new_state": MagicMock(state=new_val),
+            }
+            return ev
+
+        # 1. Start av laddning (0 -> 7100 W, dvs False -> True) -> Ska trigga refresh!
+        await on_load_change(make_event("sensor.ev_power_w", "0", "7100"))
+        assert mock_coord.async_request_refresh.call_count == 1
+
+        # 2. Effektfladder under pågående laddning (7100 -> 7250 W, True -> True) -> Ska INTE trigga refresh!
+        mock_coord.async_request_refresh.reset_mock()
+        await on_load_change(make_event("sensor.ev_power_w", "7100", "7250"))
+        mock_coord.async_request_refresh.assert_not_called()
+
+        # 3. Avslutad laddning (7250 -> 0 W, True -> False) -> Ska trigga refresh!
+        await on_load_change(make_event("sensor.ev_power_w", "7250", "0"))
+        assert mock_coord.async_request_refresh.call_count == 1
+
+
+
 
 
 

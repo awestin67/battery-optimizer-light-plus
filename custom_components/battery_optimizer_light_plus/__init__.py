@@ -55,6 +55,27 @@ _LOGGER = logging.getLogger(__name__)
 # --- KONFIGURATION ---
 LIMIT_ENTITY = "sensor.optimizer_light_peak_limit"
 
+
+def _is_ext_pause_state(state_obj) -> bool:
+    """Kontrollerar om en state-instans för extern styrning representerar aktiv paus."""
+    if not state_obj or state_obj.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+        return False
+    return str(state_obj.state).strip().lower() in ("on", "true", "1", "active", "yes", "på", "sant")
+
+
+def _is_ev_charging_state(state_obj) -> bool:
+    """Kontrollerar om en state-instans för elbilsladdning representerar aktiv laddning."""
+    if not state_obj or state_obj.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+        return False
+    val = str(state_obj.state).strip().lower()
+    if val in ("on", "true", "charging", "1", "på", "charge", "sant"):
+        return True
+    try:
+        return float(val) > 0
+    except (ValueError, TypeError):
+        return False
+
+
 async def async_setup_entry(hass: HomeAssistant, entry):
     """Set up from a config entry."""
     config = dict(entry.data)
@@ -147,7 +168,7 @@ async def async_setup_entry(hass: HomeAssistant, entry):
     coordinator.setup_timer()
 
     # --- BAKGRUNDSBEVAKNING ---
-    priority_entities = set()
+    ev_priority_entities = set()
 
     async def on_load_change(event):
         """Körs tyst i bakgrunden varje gång lasten eller styrstatus ändras."""
@@ -158,12 +179,19 @@ async def async_setup_entry(hass: HomeAssistant, entry):
                 old_state = event.data.get("old_state")
                 new_state = event.data.get("new_state")
                 if (
-                    changed_ent in priority_entities
-                    and old_state is not None
+                    old_state is not None
                     and new_state is not None
-                    and old_state.state != new_state.state
+                    and old_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE)
+                    and new_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE)
                 ):
-                    await coordinator.async_request_refresh()
+                    if changed_ent == ext_entity and (
+                        _is_ext_pause_state(old_state) != _is_ext_pause_state(new_state)
+                    ):
+                        await coordinator.async_request_refresh()
+                    elif changed_ent in ev_priority_entities and (
+                        _is_ev_charging_state(old_state) != _is_ev_charging_state(new_state)
+                    ):
+                        await coordinator.async_request_refresh()
 
     # Samla alla sensorer vi ska lyssna på
     entities_to_track = []
@@ -191,7 +219,6 @@ async def async_setup_entry(hass: HomeAssistant, entry):
     ext_entity = config.get(CONF_EXTERNAL_CONTROL_SENSOR)
     if ext_entity:
         entities_to_track.append(ext_entity)
-        priority_entities.add(ext_entity)
         _LOGGER.info(f"PeakGuard monitoring external control sensor: {ext_entity}")
 
     # 4. Elbilsladdningssensorer (Prio 2)
@@ -200,7 +227,7 @@ async def async_setup_entry(hass: HomeAssistant, entry):
         if ev_ent:
             if ev_ent not in entities_to_track:
                 entities_to_track.append(ev_ent)
-            priority_entities.add(ev_ent)
+            ev_priority_entities.add(ev_ent)
             _LOGGER.info(f"PeakGuard monitoring EV charging sensor: {ev_ent}")
 
     # Starta bevakning
@@ -387,17 +414,8 @@ class PeakGuard:
         """Kontrollerar om någon konfigurerad elbilsladdningssensor rapporterar aktiv laddning."""
         for ev_key in (CONF_EV_CHARGING_SENSOR, CONF_EV_C1_IS_CHARGING, CONF_EV_C2_IS_CHARGING):
             entity_id = self.config.get(ev_key)
-            if entity_id:
-                ev_state = self.hass.states.get(entity_id)
-                if ev_state and ev_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
-                    val = str(ev_state.state).strip().lower()
-                    if val in ["on", "true", "charging", "1", "på", "charge", "sant"]:
-                        return True
-                    try:
-                        if float(val) > 0:
-                            return True
-                    except (ValueError, TypeError):
-                        pass
+            if entity_id and _is_ev_charging_state(self.hass.states.get(entity_id)):
+                return True
         return False
 
     def _set_reported_state(self, state: bool):
@@ -487,11 +505,7 @@ class PeakGuard:
             # 0.1 Kontrollera Extern Paus (CheckWatt/FCR) - PRIO 1
             resumed_from_maintenance = False
             ext_entity = self.config.get(CONF_EXTERNAL_CONTROL_SENSOR)
-            external_pause = False
-            if ext_entity:
-                ext_state = self.hass.states.get(ext_entity)
-                if ext_state and ext_state.state.lower() in ["on", "true", "1", "active", "yes", "på", "sant"]:
-                    external_pause = True
+            external_pause = _is_ext_pause_state(self.hass.states.get(ext_entity)) if ext_entity else False
 
             if external_pause:
                 self._maintenance_cooldown_start = None
@@ -593,6 +607,19 @@ class PeakGuard:
             # 0.3 Kontrollera Elbilsladdning (Tvinga Spara/Vila via Elbilsladdning) - PRIO 2
             ev_charging_local = self._is_ev_charging_active()
             ev_state_changed = False
+            pg_status_str = str(pg_status or "").strip()
+            is_solar_exceeds_ev = pg_status_str == "Pausad (Sol > Elbil)"
+            is_stale_ev_pause = (
+                not ev_charging_local
+                and self._has_ev_charging_sensor_configured()
+                and pg_status_str in ("Pausad (Elbilsladdning)", "Pausad (Sol > Elbil)")
+            )
+            is_stale_ext_pause = (
+                not external_pause
+                and bool(ext_entity)
+                and pg_status_str == "Pausad (Extern styrning)"
+            )
+
             if ev_charging_local:
                 is_active = False
                 if self.is_active:
@@ -615,9 +642,7 @@ class PeakGuard:
                     resumed_from_maintenance = True
                     self.coordinator.async_update_listeners()
                 if (
-                    self._has_ev_charging_sensor_configured()
-                    and pg_status
-                    and "elbil" in str(pg_status).lower()
+                    (is_stale_ev_pause or is_stale_ext_pause)
                     and global_active
                     and _parse_bool(self.coordinator.data.get("is_peak_shaving_active"), True)
                 ):
@@ -711,16 +736,11 @@ class PeakGuard:
                 elif "action" in self.coordinator.data:
                     cloud_action = str(self.coordinator.data.get("action")).upper()
 
-            # Prio 2: Vid aktiv elbilsladdning tvingas Spara/Vila (HOLD), såvida inte molnet beordrat CHARGE
-            if ev_charging_local and cloud_action != "CHARGE":
+            # Prio 2: Vid aktiv elbilsladdning tvingas Spara/Vila (HOLD), såvida inte molnet beordrat
+            # CHARGE (parallell nätladdning) eller IDLE pga "Pausad (Sol > Elbil)" (solöverskott > hus + bil)
+            if ev_charging_local and cloud_action != "CHARGE" and not is_solar_exceeds_ev:
                 cloud_action = "HOLD"
-            elif (
-                not ev_charging_local
-                and self._has_ev_charging_sensor_configured()
-                and pg_status
-                and "elbil" in str(pg_status).lower()
-                and cloud_action == "HOLD"
-            ):
+            elif is_stale_ev_pause and cloud_action == "HOLD":
                 # Elbilsladdningen har nyss avslutats lokalt men coordinator.data har kvar gammal EV-HOLD
                 cloud_action = "IDLE"
 

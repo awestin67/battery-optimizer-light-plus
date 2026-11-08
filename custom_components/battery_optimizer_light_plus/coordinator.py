@@ -412,11 +412,18 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     data["cloud_target_power_kw"] = target_kw
 
                     # Låt batterihanteraren verkställa beslutet, om inte PeakGuard har tagit över lokalt
+                    ev_hold_override = (
+                        hasattr(self, "peak_guard")
+                        and getattr(self.peak_guard, "ev_charging_paused", False) is True
+                        and action not in ("HOLD", "CHARGE")
+                        and str(data.get("peakguard_status") or "").strip() != "Pausad (Sol > Elbil)"
+                    )
                     if self._is_passive_mode:
                         _LOGGER.debug("Passive mode active. Not applying actions to battery from cloud.")
                     elif (
                         not is_in_maintenance
                         and not (hasattr(self, "peak_guard") and self.peak_guard.is_active)
+                        and not ev_hold_override
                     ):
                         # Spärra manuell urladdning om vi har nått hårdvarureserven (t.ex. Sonnen Backup)
                         if action == "DISCHARGE" and soc <= hardware_min_soc:
@@ -425,6 +432,9 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                                 f"({hardware_min_soc}%). Avbryter urladdning."
                             )
                             action = "IDLE"
+
+                        if action != "HOLD" and hasattr(self, "peak_guard") and self.peak_guard:
+                            self.peak_guard._hold_command_sent = False
 
                         try:
                             site_limits = data.get("site_limits") or data.get("sonnen_site_limits")
