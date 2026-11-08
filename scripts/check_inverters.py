@@ -143,15 +143,21 @@ INVERTERS: list[InverterConfig] = [
 ]
 
 
-def run_git(cwd: Path, args: list[str]) -> str:
-    """Kör ett git-kommando i given katalog."""
+def run_git(cwd: Path, args: list[str], timeout: int = 30) -> str:
+    """Kör ett git-kommando i given katalog med timeout."""
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
     try:
         res = subprocess.check_output(
             ["git", "-C", str(cwd)] + args,
             stderr=subprocess.DEVNULL,
             shell=False,
+            timeout=timeout,
+            env=env,
         )
         return res.decode("utf-8").strip()
+    except subprocess.TimeoutExpired:
+        return "TIMEOUT"
     except Exception:
         return ""
 
@@ -383,9 +389,22 @@ def main():
 
         # Om --pull är begärt
         if args.pull:
-            print("   ⬇️  Kör 'git pull'...")
-            pull_res = run_git(repo_dir, ["pull"])
-            print(f"      {pull_res}")
+            is_shallow = (repo_dir / ".git" / "shallow").exists()
+            if is_shallow or repo_slug == "home-assistant/core":
+                print("   ⬇️  Kör 'git pull --depth 1' (shallow/monorepo)...")
+                pull_res = run_git(
+                    repo_dir,
+                    ["pull", "--depth", "1", "--ff-only"],
+                    timeout=25,
+                )
+            else:
+                print("   ⬇️  Kör 'git pull'...")
+                pull_res = run_git(repo_dir, ["pull", "--ff-only"], timeout=25)
+
+            if pull_res == "TIMEOUT":
+                print("      ⚠️  Timeout vid git pull – fortsätter med befintlig lokal commit.")
+            else:
+                print(f"      {pull_res or 'Redan uppdaterad.'}")
             # Uppdatera last_commit efter pull
             last_commit = run_git(repo_dir, ["log", "-1", "--format=%cs %h %s"])
             commit_short = last_commit[:35] + ("..." if len(last_commit) > 35 else "")

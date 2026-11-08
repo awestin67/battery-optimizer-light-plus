@@ -2556,6 +2556,93 @@ async def test_peak_guard_does_not_throttle_discharge_during_unrestricted_idle(m
     mock_battery.apply_action.assert_called_with("DISCHARGE", 0.5)
 
 
+@pytest.mark.asyncio
+async def test_peak_guard_waits_for_first_cloud_response(mock_hass_instance, mock_battery):
+    """Krav: PeakGuard får inte agera (eller sätta underhållsläge) innan första molnsvaret
+    har inkommit och bekräftat client_mode (coordinator.data är None eller tom)."""
+    config = MOCK_CONFIG.copy()
+    config["external_control_sensor"] = "input_boolean.checkwatt_active"
+
+    coordinator = MagicMock()
+    coordinator.data = None
+
+    guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+    guard._report_peak = AsyncMock()
+
+    limit_state = MagicMock(state="5.0")
+    load_state = MagicMock(state="7000")
+    soc_state = MagicMock(state="50")
+    ext_state = MagicMock(state="on")
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        if entity_id == "input_boolean.checkwatt_active":
+            return ext_state
+        return None
+
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    # Fall 1: coordinator.data är None -> ska avbryta direkt
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard.is_active is False
+    assert guard.in_maintenance is False
+    mock_battery.apply_action.assert_not_called()
+    guard._report_peak.assert_not_called()
+
+    # Fall 2: coordinator.data är tom dict {} -> ska också avbryta direkt
+    coordinator.data = {}
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard.is_active is False
+    assert guard.in_maintenance is False
+    mock_battery.apply_action.assert_not_called()
+    guard._report_peak.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_passive_mode_ignores_maintenance_in_payload(mock_hass_instance, mock_battery):
+    """Krav: Om koordinatorn är i passivt läge (_is_passive_mode=True) ska is_in_maintenance
+    tvingas till False i signal-payloaden även om peak_guard.in_maintenance råkar vara True."""
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, MOCK_CONFIG)
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 50.0
+
+    mock_pg = MagicMock()
+    mock_pg.in_maintenance = True
+    coordinator.peak_guard = mock_pg
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE", "client_mode": "PASSIVE"})
+
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": [], "forecast": []})
+
+        # Fall 1: Passivt läge -> is_in_maintenance ska vara False trots att peak_guard.in_maintenance är True
+        coordinator._is_passive_mode = True
+        await coordinator._async_update_data()
+        payload_passive = mock_session.post.call_args[1]["json"]
+        assert payload_passive["is_in_maintenance"] is False
+
+        # Fall 2: Aktivt läge -> is_in_maintenance ska spegla peak_guard.in_maintenance (True)
+        coordinator._is_passive_mode = False
+        mock_post.json = AsyncMock(return_value={"action": "IDLE", "client_mode": "ACTIVE"})
+        await coordinator._async_update_data()
+        payload_active = mock_session.post.call_args[1]["json"]
+        assert payload_active["is_in_maintenance"] is True
+
+
+
 
 
 

@@ -377,7 +377,9 @@ class PeakGuard:
         self._is_updating = True
 
         try:
-            # 0. Kontrollera om Peak Shaving är aktivt
+            # 0. Kontrollera om Peak Shaving är aktivt (vänta tills första molnsvaret bekräftat client_mode)
+            if not self.coordinator.data:
+                return
             is_active = True
             limit_enforced = True
             client_mode = "ACTIVE"

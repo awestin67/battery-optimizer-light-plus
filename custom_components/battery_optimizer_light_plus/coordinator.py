@@ -150,7 +150,11 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                 self._last_valid_soc = reported_soc
 
                 is_in_maintenance = False
-                if hasattr(self, "peak_guard") and self.peak_guard:
+                if (
+                    hasattr(self, "peak_guard")
+                    and self.peak_guard
+                    and not getattr(self, "_is_passive_mode", False)
+                ):
                     is_in_maintenance = self.peak_guard.in_maintenance
 
                 # --- EV CHARGING SENSOR ---
