@@ -45,6 +45,9 @@ from .const import (
     DEFAULT_BATTERY_STATUS_KEYWORDS,
     CONF_EXTERNAL_CONTROL_SENSOR,
     CONF_WATER_HEATER_SWITCH,
+    CONF_EV_CHARGING_SENSOR,
+    CONF_EV_C1_IS_CHARGING,
+    CONF_EV_C2_IS_CHARGING,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -144,10 +147,23 @@ async def async_setup_entry(hass: HomeAssistant, entry):
     coordinator.setup_timer()
 
     # --- BAKGRUNDSBEVAKNING ---
+    priority_entities = set()
+
     async def on_load_change(event):
-        """Körs tyst i bakgrunden varje gång lasten ändras."""
+        """Körs tyst i bakgrunden varje gång lasten eller styrstatus ändras."""
         if hass.state == CoreState.running:
             await peak_guard.update(virtual_load_entity, LIMIT_ENTITY)
+            if event and hasattr(event, "data") and isinstance(event.data, dict):
+                changed_ent = event.data.get("entity_id")
+                old_state = event.data.get("old_state")
+                new_state = event.data.get("new_state")
+                if (
+                    changed_ent in priority_entities
+                    and old_state is not None
+                    and new_state is not None
+                    and old_state.state != new_state.state
+                ):
+                    await coordinator.async_request_refresh()
 
     # Samla alla sensorer vi ska lyssna på
     entities_to_track = []
@@ -171,11 +187,21 @@ async def async_setup_entry(hass: HomeAssistant, entry):
         entities_to_track.append(status_entity)
         _LOGGER.info(f"PeakGuard monitoring battery status: {status_entity}")
 
-    # 3. Extern Paus-sensor
+    # 3. Extern Paus-sensor (Prio 1)
     ext_entity = config.get(CONF_EXTERNAL_CONTROL_SENSOR)
     if ext_entity:
         entities_to_track.append(ext_entity)
+        priority_entities.add(ext_entity)
         _LOGGER.info(f"PeakGuard monitoring external control sensor: {ext_entity}")
+
+    # 4. Elbilsladdningssensorer (Prio 2)
+    for ev_key in (CONF_EV_CHARGING_SENSOR, CONF_EV_C1_IS_CHARGING, CONF_EV_C2_IS_CHARGING):
+        ev_ent = config.get(ev_key)
+        if ev_ent:
+            if ev_ent not in entities_to_track:
+                entities_to_track.append(ev_ent)
+            priority_entities.add(ev_ent)
+            _LOGGER.info(f"PeakGuard monitoring EV charging sensor: {ev_ent}")
 
     # Starta bevakning
     if entities_to_track:
@@ -331,6 +357,7 @@ class PeakGuard:
         self._in_maintenance = False  # Flagga för underhållsläge
         self._maintenance_reason = None  # Orsak till underhållsläge
         self._maintenance_cooldown_start = None # Tidsstämpel för när underhållssignalen försvann
+        self._ev_charging_paused = False  # Flagga för Prio 2 (Tvinga Spara/Vila via Elbilsladdning)
         self._last_sent_command = None  # Håller koll på senaste kommandot för att undvika spam
         self._is_updating = False  # Lås för att förhindra överlappande exekvering
 
@@ -345,6 +372,33 @@ class PeakGuard:
     @property
     def maintenance_reason(self):
         return self._maintenance_reason
+
+    @property
+    def ev_charging_paused(self):
+        return self._ev_charging_paused
+
+    def _has_ev_charging_sensor_configured(self) -> bool:
+        return any(
+            self.config.get(k)
+            for k in (CONF_EV_CHARGING_SENSOR, CONF_EV_C1_IS_CHARGING, CONF_EV_C2_IS_CHARGING)
+        )
+
+    def _is_ev_charging_active(self) -> bool:
+        """Kontrollerar om någon konfigurerad elbilsladdningssensor rapporterar aktiv laddning."""
+        for ev_key in (CONF_EV_CHARGING_SENSOR, CONF_EV_C1_IS_CHARGING, CONF_EV_C2_IS_CHARGING):
+            entity_id = self.config.get(ev_key)
+            if entity_id:
+                ev_state = self.hass.states.get(entity_id)
+                if ev_state and ev_state.state not in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
+                    val = str(ev_state.state).strip().lower()
+                    if val in ["on", "true", "charging", "1", "på", "charge", "sant"]:
+                        return True
+                    try:
+                        if float(val) > 0:
+                            return True
+                    except (ValueError, TypeError):
+                        pass
+        return False
 
     def _set_reported_state(self, state: bool):
         if self._has_reported != state:
@@ -414,9 +468,10 @@ class PeakGuard:
                 # Återställ lokala flaggor så de inte stör dashboards.
                 if self.is_active:
                     self._set_reported_state(False)
-                if self._in_maintenance:
+                if self._in_maintenance or self._ev_charging_paused:
                     self._in_maintenance = False
                     self._maintenance_reason = None
+                    self._ev_charging_paused = False
                     self.coordinator.async_update_listeners()
                 return
 
@@ -429,7 +484,8 @@ class PeakGuard:
                 # OBS! Vi avbryter INTE (return) här längre.
                 # Molnets action ska fortsätta respekteras lokalt oavsett denna inställning.
 
-            # 0.1 Kontrollera Extern Paus (CheckWatt/FCR)
+            # 0.1 Kontrollera Extern Paus (CheckWatt/FCR) - PRIO 1
+            resumed_from_maintenance = False
             ext_entity = self.config.get(CONF_EXTERNAL_CONTROL_SENSOR)
             external_pause = False
             if ext_entity:
@@ -439,11 +495,14 @@ class PeakGuard:
 
             if external_pause:
                 self._maintenance_cooldown_start = None
+                if self._ev_charging_paused:
+                    self._ev_charging_paused = False
                 if not self._in_maintenance:
                     _LOGGER.info(f"⏸️ External pause sensor active ({ext_entity}). Pausing Battery Optimizer.")
                     self._in_maintenance = True
                     self._maintenance_reason = "External Control Active"
                     self._last_sent_command = None
+                    self._hold_command_sent = False
                     self.coordinator.async_update_listeners()
                     # Släpp eventuella egna lås så externa system kan ta över
                     try:
@@ -454,8 +513,17 @@ class PeakGuard:
                 if self.is_active:
                     self._set_reported_state(False)
                 return
+            elif self._in_maintenance and self._maintenance_reason == "External Control Active":
+                _LOGGER.info(f"▶️ External pause sensor cleared ({ext_entity}). Resuming Battery Optimizer.")
+                self._in_maintenance = False
+                self._maintenance_reason = None
+                self._maintenance_cooldown_start = None
+                self._last_sent_command = None
+                self._hold_command_sent = False
+                resumed_from_maintenance = True
+                self.coordinator.async_update_listeners()
 
-            # 0.2 Kontrollera Batteristatus (Maintenance/Full Charge)
+            # 0.2 Kontrollera Batteristatus (Maintenance/Full Charge) - PRIO 1b
             val_display = None
             if hasattr(self.battery, "get_status_text"):
                 val_display = await self.battery.get_status_text()
@@ -489,10 +557,13 @@ class PeakGuard:
 
                 if any(k in val_lower for k in keywords):
                     self._maintenance_cooldown_start = None # Återställ cooldown om vi ser signalen igen
+                    if self._ev_charging_paused:
+                        self._ev_charging_paused = False
                     if not self._in_maintenance:
                         _LOGGER.info(f"🔋 Maintenance mode detected ({val_display}). Pausing control.")
                         self._in_maintenance = True
                         self._last_sent_command = None
+                        self._hold_command_sent = False
                         self.coordinator.async_update_listeners()
 
                     self._maintenance_reason = val_display
@@ -515,7 +586,42 @@ class PeakGuard:
                     self._maintenance_reason = None
                     self._maintenance_cooldown_start = None
                     self._last_sent_command = None
+                    self._hold_command_sent = False
+                    resumed_from_maintenance = True
                     self.coordinator.async_update_listeners()
+
+            # 0.3 Kontrollera Elbilsladdning (Tvinga Spara/Vila via Elbilsladdning) - PRIO 2
+            ev_charging_local = self._is_ev_charging_active()
+            ev_state_changed = False
+            if ev_charging_local:
+                is_active = False
+                if self.is_active:
+                    _LOGGER.info("🚗 EV charging detected locally. Clearing active PeakGuard.")
+                    self._set_reported_state(False)
+                if not self._ev_charging_paused:
+                    _LOGGER.info("🚗 EV charging active (Prio 2). Enforcing battery HOLD/save mode.")
+                    self._ev_charging_paused = True
+                    self._last_sent_command = None
+                    self._hold_command_sent = False
+                    ev_state_changed = True
+                    self.coordinator.async_update_listeners()
+            else:
+                if self._ev_charging_paused:
+                    _LOGGER.info("🚗 EV charging ended (Prio 2 cleared). Resuming normal BOLP control (Prio 3).")
+                    self._ev_charging_paused = False
+                    self._last_sent_command = None
+                    self._hold_command_sent = False
+                    ev_state_changed = True
+                    resumed_from_maintenance = True
+                    self.coordinator.async_update_listeners()
+                if (
+                    self._has_ev_charging_sensor_configured()
+                    and pg_status
+                    and "elbil" in str(pg_status).lower()
+                    and global_active
+                    and _parse_bool(self.coordinator.data.get("is_peak_shaving_active"), True)
+                ):
+                    is_active = True
 
             # 1. Hämta Gränsvärdet
             limit_w = None
@@ -605,6 +711,19 @@ class PeakGuard:
                 elif "action" in self.coordinator.data:
                     cloud_action = str(self.coordinator.data.get("action")).upper()
 
+            # Prio 2: Vid aktiv elbilsladdning tvingas Spara/Vila (HOLD), såvida inte molnet beordrat CHARGE
+            if ev_charging_local and cloud_action != "CHARGE":
+                cloud_action = "HOLD"
+            elif (
+                not ev_charging_local
+                and self._has_ev_charging_sensor_configured()
+                and pg_status
+                and "elbil" in str(pg_status).lower()
+                and cloud_action == "HOLD"
+            ):
+                # Elbilsladdningen har nyss avslutats lokalt men coordinator.data har kvar gammal EV-HOLD
+                cloud_action = "IDLE"
+
             # Kontrollera om batteriet rör på sig (för att kunna tvinga stopp vid HOLD)
             bat_is_moving = False
             bat_val = None
@@ -632,11 +751,15 @@ class PeakGuard:
 
             # Avbryt bara om:
             # 1. Ingen peak är aktiv.
-            # 2. Lasten är under varningsgränsen.
-            # 3. Vi INTE laddar (för då måste vi kolla säkringen).
-            # 4. Vi INTE behöver tvinga stopp (HOLD + Battery Moving).
+            # 2. Vi inte precis återupptagit drift efter extern paus / underhållsläge eller ändrad EV-laddstatus.
+            # 3. Lasten är under varningsgränsen.
+            # 4. Vi INTE laddar (för då måste vi kolla säkringen).
+            # 5. Vi INTE behöver tvinga stopp (HOLD + Battery Moving).
             if (
                 not self._has_reported
+                and not resumed_from_maintenance
+                and not ev_state_changed
+                and not (ev_charging_local and self._last_sent_command != "HOLD")
                 and current_load < wake_up_threshold
                 and cloud_action != "CHARGE"
                 and not (cloud_action == "HOLD" and bat_is_moving)
@@ -808,7 +931,12 @@ class PeakGuard:
                         else abs(bat_power) > 100
                     )
 
-                    if is_hold_violation:
+                    if (
+                        is_hold_violation
+                        or resumed_from_maintenance
+                        or ev_state_changed
+                        or (ev_charging_local and self._last_sent_command != "HOLD")
+                    ):
                         if not self._hold_command_sent:
                             _LOGGER.info(
                                 f"⚙️ Executing HOLD command. Battery is active ({bat_power} W), "

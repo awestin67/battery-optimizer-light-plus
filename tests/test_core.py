@@ -2642,6 +2642,187 @@ async def test_coordinator_passive_mode_ignores_maintenance_in_payload(mock_hass
         assert payload_active["is_in_maintenance"] is True
 
 
+@pytest.mark.asyncio
+async def test_external_control_sensor_resumes_and_applies_cloud_action(mock_hass_instance, mock_battery):
+    """Krav: När external_control_sensor är 'on' ska batteriet lämnas ifred även om elbilsladdning
+    slås på/av (cloud_action=HOLD). När external_control_sensor slås 'off' ska _in_maintenance
+    återställas direkt (även utan battery_status_sensor) och gällande cloud_action (t.ex. HOLD)
+    ska verkställas direkt."""
+    config = MOCK_CONFIG.copy()
+    config["external_control_sensor"] = "input_boolean.checkwatt_active"
+
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "HOLD",
+        "cloud_action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": False,
+        "peakguard_status": "Pausad (Elbilsladdning)",
+    }
+
+    guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+
+    limit_state = MagicMock(state="5.0")
+    load_state = MagicMock(state="2000")  # Låg last (< wake_up_threshold)
+    bat_state = MagicMock(state="0")      # Batteriet står på 0 W just i ögonblicket
+    soc_state = MagicMock(state="50")
+    external_state = MagicMock(state="on")
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.bat_power":
+            return bat_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        if entity_id == "input_boolean.checkwatt_active":
+            return external_state
+        return None
+
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    # Steg 1: Extern styrning slås PÅ -> Skickar IDLE en gång och sätter _in_maintenance = True
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard.in_maintenance is True
+    assert guard.maintenance_reason == "External Control Active"
+    mock_battery.apply_action.assert_called_once_with("IDLE")
+
+    # Steg 2: Elbilsladdning pågår / ändras medan extern styrning är PÅ -> Rör inte batteriet
+    mock_battery.apply_action.reset_mock()
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard.in_maintenance is True
+    mock_battery.apply_action.assert_not_called()
+
+    # Steg 3: Extern styrning slås AV -> _in_maintenance ska släppa direkt (trots val_display=None)
+    # och gällande cloud_action (HOLD pga pågående elbilsladdning) ska skickas direkt!
+    external_state.state = "off"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard.in_maintenance is False
+    assert guard.maintenance_reason is None
+    mock_battery.apply_action.assert_called_once_with("HOLD")
+
+
+@pytest.mark.asyncio
+async def test_three_tier_priority_hierarchy(mock_hass_instance, mock_battery):
+    """Testar de tre prioritetsnivåerna och alla övergångar dem emellan:
+    Prio 1: Extern styrning (external_control_sensor)
+    Prio 2: Tvinga Spara/Vila (HOLD) via Elbilsladdning (ev_charging_sensor)
+    Prio 3: Automatisk BOLP-styrning (molnbeslut + PeakGuard)
+    """
+    config = MOCK_CONFIG.copy()
+    config["external_control_sensor"] = "input_boolean.external_control"
+    config["ev_charging_sensor"] = "binary_sensor.ev_charging"
+
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "IDLE",
+        "cloud_action": "IDLE",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+    }
+
+    guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+    guard._report_peak = AsyncMock()
+
+    limit_state = MagicMock(state="5.0")
+    load_state = MagicMock(state="8000")  # Hög last (t.ex. 8 kW när elbilen drar igång)
+    bat_state = MagicMock(state="0")
+    soc_state = MagicMock(state="60")
+    external_state = MagicMock(state="off")
+    ev_state = MagicMock(state="off")
+
+    def get_state_side_effect(entity_id):
+        if entity_id == "sensor.optimizer_light_peak_limit":
+            return limit_state
+        if entity_id == "sensor.husets_netto_last_virtuell":
+            return load_state
+        if entity_id == "sensor.bat_power":
+            return bat_state
+        if entity_id == "sensor.soc":
+            return soc_state
+        if entity_id == "input_boolean.external_control":
+            return external_state
+        if entity_id == "binary_sensor.ev_charging":
+            return ev_state
+        return None
+
+    mock_hass_instance.states.get.side_effect = get_state_side_effect
+
+    # --- STEG 1 (Prio 3 -> Prio 2): Elbilsladdning startar innan molnet hunnit polla ---
+    # Trots att coordinator.data har cloud_action="IDLE" och lasten är 8 kW (> 5 kW gräns),
+    # ska Prio 2 direkt pausa PeakGuard och tvinga batteriet till HOLD!
+    ev_state.state = "on"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard.in_maintenance is False
+    assert guard.ev_charging_paused is True
+    assert guard.is_active is False
+    guard._report_peak.assert_not_called()
+    mock_battery.apply_action.assert_called_once_with("HOLD")
+    assert coordinator.data["action"] == "HOLD"
+
+    # --- STEG 2 (Prio 2 -> Prio 1): Extern styrning slås PÅ under pågående elbilsladdning ---
+    # Prio 1 trumfar Prio 2: släpper batteriet till IDLE så extern styrning kan ta över.
+    mock_battery.apply_action.reset_mock()
+    external_state.state = "on"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard.in_maintenance is True
+    assert guard.ev_charging_paused is False
+    mock_battery.apply_action.assert_called_once_with("IDLE")
+
+    # --- STEG 3 (Under Prio 1): Elbilsladdning slås av och på medan extern styrning är PÅ ---
+    # Inga kommandon får skickas till batteriet så länge Prio 1 är aktiv.
+    mock_battery.apply_action.reset_mock()
+    ev_state.state = "off"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    ev_state.state = "on"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_not_called()
+
+    # --- STEG 4 (Prio 1 -> Prio 2): Extern styrning slås AV medan elbilsladdning fortfarande är PÅ ---
+    # Även om molnet under Prio 1 svarade med cloud_action="IDLE", ska Prio 2 direkt tvinga HOLD!
+    coordinator.data["cloud_action"] = "IDLE"
+    coordinator.data["action"] = "IDLE"
+    external_state.state = "off"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard.in_maintenance is False
+    assert guard.ev_charging_paused is True
+    mock_battery.apply_action.assert_called_once_with("HOLD")
+    assert coordinator.data["action"] == "HOLD"
+
+    # --- STEG 5 (Prio 2 -> Prio 1 -> EV avslutas under Prio 1 -> Prio 1 AV -> Prio 3): ---
+    # Molnet hade hunnit svara "HOLD" / "Pausad (Elbilsladdning)" medan bilen laddade.
+    coordinator.data["cloud_action"] = "HOLD"
+    coordinator.data["action"] = "HOLD"
+    coordinator.data["peakguard_status"] = "Pausad (Elbilsladdning)"
+
+    # Extern styrning slås PÅ (Prio 1)
+    mock_battery.apply_action.reset_mock()
+    external_state.state = "on"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_called_once_with("IDLE")
+
+    # Medan extern styrning är PÅ avslutas elbilsladdningen (och lasten sjunker till 2000 W)
+    mock_battery.apply_action.reset_mock()
+    ev_state.state = "off"
+    load_state.state = "2000"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_not_called()
+
+    # Nu slås extern styrning AV -> Eftersom elbilsladdningen avslutades under Prio 1
+    # ska vi INTE fastna i gammal EV-HOLD, utan gå direkt till Prio 3 (IDLE)!
+    external_state.state = "off"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert guard.in_maintenance is False
+    assert guard.ev_charging_paused is False
+    mock_battery.apply_action.assert_called_once_with("IDLE")
+    assert coordinator.data["action"] == "IDLE"
+
+
+
+
 
 
 

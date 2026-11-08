@@ -249,15 +249,22 @@ class BatteryLightStatusSensor(BatteryOptimizerSensorBase):
         is_triggered = False
         in_maintenance = False
         maintenance_reason = None
+        ev_charging_paused = False
 
         if hasattr(self.coordinator, "peak_guard"):
             pg = self.coordinator.peak_guard
             is_triggered = pg.is_active
             in_maintenance = pg.in_maintenance
             maintenance_reason = pg.maintenance_reason
+            ev_charging_paused = getattr(pg, "ev_charging_paused", False) is True
 
         if in_maintenance:
             return f"Maintenance mode detected ({maintenance_reason}). Pausing control."
+
+        if ev_charging_paused:
+            if pg_status and str(pg_status).strip().lower().startswith("paus"):
+                return pg_status
+            return "Pausad (Elbilsladdning)"
 
         if is_triggered:
             return "Triggered"
@@ -288,7 +295,7 @@ class BatteryLightStatusSensor(BatteryOptimizerSensorBase):
             return "mdi:eye-outline"
         if status == "Disabled" or status == "Off":
             return "mdi:shield-off"
-        if "Paused" in status:
+        if "Paused" in status or "Pausad" in status:
             return "mdi:pause-circle-outline"
         if status == "Triggered":
             return "mdi:shield-alert"
