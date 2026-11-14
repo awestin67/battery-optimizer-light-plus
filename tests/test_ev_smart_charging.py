@@ -576,12 +576,29 @@ async def test_ev_cable_connected_supports_text_sensors_and_avoids_duplicate_tri
     coord.async_clear_ev_charging.assert_not_called()
 
     # 3. 'Charging' -> 'unavailable' (Tillfälligt molnavbrott) -> ska INTE rensa planen
+    coord.ev_schedules = {"Bil 1": [{"start": "2026-11-08T01:00:00"}]}
     await cable_cb(_helper_event("binary_sensor.cable", "Charging", "unavailable"))
     coord.async_clear_ev_charging.assert_not_called()
+
+    # 3b. 'unavailable' -> 'Charging' (Molnsensorn återhämtar sig när schema redan finns) -> ska INTE replanna
+    coord.async_plan_ev_charging.reset_mock()
+    await cable_cb(_helper_event("binary_sensor.cable", "unavailable", "Charging"))
+    coord.async_plan_ev_charging.assert_not_called()
 
     # 4. 'Charging' -> 'EV Disconnected' (Urkopplad) -> ska rensa planen
     await cable_cb(_helper_event("binary_sensor.cable", "Charging", "EV Disconnected"))
     coord.async_clear_ev_charging.assert_called_once_with("car1")
+
+    # 5. 'unavailable' -> 'EV Disconnected' när inget schema finns -> ska INTE skicka onödig DELETE
+    coord.ev_schedules = {}
+    coord.async_clear_ev_charging.reset_mock()
+    await cable_cb(_helper_event("binary_sensor.cable", "unavailable", "EV Disconnected"))
+    coord.async_clear_ev_charging.assert_not_called()
+
+    # 6. Numeriskt värde '1' på kabelsensorn ska INTE feltolkas som kabel ansluten
+    coord.async_plan_ev_charging.reset_mock()
+    await cable_cb(_helper_event("binary_sensor.cable", "0", "1"))
+    coord.async_plan_ev_charging.assert_not_called()
 
 
 

@@ -84,7 +84,6 @@ def _is_ev_cable_connected_state(state_obj) -> bool:
     return val in (
         "on",
         "true",
-        "1",
         "connected",
         "plugged_in",
         "plugged in",
@@ -279,10 +278,12 @@ async def async_setup_entry(hass: HomeAssistant, entry):
 
     # Lyssna på ev_cable_connected och EV-helpers för automatiskt anrop
     from .const import (
+        CONF_EV_C1_NAME,
         CONF_EV_C1_CABLE_CONNECTED,
         CONF_EV_C1_TARGET_KWH,
         CONF_EV_C1_DEPART_TIME,
         CONF_EV_C1_MAX_KW,
+        CONF_EV_C2_NAME,
         CONF_EV_C2_CABLE_CONNECTED,
         CONF_EV_C2_TARGET_KWH,
         CONF_EV_C2_DEPART_TIME,
@@ -294,26 +295,39 @@ async def async_setup_entry(hass: HomeAssistant, entry):
         old_state = event.data.get("old_state")
         if new_state and new_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
             ent_id = event.data.get("entity_id")
+            if ent_id == config.get(CONF_EV_C1_CABLE_CONNECTED):
+                car_key = "car1"
+                car_name = config.get(CONF_EV_C1_NAME, "Bil 1")
+            elif ent_id == config.get(CONF_EV_C2_CABLE_CONNECTED):
+                car_key = "car2"
+                car_name = config.get(CONF_EV_C2_NAME, "Bil 2")
+            else:
+                return
+
             new_connected = _is_ev_cable_connected_state(new_state)
+            was_unavailable = old_state is not None and old_state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE)
             old_connected = (
                 _is_ev_cable_connected_state(old_state)
-                if old_state and old_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE)
+                if old_state and not was_unavailable
                 else None
             )
             if old_connected == new_connected:
                 return
+
+            if was_unavailable:
+                existing_schedules = getattr(coordinator, "ev_schedules", None)
+                has_schedule = isinstance(existing_schedules, dict) and car_name in existing_schedules
+                if new_connected and has_schedule:
+                    return
+                if not new_connected and not has_schedule:
+                    return
+
             if new_connected:
                 _LOGGER.info(f"EV Cable Connected detected on {ent_id}, generating plan...")
-                if ent_id == config.get(CONF_EV_C1_CABLE_CONNECTED):
-                    await coordinator.async_plan_ev_charging("car1")
-                elif ent_id == config.get(CONF_EV_C2_CABLE_CONNECTED):
-                    await coordinator.async_plan_ev_charging("car2")
+                await coordinator.async_plan_ev_charging(car_key)
             else:
                 _LOGGER.info(f"EV Cable Disconnected detected on {ent_id}, clearing plan...")
-                if ent_id == config.get(CONF_EV_C1_CABLE_CONNECTED):
-                    await coordinator.async_clear_ev_charging("car1")
-                elif ent_id == config.get(CONF_EV_C2_CABLE_CONNECTED):
-                    await coordinator.async_clear_ev_charging("car2")
+                await coordinator.async_clear_ev_charging(car_key)
 
     ev_triggers = []
     if config.get(CONF_EV_C1_CABLE_CONNECTED):
