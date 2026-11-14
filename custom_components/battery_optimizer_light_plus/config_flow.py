@@ -854,16 +854,24 @@ class BatteryOptimizerLightOptionsFlow(config_entries.OptionsFlow):
             _opt(CONF_EV_C1_TARGET_KWH, get_default(CONF_EV_C1_TARGET_KWH)): EntitySelector(EntitySelectorConfig(domain="input_number")),
             _opt(CONF_EV_C1_DEPART_TIME, get_default(CONF_EV_C1_DEPART_TIME)): EntitySelector(EntitySelectorConfig(domain="input_datetime")),
             _opt(CONF_EV_C1_MAX_KW, get_default(CONF_EV_C1_MAX_KW)): EntitySelector(EntitySelectorConfig(domain="input_number")),
-            _opt(CONF_EV_C1_CABLE_CONNECTED, get_default(CONF_EV_C1_CABLE_CONNECTED)): EntitySelector(EntitySelectorConfig(domain="binary_sensor")),
-            _opt(CONF_EV_C1_IS_CHARGING, get_default(CONF_EV_C1_IS_CHARGING)): EntitySelector(EntitySelectorConfig(domain="binary_sensor")),
+            _opt(CONF_EV_C1_CABLE_CONNECTED, get_default(CONF_EV_C1_CABLE_CONNECTED)): EntitySelector(
+                EntitySelectorConfig(domain=["binary_sensor", "sensor", "input_boolean"])
+            ),
+            _opt(CONF_EV_C1_IS_CHARGING, get_default(CONF_EV_C1_IS_CHARGING)): EntitySelector(
+                EntitySelectorConfig(domain=["binary_sensor", "sensor", "switch", "input_boolean"])
+            ),
 
             # Car 2
             _opt(CONF_EV_C2_NAME, get_default(CONF_EV_C2_NAME)): selector.TextSelector(selector.TextSelectorConfig()),
             _opt(CONF_EV_C2_TARGET_KWH, get_default(CONF_EV_C2_TARGET_KWH)): EntitySelector(EntitySelectorConfig(domain="input_number")),
             _opt(CONF_EV_C2_DEPART_TIME, get_default(CONF_EV_C2_DEPART_TIME)): EntitySelector(EntitySelectorConfig(domain="input_datetime")),
             _opt(CONF_EV_C2_MAX_KW, get_default(CONF_EV_C2_MAX_KW)): EntitySelector(EntitySelectorConfig(domain="input_number")),
-            _opt(CONF_EV_C2_CABLE_CONNECTED, get_default(CONF_EV_C2_CABLE_CONNECTED)): EntitySelector(EntitySelectorConfig(domain="binary_sensor")),
-            _opt(CONF_EV_C2_IS_CHARGING, get_default(CONF_EV_C2_IS_CHARGING)): EntitySelector(EntitySelectorConfig(domain="binary_sensor")),
+            _opt(CONF_EV_C2_CABLE_CONNECTED, get_default(CONF_EV_C2_CABLE_CONNECTED)): EntitySelector(
+                EntitySelectorConfig(domain=["binary_sensor", "sensor", "input_boolean"])
+            ),
+            _opt(CONF_EV_C2_IS_CHARGING, get_default(CONF_EV_C2_IS_CHARGING)): EntitySelector(
+                EntitySelectorConfig(domain=["binary_sensor", "sensor", "switch", "input_boolean"])
+            ),
         })
 
         return self.async_show_form(step_id="init", data_schema=vol.Schema(schema_fields))

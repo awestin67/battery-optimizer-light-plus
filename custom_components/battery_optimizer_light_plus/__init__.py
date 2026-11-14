@@ -68,12 +68,39 @@ def _is_ev_charging_state(state_obj) -> bool:
     if not state_obj or state_obj.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
         return False
     val = str(state_obj.state).strip().lower()
-    if val in ("on", "true", "charging", "1", "på", "charge", "sant"):
+    if val in ("on", "true", "charging", "boosting", "1", "på", "charge", "sant"):
         return True
     try:
         return float(val) > 0
     except (ValueError, TypeError):
         return False
+
+
+def _is_ev_cable_connected_state(state_obj) -> bool:
+    """Kontrollerar om en state-instans för laddkabel representerar att kabeln är ansluten."""
+    if not state_obj or state_obj.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+        return False
+    val = str(state_obj.state).strip().lower()
+    return val in (
+        "on",
+        "true",
+        "1",
+        "connected",
+        "plugged_in",
+        "plugged in",
+        "ev connected",
+        "waiting for ev",
+        "charging",
+        "boosting",
+        "ready",
+        "conserving",
+        "complete",
+        "completed",
+        "paused",
+        "på",
+        "sant",
+        "ansluten",
+    )
 
 
 async def async_setup_entry(hass: HomeAssistant, entry):
@@ -264,15 +291,24 @@ async def async_setup_entry(hass: HomeAssistant, entry):
 
     async def _on_ev_connected(event):
         new_state = event.data.get("new_state")
-        if new_state:
+        old_state = event.data.get("old_state")
+        if new_state and new_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
             ent_id = event.data.get("entity_id")
-            if new_state.state == "on":
+            new_connected = _is_ev_cable_connected_state(new_state)
+            old_connected = (
+                _is_ev_cable_connected_state(old_state)
+                if old_state and old_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE)
+                else None
+            )
+            if old_connected == new_connected:
+                return
+            if new_connected:
                 _LOGGER.info(f"EV Cable Connected detected on {ent_id}, generating plan...")
                 if ent_id == config.get(CONF_EV_C1_CABLE_CONNECTED):
                     await coordinator.async_plan_ev_charging("car1")
                 elif ent_id == config.get(CONF_EV_C2_CABLE_CONNECTED):
                     await coordinator.async_plan_ev_charging("car2")
-            elif new_state.state == "off":
+            else:
                 _LOGGER.info(f"EV Cable Disconnected detected on {ent_id}, clearing plan...")
                 if ent_id == config.get(CONF_EV_C1_CABLE_CONNECTED):
                     await coordinator.async_clear_ev_charging("car1")
@@ -336,13 +372,13 @@ async def async_setup_entry(hass: HomeAssistant, entry):
         if ent_id in c1_helpers:
             c1_cable_ent = config.get(CONF_EV_C1_CABLE_CONNECTED)
             c1_cable = hass.states.get(c1_cable_ent) if c1_cable_ent else None
-            if c1_cable and getattr(c1_cable, "state", None) == "on":
+            if _is_ev_cable_connected_state(c1_cable):
                 _LOGGER.info(f"EV Helper {ent_id} changed while Car 1 connected, regenerating plan...")
                 _schedule_replan("car1")
         if ent_id in c2_helpers:
             c2_cable_ent = config.get(CONF_EV_C2_CABLE_CONNECTED)
             c2_cable = hass.states.get(c2_cable_ent) if c2_cable_ent else None
-            if c2_cable and getattr(c2_cable, "state", None) == "on":
+            if _is_ev_cable_connected_state(c2_cable):
                 _LOGGER.info(f"EV Helper {ent_id} changed while Car 2 connected, regenerating plan...")
                 _schedule_replan("car2")
 
@@ -360,7 +396,7 @@ async def async_setup_entry(hass: HomeAssistant, entry):
         cable_ent = config.get(cable_conf)
         if cable_ent:
             cable_state = hass.states.get(cable_ent)
-            if cable_state and getattr(cable_state, "state", None) == "on":
+            if _is_ev_cable_connected_state(cable_state):
                 _LOGGER.info(
                     "EV Cable %s already connected at setup, generating initial plan for %s...",
                     cable_ent,

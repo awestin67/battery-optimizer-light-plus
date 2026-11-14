@@ -34,7 +34,7 @@ Systemet kombinerar **Molnintelligens** (prisoptimering och arbitrage) med **Lok
 <details>
 <summary>Vilka tillstånd känner integrationen igen på sensorerna?</summary>
 
-* **Elbilsladdning:** `on`, `true`, `1`, `charging`, `på`, `charge`, `sant` samt numeriska effektvärden `> 0` W.
+* **Elbilsladdning:** `on`, `true`, `1`, `charging`, `boosting`, `på`, `charge`, `sant` samt numeriska effektvärden `> 0` W.
 * **Extern paus:** `on`, `true`, `1`, `active`, `yes`, `på` eller `sant`.
 </details>
 

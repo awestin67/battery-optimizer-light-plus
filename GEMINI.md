@@ -43,7 +43,12 @@ The project uses `pytest` for testing and `ruff` for linting and formatting.
 -   **Linting:** The project uses `ruff` for code linting. Configuration can be found in `pyproject.toml`.
 -   **Testing:** Tests are located in the `tests/` directory and are run using `pytest`. The CI pipeline in `.github/workflows/run_tests.yml` validates tests, HACS compatibility, and Home Assistant's `hassfest`.
 -   **Release & Git Process:** Kör ALDRIG `git commit` eller `git push`. Användaren sköter ALLTID commits och kör `python release.py` själv för att bygga releases, bumpa version och pusha till GitHub.
--   **Configuration:** The integration is configured via the Home Assistant UI (Config Flow). The main configuration options are defined in `custom_components/battery_optimizer_light/config_flow.py`.
+-   **Configuration:** The integration is configured via the Home Assistant UI (Config Flow). The main configuration options are defined in `custom_components/battery_optimizer_light_plus/config_flow.py`.
+-   **EV Charging & Cable Sensors (`ev_charging_sensor`, `ev_c1_is_charging`, `ev_c1_cable_connected`):**
+    -   **Laddstatus (`ev_charging_sensor` / `ev_c1_is_charging` / `ev_c2_is_charging`):** Evalueras i `_is_ev_charging_state` (`__init__.py`) och `_async_update_data` (`coordinator.py`). Tillåter `binary_sensor`, `sensor`, `switch` och `input_boolean`. Tolkar textvärdena `on`, `true`, `charging`, `boosting`, `1`, `på`, `charge`, `sant` samt numeriska värden `> 0` som aktiv laddning (`True`).
+    -   **Kabel ansluten (`ev_c1_cable_connected` / `ev_c2_cable_connected`):** Evalueras i `_is_ev_cable_connected_state` (`__init__.py`). Tillåter `binary_sensor`, `sensor` och `input_boolean`. Tolkar både binära (`on`/`true`) och textbaserade anslutningsstatusar (`connected`, `plugged_in`, `ev connected`, `waiting for ev`, `charging`, `ready`, m.fl.) som ansluten kabel.
+    -   **Bilintegrationer vs Laddbox:** Sensorer och start/stopp-styrning i V2 EV Smart Charging kan hämtas antingen från laddboxen eller direkt från bilens integration i HA (t.ex. MyŠkoda `binary_sensor.<bil>_charger_connected` + `switch.<bil>_charging` eller `sensor.<bil>_charging_state`, Renault `binary_sensor.<bil>_plugged_in` + `binary_sensor.<bil>_charging` + `button.<bil>_start_charging`). Detta är särskilt användbart när laddboxen (t.ex. GARO i grupp) inte särskiljer flera boxar eller saknar smart styrning.
+    -   **myenergi Zappi (`ha-myenergi` / `pymyenergi`):** Rekommendera `sensor.myenergi_zappi_<serial>_plug_status` (*Plug status*), som rapporterar `Charging` vid aktiv laddning och `EV Disconnected` / `EV Connected` / `Waiting for EV` i vila (nu stöds även `_status` med `Boosting`). Undvik `_power_ct_internal_load` om CT-klämman har mätbrus > 0 W i vila.
 -   **Data Flow:**
     1.  The `coordinator.py` polls a cloud API endpoint for optimization data.
     2.  The `sensor.py` file creates multiple sensor entities that expose the data fetched by the coordinator (e.g., charge/discharge commands, power targets, peak limits).
@@ -51,7 +56,7 @@ The project uses `pytest` for testing and `ruff` for linting and formatting.
 
 ## Key Files
 
--   `custom_components/battery_optimizer_light/`: The root directory for the integration.
+-   `custom_components/battery_optimizer_light_plus/`: The root directory for the integration.
     -   `manifest.json`: Contains metadata about the integration (domain, name, version, dependencies).
     -   `config_flow.py`: Manages the setup process through the Home Assistant UI.
     -   `coordinator.py`: Handles fetching data from the cloud API.

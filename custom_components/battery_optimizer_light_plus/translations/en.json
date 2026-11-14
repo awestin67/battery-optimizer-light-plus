@@ -214,15 +214,15 @@
                     "ev_c1_depart_time": "Input Datetime (time only) when the car should be ready.",
                     "ev_c1_max_kw": "Input Number for max charging power in kW.",
                     "ev_c1_switch": "The Switch entity to turn the charger on/off.",
-                    "ev_c1_cable_connected": "Sensor showing 'on' when cable is connected (Triggers schedule generation).",
-                    "ev_c1_is_charging": "Sensor showing 'on' when car is drawing power (Sent in heartbeat).",
+                    "ev_c1_cable_connected": "Sensor from charger or car showing when the cable is connected (e.g. 'on' or 'connected', triggers schedule generation).",
+                    "ev_c1_is_charging": "Sensor, switch, or power meter (W) from charger or car showing when the car is drawing power (sent in heartbeat).",
                     "ev_c2_name": "Optional name for the car in the web interface.",
                     "ev_c2_target_kwh": "Input Number for how much energy to charge (kWh).",
                     "ev_c2_depart_time": "Input Datetime (time only) when the car should be ready.",
                     "ev_c2_max_kw": "Input Number for max charging power in kW.",
                     "ev_c2_switch": "The Switch entity to turn the charger on/off.",
-                    "ev_c2_cable_connected": "Sensor showing 'on' when cable is connected (Triggers schedule generation).",
-                    "ev_c2_is_charging": "Sensor showing 'on' when car is drawing power (Sent in heartbeat)."
+                    "ev_c2_cable_connected": "Sensor from charger or car showing when the cable is connected (e.g. 'on' or 'connected', triggers schedule generation).",
+                    "ev_c2_is_charging": "Sensor, switch, or power meter (W) from charger or car showing when the car is drawing power (sent in heartbeat)."
                 }
             }
         }

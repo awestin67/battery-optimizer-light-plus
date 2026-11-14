@@ -71,8 +71,16 @@ Skapa följande Helpers i Home Assistant (*Inställningar -> Enheter och tjänst
 #### Steg 2: Koppla i Integrationen
 1. Gå till *Inställningar -> Enheter och tjänster*.
 2. Klicka på **Konfigurera** på Battery Optimizer Light Plus.
-3. Välj dina skapade Helpers från rullistorna för **Bil 1**. Ange även din `cable_connected`-sensor och din `is_charging`-sensor från din laddbox.
+3. Välj dina skapade Helpers från rullistorna för **Bil 1**. Ange även:
+   - **Kabel Ansluten Sensor (`cable_connected`):** En sensor (`binary_sensor` eller `sensor`) från antingen din **laddbox** eller **bilens integration** i Home Assistant som visar när laddkabeln sitter i (t.ex. `on`, `connected`, `plugged_in`, `EV Connected` eller `Waiting for EV`).
+   - **Laddar Sensor (`is_charging`):** En `binary_sensor`, `sensor` (status eller effekt i W > 0) eller `switch` från laddboxen eller bilintegrationen som visar när bilen faktiskt drar ström (t.ex. `on`, `charging`, `boosting` eller `> 0 W`).
 4. *(Har du en andra bil?)* Fyll i motsvarande rullistor för **Bil 2** längre ner på samma sida.
+
+> **Tips – Sensorer från bilintegration eller laddbox:**
+> Saknar din laddbox egna smarta sensorer per bil (t.ex. äldre eller gruppkopplade GARO-boxar) går det utmärkt att plocka sensorerna direkt från **bilens integration** i Home Assistant:
+> * **MyŠkoda:** Kabel ansluten = `binary_sensor.<bil>_charger_connected`, Laddar = `sensor.<bil>_charging_state` (eller `switch.<bil>_charging`).
+> * **Renault:** Kabel ansluten = `binary_sensor.<bil>_plugged_in`, Laddar = `binary_sensor.<bil>_charging`.
+> * **myenergi Zappi:** Välj `sensor.myenergi_zappi_<serienummer>_plug_status` (*Plug status*).
 
 #### Steg 3: Så här fungerar det i praktiken
 1. **Du pluggar i kabeln:** Din `cable_connected`-sensor slår om till `on` (fungerar även direkt om kabeln redan sitter i när du sparar inställningarna eller startar om Home Assistant).
@@ -82,6 +90,10 @@ Skapa följande Helpers i Home Assistant (*Inställningar -> Enheter och tjänst
 
 #### Steg 4: Din Automation (Exempel)
 Skapa en automation i Home Assistant för respektive bil. Använd `Template` i din trigger för att trigga på starttiden, och passa även på att ställa in laddboxens effekt (`charge_kw`) till det värde som molnet har räknat ut är optimalt!
+
+> **Tips om du styr via bilens integration (eller saknar effektstyrning på laddboxen):**
+> * Om din laddbox kör med fast effekt (t.ex. 11 kW) och inte har någon `number`-entitet för effektstyrning i Home Assistant kan du **ta bort steg 1 (`service: number.set_value`)** i `action:` nedan.
+> * Du kan även starta/stoppa laddningen direkt mot **bilens integration** istället för laddboxen (t.ex. `switch.turn_on` på `switch.<skoda>_charging` eller `button.press` på `button.<renault>_start_charging`).
 
 > **Tips:** Gå till *Automationer -> Skapa ny automation -> Klicka på de tre prickarna uppe till höger och välj "Redigera som YAML"*. Klistra sedan in koden nedan.
 

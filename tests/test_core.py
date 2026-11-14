@@ -1805,6 +1805,8 @@ async def test_coordinator_ai_summary_waits_for_new_text(mock_hass_instance, moc
     ("true", True),
     ("1", True),
     ("charging", True),
+    ("boosting", True),
+    ("Boosting", True),
     ("på", True),
     ("PÅ", True),
     ("charge", True),

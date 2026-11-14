@@ -555,3 +555,33 @@ async def test_coordinator_429_rate_limit_preserves_existing_data_without_retrie
         assert coordinator.ev_schedules == {"Testbil": [{"start": "2026-11-08T01:00:00", "charge_kw": 11.0}]}
 
 
+async def test_ev_cable_connected_supports_text_sensors_and_avoids_duplicate_triggers(mock_hass_instance):
+    """Kabelanslutning ska stödja både binary_sensor ('on'/'off') och text-sensorer
+    (t.ex. 'EV Connected' -> 'Charging' -> 'EV Disconnected') utan dubbla replans."""
+    coord, tracked, _, _ = await _setup_ev_entry(mock_hass_instance, "EV Disconnected")
+    coord.async_plan_ev_charging.reset_mock()
+    coord.async_clear_ev_charging = AsyncMock()
+
+    cable_cb = next(cb for ents, cb in tracked if "binary_sensor.cable" in ents)
+
+    # 1. 'EV Disconnected' -> 'Waiting for EV' (Kabel ansluten) -> ska trigga planering
+    await cable_cb(_helper_event("binary_sensor.cable", "EV Disconnected", "Waiting for EV"))
+    coord.async_plan_ev_charging.assert_called_once_with("car1")
+    coord.async_clear_ev_charging.assert_not_called()
+
+    # 2. 'Waiting for EV' -> 'Charging' (Fortfarande ansluten) -> ska INTE trigga ny plan eller rensa
+    coord.async_plan_ev_charging.reset_mock()
+    await cable_cb(_helper_event("binary_sensor.cable", "Waiting for EV", "Charging"))
+    coord.async_plan_ev_charging.assert_not_called()
+    coord.async_clear_ev_charging.assert_not_called()
+
+    # 3. 'Charging' -> 'unavailable' (Tillfälligt molnavbrott) -> ska INTE rensa planen
+    await cable_cb(_helper_event("binary_sensor.cable", "Charging", "unavailable"))
+    coord.async_clear_ev_charging.assert_not_called()
+
+    # 4. 'Charging' -> 'EV Disconnected' (Urkopplad) -> ska rensa planen
+    await cable_cb(_helper_event("binary_sensor.cable", "Charging", "EV Disconnected"))
+    coord.async_clear_ev_charging.assert_called_once_with("car1")
+
+
+
