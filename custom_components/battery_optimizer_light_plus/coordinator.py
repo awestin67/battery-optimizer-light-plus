@@ -159,28 +159,47 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                 # --- EV CHARGING SENSOR ---
                 is_ev_charging = False
+                ev_power_kw_total = 0.0
+                has_ev_power_sensor = False
 
                 from .const import CONF_EV_C1_IS_CHARGING, CONF_EV_C2_IS_CHARGING
-                ev_sensors = [
-                    self.config.get("ev_charging_sensor"),
-                    self.config.get(CONF_EV_C1_IS_CHARGING),
-                    self.config.get(CONF_EV_C2_IS_CHARGING)
-                ]
+                ev_sensors = list(
+                    dict.fromkeys(
+                        s
+                        for s in (
+                            self.config.get("ev_charging_sensor"),
+                            self.config.get(CONF_EV_C1_IS_CHARGING),
+                            self.config.get(CONF_EV_C2_IS_CHARGING),
+                        )
+                        if s
+                    )
+                )
 
                 for entity_id in ev_sensors:
-                    if entity_id:
-                        ev_state = self.hass.states.get(entity_id)
-                        if ev_state and ev_state.state not in ["unknown", "unavailable"]:
-                            val = ev_state.state.lower()
-                            # Hantera Binary Sensor, specifik status eller numeriskt effektvärde (>0W)
-                            if val in ["on", "true", "charging", "boosting", "1", "på", "charge", "sant"]:
-                                is_ev_charging = True
-                            else:
-                                try:
-                                    if float(val) > 0:
-                                        is_ev_charging = True
-                                except ValueError:
-                                    pass
+                    ev_state = self.hass.states.get(entity_id)
+                    if ev_state and ev_state.state not in ["unknown", "unavailable"]:
+                        val = ev_state.state.lower()
+                        # Hantera Binary Sensor, specifik status eller numeriskt effektvärde (>0W)
+                        if val in ["on", "true", "charging", "boosting", "1", "på", "charge", "sant"]:
+                            is_ev_charging = True
+                        else:
+                            try:
+                                num_val = float(val)
+                                if num_val > 0:
+                                    is_ev_charging = True
+                            except ValueError:
+                                num_val = None
+                        try:
+                            attrs = getattr(ev_state, "attributes", None)
+                            unit = attrs.get("unit_of_measurement") if isinstance(attrs, dict) else None
+                            if isinstance(unit, str) and unit.strip().lower() in ("w", "watt", "kw", "kilowatt"):
+                                p_val = max(0.0, float(ev_state.state))
+                                if unit.strip().lower() in ("w", "watt"):
+                                    p_val /= 1000.0
+                                ev_power_kw_total += p_val
+                                has_ev_power_sensor = True
+                        except (ValueError, TypeError):
+                            pass
 
                 current_consumption_kw = 0.0
                 current_load_w = None
@@ -335,6 +354,13 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                 if sw_ver is not None and str(sw_ver).strip():
                     payload["inverter_software_version"] = str(sw_ver).strip()
 
+                supports_export_limit = getattr(self.battery_api, "supports_bess_export_limit", None)
+                if isinstance(supports_export_limit, bool):
+                    payload["supports_bess_export_limit"] = supports_export_limit
+
+                if has_ev_power_sensor:
+                    payload["ev_power_kw"] = round(ev_power_kw_total, 3)
+
                 if current_solar_kw is not None:
                     payload["current_solar_kw"] = current_solar_kw
 
@@ -412,11 +438,18 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     data["cloud_target_power_kw"] = target_kw
 
                     # Låt batterihanteraren verkställa beslutet, om inte PeakGuard har tagit över lokalt
+                    site_limits = data.get("site_limits") or data.get("sonnen_site_limits")
+                    has_ev_export_limit = (
+                        action == "IDLE"
+                        and isinstance(site_limits, dict)
+                        and site_limits.get("p_bess_inv_max_export_limit") is not None
+                    )
                     ev_hold_override = (
                         hasattr(self, "peak_guard")
                         and getattr(self.peak_guard, "ev_charging_paused", False) is True
                         and action not in ("HOLD", "CHARGE")
                         and str(data.get("peakguard_status") or "").strip() != "Pausad (Sol > Elbil)"
+                        and not has_ev_export_limit
                     )
                     if self._is_passive_mode:
                         _LOGGER.debug("Passive mode active. Not applying actions to battery from cloud.")

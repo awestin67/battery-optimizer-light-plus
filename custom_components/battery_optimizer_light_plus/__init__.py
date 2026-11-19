@@ -787,8 +787,24 @@ class PeakGuard:
                     cloud_action = str(self.coordinator.data.get("action")).upper()
 
             # Prio 2: Vid aktiv elbilsladdning tvingas Spara/Vila (HOLD), såvida inte molnet beordrat
-            # CHARGE (parallell nätladdning) eller IDLE pga "Pausad (Sol > Elbil)" (solöverskott > hus + bil)
-            if ev_charging_local and cloud_action != "CHARGE" and not is_solar_exceeds_ev:
+            # CHARGE (parallell nätladdning), IDLE pga "Pausad (Sol > Elbil)" eller IDLE med explicit
+            # BESS-urladdningsgräns (t.ex. 1700 W husstöd under EV-laddning via ADR-043)
+            ev_site_limits = (
+                (self.coordinator.data.get("site_limits") or self.coordinator.data.get("sonnen_site_limits"))
+                if self.coordinator.data
+                else None
+            )
+            has_ev_export_limit_idle = (
+                cloud_action == "IDLE"
+                and isinstance(ev_site_limits, dict)
+                and ev_site_limits.get("p_bess_inv_max_export_limit") is not None
+            )
+            if (
+                ev_charging_local
+                and cloud_action != "CHARGE"
+                and not is_solar_exceeds_ev
+                and not has_ev_export_limit_idle
+            ):
                 cloud_action = "HOLD"
             elif is_stale_ev_pause and cloud_action == "HOLD":
                 # Elbilsladdningen har nyss avslutats lokalt men coordinator.data har kvar gammal EV-HOLD

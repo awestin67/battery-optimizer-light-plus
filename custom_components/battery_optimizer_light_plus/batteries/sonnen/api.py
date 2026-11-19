@@ -45,6 +45,7 @@ class SonnenAPI:
         self._last_em_usoc: str | None = None
         self._last_operating_mode: str | None = None
         self.site_limits_supported: bool = True
+        self.site_limits_verified: bool = False
         self._site_limits_em2_logged: bool = False
 
     async def async_get_status(self):
@@ -299,6 +300,7 @@ class SonnenAPI:
                 url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
             ) as resp:
                 if resp.status in (200, 204):
+                    self.site_limits_verified = True
                     _LOGGER.info(
                         "Sonnen satte Site Limits via %s: %s (status %s)",
                         API_SITE_LIMITS,
@@ -334,6 +336,7 @@ class SonnenAPI:
                         url, json=payload, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)
                     ) as retry_resp:
                         if retry_resp.status in (200, 204):
+                            self.site_limits_verified = True
                             _LOGGER.info("Sonnen PutSiteLimits lyckades efter växling till Mode 2!")
                             return True
                         try:
@@ -352,12 +355,16 @@ class SonnenAPI:
                         self.site_limits_supported = False
                         return False
 
-                _LOGGER.warning(
-                    "Sonnen PutSiteLimits returnerade status %s: %s (payload: %s)",
-                    resp.status,
-                    resp_text,
-                    payload,
-                )
+                if not self._site_limits_em2_logged:
+                    _LOGGER.info(
+                        "Sonnen tillåter inte dynamisk styrning via Site Limits (status %s: %s, payload: %s). "
+                        "Växlar automatiskt till beprövad standard Sonnen-styrning (Manual Mode setpoints).",
+                        resp.status,
+                        resp_text.strip(),
+                        payload,
+                    )
+                    self._site_limits_em2_logged = True
+                self.site_limits_supported = False
 
             return False
         except Exception as e:
@@ -366,11 +373,24 @@ class SonnenAPI:
 
     async def async_get_site_limits(self) -> dict | None:
         """Hämtar aktiva site limits via GET /api/v2/site/limits."""
+        if not self.site_limits_supported:
+            return None
         url = f"{self._base_url}{API_SITE_LIMITS}"
         try:
             async with self._session.get(url, headers=self._headers, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                 if resp.status == 200:
-                    return await resp.json()
+                    data = await resp.json()
+                    if isinstance(data, dict) and "error" in data:
+                        self.site_limits_supported = False
+                        return None
+                    return data
+                if resp.status in (400, 403, 404, 405, 422, 501):
+                    _LOGGER.info(
+                        "Sonnen GET %s returnerade status %s. Avaktiverar Site Limits.",
+                        API_SITE_LIMITS,
+                        resp.status,
+                    )
+                    self.site_limits_supported = False
         except Exception as e:
             _LOGGER.debug("Kunde inte hämta aktiva site limits från Sonnen: %s", e)
         return None

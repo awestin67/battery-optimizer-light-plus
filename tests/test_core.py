@@ -2943,6 +2943,46 @@ async def test_on_load_change_only_refreshes_on_boolean_priority_transition(mock
         assert mock_coord.async_request_refresh.call_count == 1
 
 
+@pytest.mark.asyncio
+async def test_coordinator_sends_ev_power_kw_from_power_sensor(mock_hass_instance, mock_battery):
+    """ADR-043: Om en konfigurerad EV-sensor har effektenhet (W/kW) ska ev_power_kw skickas i /signal."""
+    config = MOCK_CONFIG.copy()
+    config["ev_charging_sensor"] = "sensor.ev_charger_power"
+
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config, version="0.18.1")
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 70.0
+
+    def mock_get_state(entity_id):
+        if entity_id == "sensor.ev_charger_power":
+            st = MagicMock(state="7360")
+            st.attributes = {"unit_of_measurement": "W"}
+            return st
+        return None
+
+    mock_hass_instance.states.get.side_effect = mock_get_state
+
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "IDLE"})
+
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": []})
+
+        await coordinator._async_update_data()
+
+        payload = mock_session.post.call_args[1]["json"]
+        assert payload["is_ev_charging"] is True
+        assert payload["ev_power_kw"] == 7.36
+
+
+
 
 
 

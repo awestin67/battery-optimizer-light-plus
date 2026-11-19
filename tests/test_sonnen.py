@@ -408,10 +408,13 @@ async def test_sonnen_api_software_version_and_site_limits():
     mock_response.status = 204
     assert await api.async_set_site_limits({"duration": "PT60S"}) is True
 
-    # 6. async_set_site_limits vid felstatus
+    # 6. async_set_site_limits vid felstatus (t.ex. gammal BMS som svarar 400 utan "EM2")
     mock_response.status = 400
     mock_response.text = AsyncMock(return_value="Bad Request")
     assert await api.async_set_site_limits({"p_gcp_max_import_limit": 4500}) is False
+    assert api.site_limits_supported is False
+    api.site_limits_supported = True
+    api._site_limits_em2_logged = False
 
     # 7. async_set_site_limits vid felstatus med EM2-krav och lyckad retry
     mock_resp_em2 = MagicMock(status=400)
@@ -627,6 +630,8 @@ async def test_coordinator_sonnen_payload_and_site_limits():
 
     mock_battery = MagicMock()
     mock_battery.software_version = "1.35.14"
+    mock_battery.is_modern_ems = True
+    mock_battery.supports_bess_export_limit = True
     mock_battery.get_current_soc = AsyncMock(return_value=75.0)
     mock_battery.get_min_soc = AsyncMock(return_value=None)
     mock_battery.get_virtual_load = AsyncMock(return_value=None)
@@ -672,6 +677,9 @@ async def test_coordinator_sonnen_payload_and_site_limits():
         payload = kwargs["json"]
         assert payload["inverter_brand"] == "sonnen"
         assert payload["inverter_software_version"] == "1.35.14"
+        assert payload["supports_bess_export_limit"] is True
+        assert "site_limits_supported" not in payload
+        assert "is_modern_ems" not in payload
 
         # Verifiera att site_limits och sonnen_site_limits vidarebefordrades till apply_action
         mock_battery.apply_action.assert_called_once_with(
@@ -1106,3 +1114,111 @@ async def test_sonnen_apply_action_generic_site_limits_param(sonnen_battery, moc
         "p_bess_inv_max_export_limit": 0,
         "p_bess_inv_max_import_limit": 0,
     })
+
+
+@pytest.mark.asyncio
+async def test_sonnen_old_bms_disables_modern_ems_without_em2_and_on_initial_idle():
+    """Om batteriet har DE_Software >= 1.35.14 men gammal BMS som avvisar PUT /api/v2/site/limits
+    med HTTP 400 utan 'EM2' (även vid första Normal IDLE där gränserna är None) ska
+    site_limits_supported och is_modern_ems direkt sättas till False."""
+    hass = MagicMock()
+    mock_session = MagicMock()
+
+    resp_sw = MagicMock(status=200)
+    resp_sw.json = AsyncMock(return_value={"DE_Software": "1.40.5"})
+
+    # Gammal BMS svarar 400 Bad Request utan strängen "EM2"
+    resp_bms_400 = MagicMock(status=400)
+    resp_bms_400.text = AsyncMock(return_value='{"error":"BMS does not support power limits"}')
+
+    resp_ok = MagicMock(status=200)
+    resp_ok.text = AsyncMock(return_value='{"EM_OperatingMode":"2"}')
+
+    api = SonnenAPI("192.168.1.55", 80, "test-token", mock_session)
+    battery = SonnenBattery(hass, api, "sensor.soc")
+
+    mock_session.get.return_value.__aenter__.return_value = resp_sw
+    await battery.async_init_version()
+    assert battery.is_modern_ems is True
+
+    def mock_put_router(url, *args, **kwargs):
+        mock_cm = MagicMock()
+        if "site/limits" in url:
+            mock_cm.__aenter__ = AsyncMock(return_value=resp_bms_400)
+        else:
+            mock_cm.__aenter__ = AsyncMock(return_value=resp_ok)
+        mock_cm.__aexit__ = AsyncMock()
+        return mock_cm
+
+    mock_session.put.side_effect = mock_put_router
+
+    # Molnet skickar första Normal IDLE (alla site_limits är None) -> probar PT1S och upptäcker gammal BMS direkt
+    res = await battery.apply_action(
+        "IDLE",
+        site_limits={"p_bess_inv_max_import_limit": None, "p_bess_inv_max_export_limit": None},
+    )
+    assert res is True
+    assert api.site_limits_supported is False
+    assert battery.is_modern_ems is False
+    site_limit_calls = [
+        call for call in mock_session.put.call_args_list if "site/limits" in call[0][0]
+    ]
+    assert len(site_limit_calls) == 1
+    assert site_limit_calls[0][1]["json"] == {
+        "p_gcp_max_import_limit": 50000,
+        "p_bess_inv_max_export_limit": 50000,
+        "duration": "PT1S",
+    }
+    assert battery.supports_bess_export_limit is False
+
+
+@pytest.mark.asyncio
+async def test_sonnen_supports_bess_export_limit_fail_closed_and_idle_numeric_export_limit():
+    """ADR-043: supports_bess_export_limit ska vara fail-closed (False före probe, True efter lyckad probe),
+    och IDLE med numeriskt p_bess_inv_max_export_limit (t.ex. 1700 W vid EV-laddning) ska skicka PUT site/limits."""
+    hass = MagicMock()
+    mock_session = MagicMock()
+
+    resp_sw = MagicMock(status=200)
+    resp_sw.json = AsyncMock(return_value={"DE_Software": "1.35.14"})
+
+    resp_ok = MagicMock(status=200)
+    resp_ok.text = AsyncMock(return_value="{}")
+
+    api = SonnenAPI("192.168.1.56", 80, "test-token", mock_session)
+    battery = SonnenBattery(hass, api, "sensor.soc")
+
+    # 1. Efter firmware-detektering (före probe) ska supports_bess_export_limit vara False (fail-closed)
+    mock_session.get.return_value.__aenter__.return_value = resp_sw
+    await battery.async_init_version()
+    assert battery.is_modern_ems is True
+    assert battery.supports_bess_export_limit is False
+
+    # 2. Första IDLE (även med site_limits=None) kör 1s-proben -> lyckas -> supports_bess_export_limit blir True
+    mock_session.put.return_value.__aenter__.return_value = resp_ok
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        res_probe = await battery.apply_action("IDLE")
+    assert res_probe is True
+    assert battery.supports_bess_export_limit is True
+
+    # 3. IDLE under elbilsladdning med numeriskt p_bess_inv_max_export_limit=1700 och import=None
+    mock_session.put.reset_mock()
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        res_ev_idle = await battery.apply_action(
+            "IDLE",
+            sonnen_site_limits={
+                "p_bess_inv_max_export_limit": 1700,
+                "p_bess_inv_max_import_limit": None,
+            },
+        )
+    assert res_ev_idle is True
+    site_limit_calls = [
+        call for call in mock_session.put.call_args_list if "site/limits" in call[0][0]
+    ]
+    assert len(site_limit_calls) == 1
+    assert site_limit_calls[0][1]["json"] == {
+        "p_bess_inv_max_export_limit": 1700,
+        "duration": "PT600S",
+    }
+
+

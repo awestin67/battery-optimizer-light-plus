@@ -66,6 +66,7 @@ class SonnenBattery(BatteryApi):
         self._soc_entity = soc_entity
         self._software_version: str | None = None
         self._is_modern_ems: bool = False
+        self._site_limits_probed: bool = False
         self._last_site_limits: dict | None = None
         self.coordinator = DataUpdateCoordinator(
             hass,
@@ -84,6 +85,14 @@ class SonnenBattery(BatteryApi):
     def is_modern_ems(self) -> bool:
         """Indikerar om batteriet stödjer moderna EMS Site Limits (>= 1.35.14)."""
         return bool(self._is_modern_ems and getattr(self._api, "site_limits_supported", True))
+
+    @property
+    def supports_bess_export_limit(self) -> bool:
+        """Fail-closed (ADR-043): True först när modern EMS + site limits verifierats via lyckad PUT-probe."""
+        return bool(
+            self.is_modern_ems
+            and getattr(self._api, "site_limits_verified", False)
+        )
 
     def _process_software_version(self, sw: str | None) -> bool:
         """Tolkar mjukvaruversion och sätter is_modern_ems."""
@@ -104,8 +113,11 @@ class SonnenBattery(BatteryApi):
 
     async def async_init_version(self):
         """Detekterar Sonnen firmware och aktiverar EMS om >= 1.35.14."""
+        self._site_limits_probed = False
         if hasattr(self._api, "site_limits_supported"):
             self._api.site_limits_supported = True
+        if hasattr(self._api, "site_limits_verified"):
+            self._api.site_limits_verified = False
         if hasattr(self._api, "_site_limits_em2_logged"):
             self._api._site_limits_em2_logged = False
         sw = await self._api.async_get_software_version()
@@ -228,15 +240,17 @@ class SonnenBattery(BatteryApi):
                     active_limits["p_bess_inv_max_export_limit"] = 0
                 self._last_site_limits = dict(active_limits)
             elif action == "IDLE":
-                if incoming_limits.get("p_bess_inv_max_export_limit") == 0:
-                    # Skyddad Solladdning: behåll exportspärr på 0 W för att spara laddning till kvällstopp
-                    active_limits["p_bess_inv_max_export_limit"] = 0
+                export_limit = incoming_limits.get("p_bess_inv_max_export_limit")
+                if export_limit is not None:
+                    # Skyddad Solladdning (0 W) eller dynamisk urladdningsgräns (t.ex. 1700 W vid EV-laddning)
+                    active_limits["p_bess_inv_max_export_limit"] = export_limit
                 else:
                     # Släpper batteriets urladdning fritt till huset
                     active_limits.pop("p_bess_inv_max_export_limit", None)
 
-                if incoming_limits.get("p_bess_inv_max_import_limit") == 0:
-                    active_limits["p_bess_inv_max_import_limit"] = 0
+                import_limit = incoming_limits.get("p_bess_inv_max_import_limit")
+                if import_limit is not None:
+                    active_limits["p_bess_inv_max_import_limit"] = import_limit
                 else:
                     # Släpper batteriets laddning fri från sol
                     active_limits.pop("p_bess_inv_max_import_limit", None)
@@ -281,7 +295,21 @@ class SonnenBattery(BatteryApi):
                 # Säkerställ att batteriet är i Mode 2 utan att skicka tom payload till PutSiteLimits.
                 _LOGGER.debug("IDLE utan aktiva site limits. Säkerställer Mode 2 (Self-consumption).")
                 self._last_site_limits = None
-                return await self._api.async_set_operating_mode(2)
+                mode_ok = await self._api.async_set_operating_mode(2)
+                if not self._site_limits_probed:
+                    self._site_limits_probed = True
+                    await self._api.async_set_site_limits(
+                        {
+                            "p_gcp_max_import_limit": 50000,
+                            "p_bess_inv_max_export_limit": 50000,
+                            "duration": "PT1S",
+                        }
+                    )
+                    if not self.is_modern_ems:
+                        if isinstance(self.coordinator.data, dict):
+                            self.coordinator.data.pop("site_limits", None)
+                        self.coordinator.async_update_listeners()
+                return mode_ok
 
             if active_limits is not None and has_active_limits:
                 _LOGGER.debug("Verkställer beslut via Sonnen Site Limits (%s): %s", action, active_limits)
@@ -311,6 +339,7 @@ class SonnenBattery(BatteryApi):
                     limits_payload["duration"] = "PT600S"
 
                 # Skicka gränserna direkt till PUT /api/v2/site/limits
+                self._site_limits_probed = True
                 success = await self._api.async_set_site_limits(limits_payload)
                 if success:
                     return True
@@ -319,6 +348,9 @@ class SonnenBattery(BatteryApi):
                         "Site limits avaktiverades för Sonnen (%s), växlar direkt till standardstyrning.",
                         action,
                     )
+                    if isinstance(self.coordinator.data, dict):
+                        self.coordinator.data.pop("site_limits", None)
+                    self.coordinator.async_update_listeners()
                 else:
                     _LOGGER.warning("Misslyckades att sätta Site Limits för Sonnen (%s), provar fallback...", action)
 
