@@ -662,7 +662,10 @@ class PeakGuard:
             is_stale_ev_pause = (
                 not ev_charging_local
                 and self._has_ev_charging_sensor_configured()
-                and pg_status_str in ("Pausad (Elbilsladdning)", "Pausad (Sol > Elbil)")
+                and (
+                    pg_status_str in ("Pausad (Elbilsladdning)", "Pausad (Sol > Elbil)")
+                    or pg_status_str.startswith("Pausad (Huslaststöd")
+                )
             )
             is_stale_ext_pause = (
                 not external_pause
@@ -798,6 +801,7 @@ class PeakGuard:
                 cloud_action == "IDLE"
                 and isinstance(ev_site_limits, dict)
                 and ev_site_limits.get("p_bess_inv_max_export_limit") is not None
+                and getattr(self.battery, "supports_bess_export_limit", False) is True
             )
             if (
                 ev_charging_local
@@ -1029,7 +1033,12 @@ class PeakGuard:
                                 "enforcing pause."
                             )
                             site_limits = (
-                                self.coordinator.data.get("sonnen_site_limits") if self.coordinator.data else None
+                                (
+                                    self.coordinator.data.get("site_limits")
+                                    or self.coordinator.data.get("sonnen_site_limits")
+                                )
+                                if self.coordinator.data
+                                else None
                             )
                             try:
                                 if site_limits is not None:
@@ -1054,7 +1063,12 @@ class PeakGuard:
                             f"(CloudAction={cloud_action})"
                         )
                         site_limits = (
-                            self.coordinator.data.get("sonnen_site_limits") if self.coordinator.data else None
+                            (
+                                self.coordinator.data.get("site_limits")
+                                or self.coordinator.data.get("sonnen_site_limits")
+                            )
+                            if self.coordinator.data
+                            else None
                         )
                         try:
                             if site_limits is not None:

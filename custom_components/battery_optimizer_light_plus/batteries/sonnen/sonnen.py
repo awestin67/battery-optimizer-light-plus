@@ -266,9 +266,15 @@ class SonnenBattery(BatteryApi):
                 self._last_site_limits["p_bess_inv_max_export_limit"] = 0
                 self._last_site_limits["p_bess_inv_max_import_limit"] = 0
             elif action == "IDLE":
-                active_limits.pop("p_bess_inv_max_export_limit", None)
+                cached_export = active_limits.get("p_bess_inv_max_export_limit")
+                if isinstance(cached_export, (int, float)) and cached_export > 0:
+                    # Dynamisk urladdningsgräns från molnets IDLE (t.ex. 1700 W under EV-laddning, ADR-043)
+                    # ska behållas vid lokala IDLE-anrop från PeakGuard.
+                    pass
+                else:
+                    active_limits.pop("p_bess_inv_max_export_limit", None)
+                    self._last_site_limits.pop("p_bess_inv_max_export_limit", None)
                 active_limits.pop("p_bess_inv_max_import_limit", None)
-                self._last_site_limits.pop("p_bess_inv_max_export_limit", None)
                 self._last_site_limits.pop("p_bess_inv_max_import_limit", None)
         elif self.is_modern_ems and action == "HOLD":
             # Fall C: Inga limits alls – skapa en minimal payload som enbart fryser batteriet
@@ -309,6 +315,9 @@ class SonnenBattery(BatteryApi):
                         if isinstance(self.coordinator.data, dict):
                             self.coordinator.data.pop("site_limits", None)
                         self.coordinator.async_update_listeners()
+                    elif not getattr(self._api, "site_limits_verified", False):
+                        # Tillfälligt fel (timeout/5xx): BMS varken bekräftad eller avvisad -> proba igen nästa IDLE
+                        self._site_limits_probed = False
                 return mode_ok
 
             if active_limits is not None and has_active_limits:

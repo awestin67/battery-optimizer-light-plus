@@ -2982,6 +2982,41 @@ async def test_coordinator_sends_ev_power_kw_from_power_sensor(mock_hass_instanc
         assert payload["ev_power_kw"] == 7.36
 
 
+@pytest.mark.asyncio
+async def test_peak_guard_stale_huslaststod_pause_releases_hold(mock_hass_instance, mock_battery):
+    """När elbilsladdningen avslutats lokalt men molnet ännu har kvar 'Pausad (Huslaststöd ...)' + HOLD
+    ska PeakGuard behandla det som en inaktuell EV-paus och släppa batteriet till IDLE."""
+    config = MOCK_CONFIG.copy()
+    config["ev_charging_sensor"] = "binary_sensor.ev_charging"
+
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "HOLD",
+        "cloud_action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Pausad (Huslaststöd 1.7 kW)",
+    }
+
+    guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+    guard._ev_charging_paused = True  # Bilen laddade nyss
+
+    states = {
+        "sensor.optimizer_light_peak_limit": MagicMock(state="5.0"),
+        "sensor.husets_netto_last_virtuell": MagicMock(state="2000"),
+        "sensor.bat_power": MagicMock(state="0"),
+        "sensor.soc": MagicMock(state="50"),
+        "binary_sensor.ev_charging": MagicMock(state="off"),
+    }
+    mock_hass_instance.states.get.side_effect = lambda e: states.get(e)
+
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+    assert guard.ev_charging_paused is False
+    mock_battery.apply_action.assert_called_once_with("IDLE")
+    assert coordinator.data["action"] == "IDLE"
+
+
 
 
 

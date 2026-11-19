@@ -184,11 +184,10 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                             is_ev_charging = True
                         else:
                             try:
-                                num_val = float(val)
-                                if num_val > 0:
+                                if float(val) > 0:
                                     is_ev_charging = True
                             except ValueError:
-                                num_val = None
+                                pass
                         try:
                             attrs = getattr(ev_state, "attributes", None)
                             unit = attrs.get("unit_of_measurement") if isinstance(attrs, dict) else None
@@ -443,6 +442,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                         action == "IDLE"
                         and isinstance(site_limits, dict)
                         and site_limits.get("p_bess_inv_max_export_limit") is not None
+                        and getattr(self.battery_api, "supports_bess_export_limit", False) is True
                     )
                     ev_hold_override = (
                         hasattr(self, "peak_guard")

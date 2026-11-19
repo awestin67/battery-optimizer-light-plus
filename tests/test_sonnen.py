@@ -1222,3 +1222,140 @@ async def test_sonnen_supports_bess_export_limit_fail_closed_and_idle_numeric_ex
     }
 
 
+@pytest.mark.asyncio
+async def test_sonnen_api_transient_errors_do_not_disable_site_limits():
+    """5xx/429/401 är tillfälliga fel och får inte stänga av Site Limits permanent. 404 ska däremot göra det."""
+    mock_session = MagicMock()
+    api = SonnenAPI("192.168.1.57", 80, "token", mock_session)
+
+    for status in (500, 503, 429, 401):
+        resp = MagicMock(status=status)
+        resp.text = AsyncMock(return_value="Service Unavailable")
+        mock_session.put.return_value.__aenter__.return_value = resp
+        assert await api.async_set_site_limits({"p_gcp_max_import_limit": 4500}) is False
+        assert api.site_limits_supported is True, f"Status {status} får inte stänga av Site Limits"
+
+    resp_404 = MagicMock(status=404)
+    resp_404.text = AsyncMock(return_value="Not Found")
+    mock_session.put.return_value.__aenter__.return_value = resp_404
+    assert await api.async_set_site_limits({"p_gcp_max_import_limit": 4500}) is False
+    assert api.site_limits_supported is False
+
+
+@pytest.mark.asyncio
+async def test_sonnen_probe_retries_after_transient_error():
+    """Om 1s-proben får ett tillfälligt fel (503) ska nästa IDLE proba igen och kunna verifiera BMS."""
+    hass = MagicMock()
+    mock_session = MagicMock()
+
+    resp_sw = MagicMock(status=200)
+    resp_sw.json = AsyncMock(return_value={"DE_Software": "1.35.14"})
+    resp_ok = MagicMock(status=200)
+    resp_ok.text = AsyncMock(return_value="{}")
+    resp_503 = MagicMock(status=503)
+    resp_503.text = AsyncMock(return_value="Service Unavailable")
+
+    api = SonnenAPI("192.168.1.58", 80, "token", mock_session)
+    battery = SonnenBattery(hass, api, "sensor.soc")
+    mock_session.get.return_value.__aenter__.return_value = resp_sw
+    await battery.async_init_version()
+
+    limits_responses = iter([resp_503, resp_ok])
+
+    def mock_put_router(url, *args, **kwargs):
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(
+            return_value=next(limits_responses) if "site/limits" in url else resp_ok
+        )
+        mock_cm.__aexit__ = AsyncMock()
+        return mock_cm
+
+    mock_session.put.side_effect = mock_put_router
+
+    # 1. Första probe får 503 -> fortfarande modern EMS, ej verifierad, ny probe tillåten
+    await battery.apply_action("IDLE")
+    assert battery.is_modern_ems is True
+    assert battery.supports_bess_export_limit is False
+    assert battery._site_limits_probed is False
+
+    # 2. Nästa IDLE probar igen och lyckas
+    await battery.apply_action("IDLE")
+    assert battery.supports_bess_export_limit is True
+
+
+@pytest.mark.asyncio
+async def test_sonnen_local_idle_keeps_dynamic_ev_export_limit(sonnen_battery, mock_sonnen_api):
+    """Lokal IDLE från PeakGuard (utan limits) får inte ta bort en dynamisk urladdningsgräns (1700 W)
+    som molnet satt under EV-laddning, men ska fortsatt släppa 0 W-spärrar från HOLD."""
+    sonnen_battery._software_version = "1.35.14"
+    sonnen_battery._is_modern_ems = True
+
+    await sonnen_battery.apply_action(
+        "IDLE",
+        site_limits={"p_bess_inv_max_export_limit": 1700, "p_bess_inv_max_import_limit": None},
+    )
+    mock_sonnen_api.reset_mock()
+
+    await sonnen_battery.apply_action("IDLE")
+    mock_sonnen_api.async_set_site_limits.assert_called_once()
+    sent = mock_sonnen_api.async_set_site_limits.call_args[0][0]
+    assert sent.get("p_bess_inv_max_export_limit") == 1700
+
+
+def _ev_peakguard_setup(supports_export_limit: bool):
+    hass = MagicMock()
+    config = {
+        "api_key": "test_key",
+        "api_url": "https://battery-optimizer.example.com",
+        "battery_type": "sonnen",
+        "virtual_load_sensor": "sensor.husets_netto_last_virtuell",
+        "soc_sensor": "sensor.soc",
+        "ev_charging_sensor": "binary_sensor.ev_charging",
+    }
+    coordinator = MagicMock()
+    ev_limits = {"p_bess_inv_max_export_limit": 1700, "p_bess_inv_max_import_limit": None}
+    # Backend skickar ENDAST den generiska nyckeln site_limits
+    coordinator.data = {
+        "action": "IDLE",
+        "cloud_action": "IDLE",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Active",
+        "site_limits": ev_limits,
+    }
+    battery = _create_mock_battery(is_modern_ems=True)
+    battery.supports_bess_export_limit = supports_export_limit
+
+    guard = PeakGuard(hass, config, coordinator, battery)
+    guard._report_peak = AsyncMock()
+    guard._report_peak_clear = AsyncMock()
+
+    states = {
+        "sensor.optimizer_light_peak_limit": MagicMock(state="11.0"),
+        "sensor.husets_netto_last_virtuell": MagicMock(state="9000"),
+        "sensor.soc": MagicMock(state="60"),
+        "binary_sensor.ev_charging": MagicMock(state="on"),
+    }
+    hass.states.get.side_effect = lambda e: states.get(e)
+    return guard, battery, ev_limits
+
+
+@pytest.mark.asyncio
+async def test_peak_guard_ev_idle_uses_generic_site_limits_key():
+    """PeakGuard ska läsa site_limits (inte bara sonnen_site_limits) och skicka IDLE med 1700 W-gränsen
+    under EV-laddning när batteriet har verifierat stöd för BESS-exportgräns."""
+    guard, battery, ev_limits = _ev_peakguard_setup(supports_export_limit=True)
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    battery.apply_action.assert_called_once_with("IDLE", sonnen_site_limits=ev_limits)
+
+
+@pytest.mark.asyncio
+async def test_peak_guard_ev_idle_forces_hold_without_export_limit_support():
+    """Fail-closed lokalt: om batteriet saknar verifierat stöd för BESS-exportgräns ska PeakGuard
+    tvinga HOLD under EV-laddning även om molnet skickar IDLE med numerisk exportgräns."""
+    guard, battery, _ = _ev_peakguard_setup(supports_export_limit=False)
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    assert battery.apply_action.call_count == 1
+    assert battery.apply_action.call_args[0][0] == "HOLD"
+
+

@@ -27,6 +27,10 @@ API_SITE_LIMITS = "/api/v2/site/limits"
 API_SITE_SETPOINT = "/api/v2/site/setpoint"
 API_CONFIG_SOFTWARE = "/api/v2/configurations/DE_Software"
 
+# HTTP-statusar som betyder att BMS/firmware saknar stöd för Site Limits (permanent avstängning).
+# Övriga fel (5xx, 401, 429 m.fl.) räknas som tillfälliga.
+SITE_LIMITS_UNSUPPORTED_STATUSES = (400, 404, 405, 422, 501)
+
 _LOGGER = logging.getLogger(__name__)
 
 class SonnenAPI:
@@ -355,6 +359,16 @@ class SonnenAPI:
                         self.site_limits_supported = False
                         return False
 
+                if resp.status not in SITE_LIMITS_UNSUPPORTED_STATUSES:
+                    # Tillfälligt fel (t.ex. 5xx, 401, 429): stäng INTE av Site Limits permanent
+                    _LOGGER.warning(
+                        "Sonnen PutSiteLimits returnerade tillfälligt fel %s: %s (payload: %s)",
+                        resp.status,
+                        resp_text.strip(),
+                        payload,
+                    )
+                    return False
+
                 if not self._site_limits_em2_logged:
                     _LOGGER.info(
                         "Sonnen tillåter inte dynamisk styrning via Site Limits (status %s: %s, payload: %s). "
@@ -384,7 +398,7 @@ class SonnenAPI:
                         self.site_limits_supported = False
                         return None
                     return data
-                if resp.status in (400, 403, 404, 405, 422, 501):
+                if resp.status in SITE_LIMITS_UNSUPPORTED_STATUSES:
                     _LOGGER.info(
                         "Sonnen GET %s returnerade status %s. Avaktiverar Site Limits.",
                         API_SITE_LIMITS,
