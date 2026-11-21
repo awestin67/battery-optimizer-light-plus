@@ -29,6 +29,23 @@ class BatteryApi(ABC):
         """Indikerar om batteriet använder modernt EMS med site power limits."""
         return False
 
+    @property
+    def supports_bess_export_limit(self) -> bool:
+        """Fail-closed (ADR-043): True först när site limits verifierats mot batteriet."""
+        return False
+
+    @property
+    def provides_virtual_load_sensor(self) -> bool:
+        """True om adaptern själv skapar en virtuell last-sensor (ersätter den generiska)."""
+        return False
+
+    def get_extra_entities(self, platform: str, main_coordinator) -> list:
+        """Batterispecifika HA-entiteter för en plattform ('sensor', 'switch', ...).
+
+        Överlagras av adaptrar som exponerar egna entiteter (t.ex. Sonnen),
+        så att plattformsfilerna i integrationens rot hålls batteri-agnostiska.
+        """
+        return []
 
     @abstractmethod
     async def get_current_soc(self) -> float | None:
@@ -81,3 +98,13 @@ class BatteryApi(ABC):
 
     async def set_auto_mode(self):
         await self.apply_action("IDLE", 0.0)
+
+
+def get_battery_extra_entities(coordinator, platform: str) -> list:
+    """Hämtar batterispecifika entiteter för en plattform från coordinatorns batteriadapter."""
+    battery_api = getattr(coordinator, "battery_api", None)
+    getter = getattr(battery_api, "get_extra_entities", None)
+    if not callable(getter):
+        return []
+    result = getter(platform, coordinator)
+    return list(result) if isinstance(result, (list, tuple)) else []

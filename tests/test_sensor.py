@@ -28,15 +28,18 @@ from custom_components.battery_optimizer_light_plus.sensor import (
     BatteryLightHouseConsumptionSensor,
     BatteryLightVirtualLoadSensor,
     HuaweiWrapperSensor,
-    SonnenInternalSensor,
-    SonnenVirtualLoadSensor,
-    SonnenControlModeSensor,
     BatteryLightAISummarySensor,
     BatteryLightNextActionSensor,
     BatteryLightNextActionTimeSensor,
     BatteryLightDynamicExportLimitSensor,
     BatteryOptimizerWaterHeaterReasonSensor,
 )
+from custom_components.battery_optimizer_light_plus.batteries.sonnen.sensor import (
+    SonnenInternalSensor,
+    SonnenVirtualLoadSensor,
+    SonnenControlModeSensor,
+)
+from custom_components.battery_optimizer_light_plus.batteries.sonnen.sonnen import SonnenBattery
 from custom_components.battery_optimizer_light_plus.const import (
     DOMAIN,
     CONF_BATTERY_TYPE,
@@ -81,12 +84,20 @@ async def test_sensor_setup_entry_sonnen():
     entry = MagicMock(data={CONF_BATTERY_TYPE: BATTERY_TYPE_SONNEN})
     coordinator = MagicMock()
     coordinator.api_key = "123"
-    coordinator.battery_api.coordinator = MagicMock()
+    battery = SonnenBattery.__new__(SonnenBattery)
+    battery.coordinator = MagicMock()
+    coordinator.battery_api = battery
     hass.data = {DOMAIN: {entry.entry_id: coordinator}}
     async_add_entities = MagicMock()
 
     await async_setup_entry(hass, entry, async_add_entities)
-    assert len(async_add_entities.call_args[0][0]) == 25
+    entities = async_add_entities.call_args[0][0]
+    assert len(entities) == 25
+    # Sonnen har egen virtuell last-sensor, så den generiska ska inte skapas
+    assert not any(isinstance(e, BatteryLightVirtualLoadSensor) for e in entities)
+    assert sum(isinstance(e, SonnenInternalSensor) for e in entities) == 7
+    assert any(isinstance(e, SonnenVirtualLoadSensor) for e in entities)
+    assert any(isinstance(e, SonnenControlModeSensor) for e in entities)
 
 def test_basic_sensors():
     coordinator = MagicMock()
@@ -348,8 +359,10 @@ def test_sonnen_control_mode_sensor_modern():
     main_coordinator.api_key = "test_sonnen_key"
     battery_api = MagicMock()
     battery_api.is_modern_ems = True
+    battery_api.supports_bess_export_limit = True
     battery_api.software_version = "1.35.14"
     main_coordinator.battery_api = battery_api
+    main_coordinator.data = {"client_mode": "ACTIVE"}
 
     sonnen_coord = MagicMock()
     sonnen_coord.data = {
@@ -377,8 +390,10 @@ def test_sonnen_control_mode_sensor_legacy():
     main_coordinator.api_key = "test_sonnen_key"
     battery_api = MagicMock()
     battery_api.is_modern_ems = False
+    battery_api.supports_bess_export_limit = False
     battery_api.software_version = "1.30.0"
     main_coordinator.battery_api = battery_api
+    main_coordinator.data = {"client_mode": "ACTIVE"}
 
     sonnen_coord = MagicMock()
     sonnen_coord.data = {}
@@ -389,5 +404,40 @@ def test_sonnen_control_mode_sensor_legacy():
     assert sensor.extra_state_attributes["active_gcp_import_limit"] is None
     assert sensor.extra_state_attributes["active_gcp_export_limit"] is None
     assert sensor.extra_state_attributes["active_bess_export_limit"] is None
+
+
+def _modern_unverified_sensor(client_mode):
+    main_coordinator = MagicMock()
+    main_coordinator.api_key = "test_sonnen_key"
+    battery_api = MagicMock()
+    battery_api.is_modern_ems = True
+    battery_api.supports_bess_export_limit = False
+    battery_api.software_version = "1.40.5"
+    main_coordinator.battery_api = battery_api
+    main_coordinator.data = {"client_mode": client_mode}
+    sonnen_coord = MagicMock()
+    sonnen_coord.data = {"site_limits": {"p_gcp_max_import_limit": None}}
+    return SonnenControlModeSensor(main_coordinator, sonnen_coord)
+
+
+def test_sonnen_control_mode_sensor_active_modern_unverified():
+    """Aktivt läge, modern firmware men PUT-probe ej lyckad ännu -> ej verifierad."""
+    sensor = _modern_unverified_sensor("ACTIVE")
+    assert sensor.state == "Legacy (Site Limits ej verifierad)"
+    attrs = sensor.extra_state_attributes
+    assert attrs["client_mode"] == "ACTIVE"
+    assert attrs["firmware_supports_site_limits"] is True
+    assert attrs["site_limits_verified"] is False
+
+
+def test_sonnen_control_mode_sensor_passive_modern_unverified():
+    """Passivt läge (Homey styr): HA proberar aldrig -> Legacy (Manual Mode), inte Site Limits."""
+    sensor = _modern_unverified_sensor("PASSIVE")
+    assert sensor.state == "Legacy (Manual Mode)"
+    attrs = sensor.extra_state_attributes
+    assert attrs["client_mode"] == "PASSIVE"
+    assert attrs["firmware_supports_site_limits"] is True
+    assert attrs["site_limits_verified"] is False
+    assert attrs["software_version"] == "1.40.5"
 
 

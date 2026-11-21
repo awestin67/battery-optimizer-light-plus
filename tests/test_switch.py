@@ -16,7 +16,9 @@
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock
-from custom_components.battery_optimizer_light_plus.switch import async_setup_entry, SonnenManualModeSwitch
+from custom_components.battery_optimizer_light_plus.switch import async_setup_entry
+from custom_components.battery_optimizer_light_plus.batteries.sonnen.switch import SonnenManualModeSwitch
+from custom_components.battery_optimizer_light_plus.batteries.sonnen.sonnen import SonnenBattery
 from custom_components.battery_optimizer_light_plus.const import DOMAIN, CONF_BATTERY_TYPE, BATTERY_TYPE_SONNEN
 
 @pytest.mark.asyncio
@@ -28,6 +30,9 @@ async def test_switch_setup_entry():
     entry.data = {CONF_BATTERY_TYPE: BATTERY_TYPE_SONNEN}
 
     coordinator = MagicMock()
+    battery = SonnenBattery.__new__(SonnenBattery)
+    battery.coordinator = MagicMock()
+    coordinator.battery_api = battery
     hass.data = {DOMAIN: {"test_id": coordinator}}
 
     async_add_entities = MagicMock()
@@ -98,3 +103,28 @@ async def test_switch_turn_on_off():
     await switch.async_turn_off()
     main_coordinator.battery_api._api.async_set_operating_mode.assert_called_with(2)
     assert sonnen_coord.async_request_refresh.call_count == 2
+
+
+def test_base_battery_has_no_extra_entities():
+    """Basklassen exponerar inga extra entiteter och ingen egen virtuell last."""
+    from custom_components.battery_optimizer_light_plus.batteries.generic import GenericBattery
+    from custom_components.battery_optimizer_light_plus.batteries.base import get_battery_extra_entities
+
+    battery = GenericBattery.__new__(GenericBattery)
+    assert battery.get_extra_entities("sensor", MagicMock()) == []
+    assert battery.get_extra_entities("switch", MagicMock()) == []
+    assert battery.provides_virtual_load_sensor is False
+
+    coordinator = MagicMock()
+    coordinator.battery_api = battery
+    assert get_battery_extra_entities(coordinator, "sensor") == []
+    coordinator.battery_api = None
+    assert get_battery_extra_entities(coordinator, "sensor") == []
+
+
+def test_sonnen_battery_extra_entities_unknown_platform():
+    """Okänd plattform ger tom lista för Sonnen."""
+    battery = SonnenBattery.__new__(SonnenBattery)
+    battery.coordinator = MagicMock()
+    assert battery.get_extra_entities("number", MagicMock()) == []
+    assert battery.provides_virtual_load_sensor is True

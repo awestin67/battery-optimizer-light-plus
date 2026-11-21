@@ -14,44 +14,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from homeassistant.components.switch import SwitchEntity # type: ignore
-from homeassistant.helpers.update_coordinator import CoordinatorEntity # type: ignore
-from homeassistant.helpers.entity import DeviceInfo # type: ignore
-from .const import DOMAIN, CONF_BATTERY_TYPE, BATTERY_TYPE_SONNEN
+from .const import DOMAIN
+from .batteries.base import get_battery_extra_entities
+
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
-    if entry.data.get(CONF_BATTERY_TYPE) == BATTERY_TYPE_SONNEN:
-        sonnen_coord = coordinator.battery_api.coordinator
-        async_add_entities([SonnenManualModeSwitch(coordinator, sonnen_coord)])
-
-class SonnenManualModeSwitch(CoordinatorEntity, SwitchEntity):
-    """Strömbrytare för att växla Sonnen mellan Auto och Manuell."""
-    def __init__(self, main_coordinator, sonnen_coord):
-        super().__init__(sonnen_coord)
-        self.main_coordinator = main_coordinator
-        self._attr_name = "Sonnen Manuellt Läge"
-        self._attr_unique_id = f"{main_coordinator.api_key}_sonnen_manual_mode"
-        self._attr_icon = "mdi:toggle-switch"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.main_coordinator.api_key)},
-            name="Battery Optimizer Light Plus",
-        )
-
-    @property
-    def is_on(self):
-        if self.coordinator.data and "OperatingMode" in self.coordinator.data:
-            return str(self.coordinator.data["OperatingMode"]) == "1"
-        return False
-
-    async def async_turn_on(self, **kwargs):
-        await self.main_coordinator.battery_api._api.async_set_operating_mode(1)
-        await self.coordinator.async_request_refresh()
-
-    async def async_turn_off(self, **kwargs):
-        await self.main_coordinator.battery_api._api.async_set_operating_mode(2)
-        await self.coordinator.async_request_refresh()
+    # Batterispecifika switchar (t.ex. Sonnen) definieras i batteries/<typ>/ och hämtas via adaptern.
+    entities = get_battery_extra_entities(coordinator, "switch")
+    if entities:
+        async_add_entities(entities)

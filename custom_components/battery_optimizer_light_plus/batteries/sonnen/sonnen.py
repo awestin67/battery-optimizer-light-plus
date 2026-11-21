@@ -94,6 +94,21 @@ class SonnenBattery(BatteryApi):
             and getattr(self._api, "site_limits_verified", False)
         )
 
+    @property
+    def provides_virtual_load_sensor(self) -> bool:
+        """Sonnen beräknar virtuell last själv (SonnenVirtualLoadSensor)."""
+        return True
+
+    def get_extra_entities(self, platform: str, main_coordinator) -> list:
+        """Sonnen-specifika HA-entiteter per plattform."""
+        if platform == "sensor":
+            from .sensor import build_sensor_entities
+            return build_sensor_entities(main_coordinator, self.coordinator)
+        if platform == "switch":
+            from .switch import build_switch_entities
+            return build_switch_entities(main_coordinator, self.coordinator)
+        return []
+
     def _process_software_version(self, sw: str | None) -> bool:
         """Tolkar mjukvaruversion och sätter is_modern_ems."""
         if not sw:
