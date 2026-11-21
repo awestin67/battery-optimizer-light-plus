@@ -53,13 +53,13 @@ class SonnenAPI:
         self.site_limits_verified: bool = False
         self._site_limits_em2_logged: bool = False
         self._config_cache: dict = {}
-        self._config_cache_ts: float = 0.0
+        self._config_cache_ts: float | None = None
         self._config_cache_ttl: float = 60.0
 
     def _record_operating_mode(self, mode_str: str) -> None:
         self._last_operating_mode = mode_str
         self._config_cache["EM_OperatingMode"] = mode_str
-        self._config_cache_ts = 0.0
+        self._config_cache_ts = None
 
     async def async_get_status(self):
         """Hämtar status (realtid) och cachad konfiguration (var 60:e sekund)."""
@@ -73,7 +73,11 @@ class SonnenAPI:
             # Hämta konfiguration (EM_USOC, EM_OperatingMode, DE_Software) med TTL-cache
             # så att batteriet inte belastas med onödiga /configurations-anrop var 10:e sekund.
             now = time.monotonic()
-            if not self._config_cache or (now - self._config_cache_ts) >= self._config_cache_ttl:
+            if (
+                not self._config_cache
+                or self._config_cache_ts is None
+                or (now - self._config_cache_ts) >= self._config_cache_ttl
+            ):
                 try:
                     async with self._session.get(config_url, headers=self._headers) as conf_response:
                         if conf_response.status == 200:
