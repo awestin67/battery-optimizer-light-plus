@@ -423,6 +423,8 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                     client_mode = data.get("client_mode", "ACTIVE")
                     self._is_passive_mode = (client_mode == "PASSIVE")
+                    if hasattr(self.battery_api, "set_passive_mode"):
+                        self.battery_api.set_passive_mode(self._is_passive_mode)
 
                     try:
                         target_kw = float(data.get("target_power_kw", 0.0))

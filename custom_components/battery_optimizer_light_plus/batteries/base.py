@@ -47,6 +47,10 @@ class BatteryApi(ABC):
         """
         return []
 
+    def set_passive_mode(self, passive: bool) -> None:
+        """Notifierar batteriadaptern när integrationen växlar mellan ACTIVE och PASSIVE mode."""
+        return None
+
     @abstractmethod
     async def get_current_soc(self) -> float | None:
         """Hämtar aktuell SoC (State of Charge)."""

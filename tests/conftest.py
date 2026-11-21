@@ -83,6 +83,7 @@ class MockDataUpdateCoordinator:
     def __init__(self, hass, *args, **kwargs):
         self.hass = hass
         self.data = None
+        self.update_interval = kwargs.get("update_interval")
         self.async_config_entry_first_refresh = AsyncMock()
         self.async_request_refresh = AsyncMock()
         self.async_add_listener = MagicMock()

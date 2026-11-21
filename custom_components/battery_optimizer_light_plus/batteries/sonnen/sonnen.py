@@ -56,6 +56,10 @@ except ImportError:
 
 _LOGGER = logging.getLogger(__name__)
 
+POLL_INTERVAL_ACTIVE = timedelta(seconds=10)
+POLL_INTERVAL_PASSIVE = timedelta(seconds=30)
+
+
 class SonnenBattery(BatteryApi):
     """Klass för att interagera med ett Sonnen-batteri."""
 
@@ -73,7 +77,7 @@ class SonnenBattery(BatteryApi):
             _LOGGER,
             name="Sonnen Local API",
             update_method=self._async_update_data,
-            update_interval=timedelta(seconds=10),
+            update_interval=POLL_INTERVAL_ACTIVE,
         )
 
     @property
@@ -108,6 +112,17 @@ class SonnenBattery(BatteryApi):
             from .switch import build_switch_entities
             return build_switch_entities(main_coordinator, self.coordinator)
         return []
+
+    def set_passive_mode(self, passive: bool) -> None:
+        """Glesar ut lokal Sonnen-polling i PASSIVE mode (30s) vs ACTIVE mode (10s)."""
+        target_interval = POLL_INTERVAL_PASSIVE if passive else POLL_INTERVAL_ACTIVE
+        if getattr(self.coordinator, "update_interval", None) != target_interval:
+            self.coordinator.update_interval = target_interval
+            _LOGGER.info(
+                "Sonnen lokal polling-intervall satt till %ds (%s mode)",
+                int(target_interval.total_seconds()),
+                "PASSIVE" if passive else "ACTIVE",
+            )
 
     def _process_software_version(self, sw: str | None) -> bool:
         """Tolkar mjukvaruversion och sätter is_modern_ems."""
@@ -155,7 +170,7 @@ class SonnenBattery(BatteryApi):
             if self._software_version is None and "DE_Software" in status_data:
                 self._process_software_version(status_data["DE_Software"])
 
-            if self.is_modern_ems:
+            if self.supports_bess_export_limit:
                 try:
                     site_limits = await self._api.async_get_site_limits()
                     if site_limits:

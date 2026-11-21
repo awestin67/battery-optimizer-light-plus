@@ -18,6 +18,7 @@
 """API-klient för Sonnen Batteri."""
 import asyncio
 import logging
+import time
 import aiohttp
 
 API_STATUS = "/api/v2/status"
@@ -51,9 +52,17 @@ class SonnenAPI:
         self.site_limits_supported: bool = True
         self.site_limits_verified: bool = False
         self._site_limits_em2_logged: bool = False
+        self._config_cache: dict = {}
+        self._config_cache_ts: float = 0.0
+        self._config_cache_ttl: float = 60.0
+
+    def _record_operating_mode(self, mode_str: str) -> None:
+        self._last_operating_mode = mode_str
+        self._config_cache["EM_OperatingMode"] = mode_str
+        self._config_cache_ts = 0.0
 
     async def async_get_status(self):
-        """Hämtar status och konfiguration."""
+        """Hämtar status (realtid) och cachad konfiguration (var 60:e sekund)."""
         url = f"{self._base_url}{API_STATUS}"
         config_url = f"{self._base_url}{API_CONFIG}"
         try:
@@ -61,22 +70,31 @@ class SonnenAPI:
                 response.raise_for_status()
                 status_data = await response.json()
 
-            # Hämta även konfiguration för att få EM_USOC (Backup-reserv), EM_OperatingMode och DE_Software
-            try:
-                async with self._session.get(config_url, headers=self._headers) as conf_response:
-                    if conf_response.status == 200:
-                        conf_data = await conf_response.json(content_type=None)
-                        if isinstance(conf_data, dict):
-                            if "EM_USOC" in conf_data:
-                                status_data["EM_USOC"] = conf_data["EM_USOC"]
-                                self._last_em_usoc = str(conf_data["EM_USOC"])
-                            if "EM_OperatingMode" in conf_data:
-                                status_data["EM_OperatingMode"] = str(conf_data["EM_OperatingMode"])
-                                self._last_operating_mode = str(conf_data["EM_OperatingMode"])
-                            if "DE_Software" in conf_data:
-                                status_data["DE_Software"] = conf_data["DE_Software"]
-            except Exception as conf_e:
-                _LOGGER.debug("Kunde inte hämta konfiguration från Sonnen: %s", conf_e)
+            # Hämta konfiguration (EM_USOC, EM_OperatingMode, DE_Software) med TTL-cache
+            # så att batteriet inte belastas med onödiga /configurations-anrop var 10:e sekund.
+            now = time.monotonic()
+            if not self._config_cache or (now - self._config_cache_ts) >= self._config_cache_ttl:
+                try:
+                    async with self._session.get(config_url, headers=self._headers) as conf_response:
+                        if conf_response.status == 200:
+                            conf_data = await conf_response.json(content_type=None)
+                            if isinstance(conf_data, dict):
+                                cached: dict = {}
+                                if "EM_USOC" in conf_data:
+                                    cached["EM_USOC"] = conf_data["EM_USOC"]
+                                    self._last_em_usoc = str(conf_data["EM_USOC"])
+                                if "EM_OperatingMode" in conf_data:
+                                    cached["EM_OperatingMode"] = str(conf_data["EM_OperatingMode"])
+                                    self._last_operating_mode = str(conf_data["EM_OperatingMode"])
+                                if "DE_Software" in conf_data:
+                                    cached["DE_Software"] = conf_data["DE_Software"]
+                                self._config_cache = cached
+                                self._config_cache_ts = now
+                except Exception as conf_e:
+                    _LOGGER.debug("Kunde inte hämta konfiguration från Sonnen: %s", conf_e)
+
+            if self._config_cache:
+                status_data.update(self._config_cache)
 
             return status_data
         except Exception as e:
@@ -114,7 +132,7 @@ class SonnenAPI:
                             resp_text,
                             payload,
                         )
-                        self._last_operating_mode = mode_str
+                        self._record_operating_mode(mode_str)
                         return True
                     _LOGGER.debug(
                         "Sonnen PUT %s returnerade status %s: %s (payload: %s), provar nästa",
@@ -146,7 +164,7 @@ class SonnenAPI:
                         resp.status,
                         resp_text,
                     )
-                    self._last_operating_mode = mode_str
+                    self._record_operating_mode(mode_str)
                     return True
                 _LOGGER.warning(
                     "Sonnen PUT form-encoded %s returnerade status %s: %s",
@@ -178,7 +196,7 @@ class SonnenAPI:
                         resp.status,
                         resp_text,
                     )
-                    self._last_operating_mode = mode_str
+                    self._record_operating_mode(mode_str)
                     return True
         except Exception as e:
             _LOGGER.debug("Kunde inte sätta driftläge via JSON %s: %s", API_CONFIG, e)

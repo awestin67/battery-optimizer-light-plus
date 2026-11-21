@@ -505,12 +505,20 @@ async def test_sonnen_version_detection(sonnen_battery, mock_sonnen_api):
 
 @pytest.mark.asyncio
 async def test_sonnen_update_data_with_site_limits(sonnen_battery, mock_sonnen_api):
-    """Testar att _async_update_data hämtar site limits om modern EMS är aktiv."""
-    # Modern EMS
+    """Testar att _async_update_data bara hämtar site limits när EMS verifierats."""
+    # Modern EMS men ej verifierad ännu -> ska INTE anropa async_get_site_limits
     mock_sonnen_api.async_get_software_version.return_value = "1.35.14"
     mock_sonnen_api.async_get_status.return_value = {"USOC": 65}
     mock_sonnen_api.async_get_site_limits.return_value = {"p_gcp_max_import_limit": 4500}
+    mock_sonnen_api.site_limits_verified = False
 
+    data = await sonnen_battery._async_update_data()
+    assert data["USOC"] == 65
+    assert "site_limits" not in data
+    mock_sonnen_api.async_get_site_limits.assert_not_called()
+
+    # Verifierad modern EMS -> hämtar site limits
+    mock_sonnen_api.site_limits_verified = True
     data = await sonnen_battery._async_update_data()
     assert data["USOC"] == 65
     assert data["site_limits"] == {"p_gcp_max_import_limit": 4500}
@@ -525,6 +533,50 @@ async def test_sonnen_update_data_with_site_limits(sonnen_battery, mock_sonnen_a
     data = await sonnen_battery._async_update_data()
     assert "site_limits" not in data
     mock_sonnen_api.async_get_site_limits.assert_not_called()
+
+
+def test_sonnen_passive_mode_polling_interval(sonnen_battery):
+    """Testar att polling-intervallet glesas ut i PASSIVE mode (30s) och återgår i ACTIVE (10s)."""
+    from datetime import timedelta
+
+    assert sonnen_battery.coordinator.update_interval == timedelta(seconds=10)
+    sonnen_battery.set_passive_mode(True)
+    assert sonnen_battery.coordinator.update_interval == timedelta(seconds=30)
+    sonnen_battery.set_passive_mode(False)
+    assert sonnen_battery.coordinator.update_interval == timedelta(seconds=10)
+
+
+@pytest.mark.asyncio
+async def test_sonnen_api_configurations_cache():
+    """Testar att /api/v2/configurations cachas i 60s och invalideras vid driftlägesbyte."""
+    mock_session = MagicMock()
+    mock_response = AsyncMock()
+    mock_response.status = 200
+    mock_response.raise_for_status = MagicMock()
+    mock_response.text = AsyncMock(return_value="OK")
+    mock_session.get.return_value.__aenter__.return_value = mock_response
+    mock_session.put.return_value.__aenter__.return_value = mock_response
+
+    api = SonnenAPI("192.168.1.50", 80, "tok", mock_session)
+
+    # Poll 1: hämtar både /status och /configurations
+    mock_response.json.side_effect = [{"USOC": 50}, {"EM_USOC": 10, "EM_OperatingMode": "2"}]
+    s1 = await api.async_get_status()
+    assert s1 == {"USOC": 50, "EM_USOC": 10, "EM_OperatingMode": "2"}
+    assert mock_session.get.call_count == 2
+
+    # Poll 2 inom TTL: hämtar BARA /status, men återanvänder cachad config
+    mock_response.json.side_effect = [{"USOC": 52}]
+    s2 = await api.async_get_status()
+    assert s2 == {"USOC": 52, "EM_USOC": 10, "EM_OperatingMode": "2"}
+    assert mock_session.get.call_count == 3
+
+    # Driftlägesbyte invaliderar cache -> nästa poll hämtar /configurations igen
+    assert await api.async_set_operating_mode(1) is True
+    mock_response.json.side_effect = [{"USOC": 53}, {"EM_USOC": 10, "EM_OperatingMode": "1"}]
+    s3 = await api.async_get_status()
+    assert s3["EM_OperatingMode"] == "1"
+    assert mock_session.get.call_count == 5
 
 
 @pytest.mark.asyncio
