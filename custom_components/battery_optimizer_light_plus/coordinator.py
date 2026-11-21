@@ -27,6 +27,17 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def _match_schedule_key(schedules_dict: dict, target_name: str):
+    """Matchar bilnamn exakt först, sedan skiftlägesokänsligt."""
+    if target_name in schedules_dict:
+        return target_name
+    norm = str(target_name).strip().lower()
+    for key in schedules_dict:
+        if str(key).strip().lower() == norm:
+            return key
+    return None
+
 class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
     """Hanterar kommunikationen för Light-versionen."""
 
@@ -395,18 +406,48 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                     data = await response.json()
 
-                    if (
-                        not getattr(self, "_ev_schedules_seeded", False)
-                        and not getattr(self, "ev_schedules", None)
-                        and isinstance(data.get("ev_smart_plans"), dict)
-                    ):
-                        self.ev_schedules = {
-                            k: [dict(step) if isinstance(step, dict) else step for step in v]
-                            if isinstance(v, list)
-                            else v
-                            for k, v in data["ev_smart_plans"].items()
-                        }
-                        self._ev_schedules_seeded = True
+                    ev_smart_plans = data.get("ev_smart_plans")
+                    if isinstance(ev_smart_plans, dict):
+                        if not getattr(self, "_ev_schedules_seeded", False) and not getattr(self, "ev_schedules", None):
+                            self.ev_schedules = {
+                                k: [dict(step) if isinstance(step, dict) else step for step in v]
+                                if isinstance(v, list)
+                                else v
+                                for k, v in ev_smart_plans.items()
+                            }
+                            self._ev_schedules_seeded = True
+                        elif getattr(self, "ev_preliminary_cars", None):
+                            from .const import CONF_EV_C1_NAME, CONF_EV_C2_NAME
+
+                            car_name_map = {
+                                "car1": self.config.get(CONF_EV_C1_NAME, "Bil 1"),
+                                "car2": self.config.get(CONF_EV_C2_NAME, "Bil 2"),
+                            }
+                            updated_schedules = dict(getattr(self, "ev_schedules", None) or {})
+                            promoted = False
+                            for c_key in list(self.ev_preliminary_cars):
+                                cname = car_name_map.get(c_key)
+                                if not cname:
+                                    continue
+                                matched_key = _match_schedule_key(ev_smart_plans, cname)
+                                steps = ev_smart_plans.get(matched_key) if matched_key is not None else None
+                                if (
+                                    isinstance(steps, list)
+                                    and len(steps) > 0
+                                    and all(
+                                        isinstance(step, dict) and step.get("is_preliminary") is False
+                                        for step in steps
+                                    )
+                                ):
+                                    updated_schedules[cname] = [dict(step) for step in steps]
+                                    self.ev_preliminary_cars.discard(c_key)
+                                    promoted = True
+                                    _LOGGER.info(
+                                        "Uppdaterade preliminärt EV-schema för %s med skarpt schema från /signal.",
+                                        cname,
+                                    )
+                            if promoted:
+                                self.ev_schedules = updated_schedules
 
                     # --- Hämta graf-data ---
                     fallback_graph_data = self.data.get("graph_data", {}) if self.data else {}
@@ -689,10 +730,14 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     new_schedules = dict(old_schedules)
                     self._ev_schedules_seeded = True
 
+                    matched_response_keys = set()
                     for c_key, cname, target_kwh in requested_cars:
                         was_prelim = c_key in self.ev_preliminary_cars
                         old_steps = old_schedules.get(cname) or []
-                        car_steps = schedules.get(cname)
+                        matched_key = _match_schedule_key(schedules, cname)
+                        if matched_key is not None:
+                            matched_response_keys.add(matched_key)
+                        car_steps = schedules.get(matched_key) if matched_key is not None else None
 
                         if isinstance(car_steps, list) and len(car_steps) > 0:
                             new_schedules[cname] = [
@@ -735,9 +780,14 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                                 c_key in self.ev_preliminary_cars,
                             )
 
-                    requested_names = {cname for _, cname, _ in requested_cars}
+                    requested_names = {cname.strip().lower() for _, cname, _ in requested_cars}
                     for other_name, other_steps in schedules.items():
-                        if other_name not in requested_names and isinstance(other_steps, list) and other_steps:
+                        if (
+                            other_name not in matched_response_keys
+                            and str(other_name).strip().lower() not in requested_names
+                            and isinstance(other_steps, list)
+                            and other_steps
+                        ):
                             new_schedules[other_name] = [
                                 dict(step) if isinstance(step, dict) else step
                                 for step in other_steps
@@ -802,10 +852,14 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
         # 1. Rensa sensorn lokalt
         self._ev_schedules_seeded = True
+        was_prelim = False
         if hasattr(self, "ev_preliminary_cars"):
+            was_prelim = car_id in self.ev_preliminary_cars
             self.ev_preliminary_cars.discard(car_id)
-        if hasattr(self, "ev_schedules") and cname in self.ev_schedules:
+        had_schedule = hasattr(self, "ev_schedules") and cname in self.ev_schedules
+        if had_schedule:
             self.ev_schedules = {k: v for k, v in self.ev_schedules.items() if k != cname}
+        if had_schedule or was_prelim:
             if hasattr(self, "async_set_updated_data"):
                 self.async_set_updated_data(self.data)
             elif hasattr(self, "async_update_listeners"):

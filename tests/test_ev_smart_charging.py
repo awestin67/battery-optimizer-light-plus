@@ -950,5 +950,137 @@ async def test_ev_reload_with_cable_connected_fetches_new_plan_and_updates_senso
     assert sensor.extra_state_attributes == {"schedules": {"BMW": new_plan}, "is_preliminary": False}
 
 
+async def test_signal_promotes_preliminary_ev_schedule_when_steps_are_sharp(mock_hass_instance):
+    """Om en bil är preliminär och /signal kommer med skarpt ev_smart_plans (is_preliminary=False på alla steg)
+    ska sensorn uppdateras och bilen tas bort ur ev_preliminary_cars."""
+    from custom_components.battery_optimizer_light_plus.coordinator import BatteryOptimizerLightCoordinator
+    from custom_components.battery_optimizer_light_plus.sensor import BatteryLightEVScheduleSensor
+
+    config = {
+        "api_url": "http://test-api",
+        "api_key": "123",
+        "soc_sensor": "sensor.soc",
+        CONF_EV_C1_NAME: "BMW",
+        CONF_EV_C1_TARGET_KWH: "input_number.target",
+        "ev_c1_depart_time": "input_datetime.depart",
+        "ev_c1_max_kw": "input_number.max_kw",
+    }
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config)
+    mock_battery = MagicMock()
+    mock_battery.software_version = None
+    mock_battery.get_current_soc = AsyncMock(return_value=60.0)
+    mock_battery.get_min_soc = AsyncMock(return_value=0.0)
+    mock_battery.get_calculated_consumption = AsyncMock(return_value=500.0)
+    mock_battery.get_solar_power = AsyncMock(return_value=0.0)
+    mock_battery.apply_action = AsyncMock()
+    coordinator.battery_api = mock_battery
+    sensor = BatteryLightEVScheduleSensor(coordinator)
+
+    mock_hass_instance.states.get.side_effect = lambda entity_id: MagicMock(
+        state={
+            "input_number.target": "20.0",
+            "input_datetime.depart": "07:30:00",
+            "input_number.max_kw": "5.4",
+        }.get(entity_id, "unknown")
+    )
+
+    plan_prelim = [{"start": "2026-11-21T12:45:00", "end": "2026-11-21T13:15:00", "charge_kw": 5.4}]
+    plan_sharp_signal = [
+        {"start": "2026-11-22T04:00:00", "end": "2026-11-22T07:15:00", "charge_kw": 5.4, "is_preliminary": False}
+    ]
+
+    patch_session = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_session) as mock_get_session:
+        mock_session = MagicMock()
+        mock_post_resp = AsyncMock()
+        mock_post_resp.status = 200
+        mock_post_resp.json = AsyncMock(return_value={"schedules": {"BMW": plan_prelim}, "is_preliminary": True})
+        mock_session.post.return_value.__aenter__.return_value = mock_post_resp
+
+        mock_get_resp = AsyncMock()
+        mock_get_resp.status = 200
+        mock_get_resp.json = AsyncMock(return_value={"history": []})
+        mock_session.get.return_value.__aenter__.return_value = mock_get_resp
+        mock_get_session.return_value = mock_session
+
+        # 1. Preliminär plan via POST /api/ev/plan
+        await coordinator.async_plan_ev_charging("car1")
+        assert sensor.extra_state_attributes["is_preliminary"] is True
+
+        # 2. POST svarar tomt -> stannar preliminär
+        mock_post_resp.json = AsyncMock(return_value={"schedules": {}, "is_preliminary": False})
+        await coordinator.async_plan_ev_charging("car1")
+        assert "car1" in coordinator.ev_preliminary_cars
+
+        # 3. /signal kommer in med skarpt schema (is_preliminary=False per steg) -> ska främjas!
+        mock_post_resp.json = AsyncMock(
+            return_value={
+                "action": "IDLE",
+                "target_power_kw": 0.0,
+                "ev_smart_plans": {"bmw": plan_sharp_signal},
+            }
+        )
+        await coordinator._async_update_data()
+
+        assert sensor.extra_state_attributes["schedules"] == {"BMW": plan_sharp_signal}
+        assert sensor.extra_state_attributes["is_preliminary"] is False
+        assert "car1" not in coordinator.ev_preliminary_cars
+
+
+async def test_ev_replan_case_insensitive_key_and_clear_updates_preliminary_without_schedule(mock_hass_instance):
+    """Skiftlägesokänslig matchning ska inte skapa dubblettbil, och clear ska uppdatera sensorn även utan schema."""
+    from custom_components.battery_optimizer_light_plus.coordinator import BatteryOptimizerLightCoordinator
+    from custom_components.battery_optimizer_light_plus.sensor import BatteryLightEVScheduleSensor
+
+    config = {
+        "api_url": "http://test-api",
+        "api_key": "123",
+        CONF_EV_C1_NAME: "BMW",
+        CONF_EV_C1_TARGET_KWH: "input_number.target",
+        "ev_c1_depart_time": "input_datetime.depart",
+        "ev_c1_max_kw": "input_number.max_kw",
+    }
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config)
+    coordinator.async_set_updated_data = MagicMock()
+    coordinator.data = {}
+    sensor = BatteryLightEVScheduleSensor(coordinator)
+
+    mock_hass_instance.states.get.side_effect = lambda entity_id: MagicMock(
+        state={
+            "input_number.target": "20.0",
+            "input_datetime.depart": "07:30:00",
+            "input_number.max_kw": "5.4",
+        }.get(entity_id, "unknown")
+    )
+
+    plan = [{"start": "2026-11-22T04:00:00", "end": "2026-11-22T07:15:00", "charge_kw": 5.4}]
+    patch_session = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_session) as mock_get_session:
+        mock_session = MagicMock()
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(return_value={"schedules": {"bmw": plan}, "is_preliminary": False})
+        mock_session.post.return_value.__aenter__.return_value = mock_resp
+
+        mock_del_resp = AsyncMock()
+        mock_del_resp.status = 200
+        mock_session.delete.return_value.__aenter__.return_value = mock_del_resp
+        mock_get_session.return_value = mock_session
+
+        await coordinator.async_plan_ev_charging("car1")
+        assert list(sensor.extra_state_attributes["schedules"].keys()) == ["BMW"]
+        assert sensor.state == "1 bilar planerade"
+
+        # Rensa bil som bara låg i ev_preliminary_cars (utan schema) -> ska ändå notifiera lyssnare
+        coordinator.ev_schedules = {}
+        coordinator.ev_preliminary_cars = {"car1"}
+        coordinator.async_set_updated_data.reset_mock()
+
+        await coordinator.async_clear_ev_charging("car1")
+        assert "car1" not in coordinator.ev_preliminary_cars
+        coordinator.async_set_updated_data.assert_called_once()
+
+
+
 
 
