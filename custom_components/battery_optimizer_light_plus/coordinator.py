@@ -57,6 +57,9 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         self.current_load_w = None
         self._is_passive_mode = False
         self._ev_lock = asyncio.Lock()
+        self.ev_schedules = {}
+        self.ev_preliminary_cars = set()
+        self._ev_schedules_seeded = False
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -75,12 +78,12 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         Anropas efter lyckad första uppdatering för att undvika minnesläckor vid setup-fel.
         """
         async def _update_interval(now):
+            tick_local = dt_util.as_local(now) if now is not None else dt_util.now()
             await self.async_request_refresh()
             prelim_cars = getattr(self, "ev_preliminary_cars", None)
             if prelim_cars:
-                local_now = dt_util.now()
-                if (local_now.hour > 13 or (local_now.hour == 13 and local_now.minute >= 15)) and (
-                    local_now.minute in (0, 15, 30, 45)
+                if (tick_local.hour > 13 or (tick_local.hour == 13 and tick_local.minute >= 15)) and (
+                    tick_local.minute in (0, 15, 30, 45)
                 ):
                     for c_key in list(prelim_cars):
                         _LOGGER.info(
@@ -392,8 +395,18 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
 
                     data = await response.json()
 
-                    if not getattr(self, "ev_schedules", None) and isinstance(data.get("ev_smart_plans"), dict):
-                        self.ev_schedules = dict(data["ev_smart_plans"])
+                    if (
+                        not getattr(self, "_ev_schedules_seeded", False)
+                        and not getattr(self, "ev_schedules", None)
+                        and isinstance(data.get("ev_smart_plans"), dict)
+                    ):
+                        self.ev_schedules = {
+                            k: [dict(step) if isinstance(step, dict) else step for step in v]
+                            if isinstance(v, list)
+                            else v
+                            for k, v in data["ev_smart_plans"].items()
+                        }
+                        self._ev_schedules_seeded = True
 
                     # --- Hämta graf-data ---
                     fallback_graph_data = self.data.get("graph_data", {}) if self.data else {}
@@ -615,12 +628,14 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
                     pass
             return None
 
+        requested_cars = []
         if car_id in ("car1", "all"):
             c1 = build_car_payload(
                 "1", CONF_EV_C1_NAME, CONF_EV_C1_TARGET_KWH, CONF_EV_C1_DEPART_TIME, CONF_EV_C1_MAX_KW
             )
             if c1:
                 cars_payload.append(c1)
+                requested_cars.append(("car1", c1["id"], c1["target_kwh"]))
 
         if car_id in ("car2", "all"):
             c2 = build_car_payload(
@@ -628,6 +643,7 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             )
             if c2:
                 cars_payload.append(c2)
+                requested_cars.append(("car2", c2["id"], c2["target_kwh"]))
 
         if not cars_payload:
             _LOGGER.warning(
@@ -644,33 +660,91 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
         url = f"{base_url}/api/ev/plan"
         _LOGGER.debug(f"Hämtar EV-laddplan från {url}: {payload}")
 
+        def _format_ev_window(steps) -> str:
+            if not isinstance(steps, list) or not steps:
+                return "tomt"
+            first = steps[0] if isinstance(steps[0], dict) else {}
+            last = steps[-1] if isinstance(steps[-1], dict) else {}
+            start_str = str(first.get("start") or "")
+            end_str = str(last.get("end") or last.get("start") or "")
+            start_hhmm = start_str[11:16] if len(start_str) >= 16 else start_str
+            end_hhmm = end_str[11:16] if len(end_str) >= 16 else end_str
+            if start_hhmm and end_hhmm:
+                return f"{start_hhmm}–{end_hhmm}"
+            return start_hhmm or end_hhmm or "okänt"
+
         headers = {"X-API-Key": self.api_key}
         session = async_get_clientsession(self.hass)
         try:
             async with session.post(url, json=payload, headers=headers, timeout=20) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    schedules = data.get("schedules", {})
+                    schedules = data.get("schedules")
+                    if not isinstance(schedules, dict):
+                        schedules = {}
                     is_prelim = bool(data.get("is_preliminary", False))
                     if not hasattr(self, "ev_preliminary_cars"):
                         self.ev_preliminary_cars = set()
-                    if is_prelim:
-                        if car_id == "all":
-                            if c1:
-                                self.ev_preliminary_cars.add("car1")
-                            if c2:
-                                self.ev_preliminary_cars.add("car2")
+                    old_schedules = dict(getattr(self, "ev_schedules", None) or {})
+                    new_schedules = dict(old_schedules)
+                    self._ev_schedules_seeded = True
+
+                    for c_key, cname, target_kwh in requested_cars:
+                        was_prelim = c_key in self.ev_preliminary_cars
+                        old_steps = old_schedules.get(cname) or []
+                        car_steps = schedules.get(cname)
+
+                        if isinstance(car_steps, list) and len(car_steps) > 0:
+                            new_schedules[cname] = [
+                                dict(step) if isinstance(step, dict) else step
+                                for step in car_steps
+                            ]
+                            if is_prelim:
+                                self.ev_preliminary_cars.add(c_key)
+                            else:
+                                self.ev_preliminary_cars.discard(c_key)
+                            now_prelim = c_key in self.ev_preliminary_cars
+                            _LOGGER.debug(
+                                "EV replan %s: preliminary=%s->%s, steps %d->%d, window %s -> %s",
+                                cname,
+                                was_prelim,
+                                now_prelim,
+                                len(old_steps),
+                                len(car_steps),
+                                _format_ev_window(old_steps),
+                                _format_ev_window(car_steps),
+                            )
+                        elif target_kwh <= 0:
+                            new_schedules.pop(cname, None)
+                            self.ev_preliminary_cars.discard(c_key)
+                            _LOGGER.debug(
+                                "EV replan %s: target_kwh=%.1f -> rensar schema (preliminary=%s->False)",
+                                cname,
+                                target_kwh,
+                                was_prelim,
+                            )
                         else:
-                            self.ev_preliminary_cars.add(car_id)
-                    else:
-                        if car_id == "all":
-                            self.ev_preliminary_cars.clear()
-                        else:
-                            self.ev_preliminary_cars.discard(car_id)
+                            if is_prelim or was_prelim:
+                                self.ev_preliminary_cars.add(c_key)
+                            _LOGGER.warning(
+                                "EV-laddplan för %s saknades eller var tom i svaret "
+                                "(is_preliminary=%s, target_kwh=%.1f). Behåller preliminär status=%s.",
+                                cname,
+                                is_prelim,
+                                target_kwh,
+                                c_key in self.ev_preliminary_cars,
+                            )
+
+                    requested_names = {cname for _, cname, _ in requested_cars}
+                    for other_name, other_steps in schedules.items():
+                        if other_name not in requested_names and isinstance(other_steps, list) and other_steps:
+                            new_schedules[other_name] = [
+                                dict(step) if isinstance(step, dict) else step
+                                for step in other_steps
+                            ]
+
+                    self.ev_schedules = new_schedules
                     _LOGGER.info(f"Mottog ny EV-laddplan (preliminär={is_prelim}): {schedules}")
-                    if not hasattr(self, "ev_schedules"):
-                        self.ev_schedules = {}
-                    self.ev_schedules.update(schedules)
                     if hasattr(self, "async_set_updated_data"):
                         self.async_set_updated_data(self.data)
                     elif hasattr(self, "async_update_listeners"):
@@ -727,10 +801,11 @@ class BatteryOptimizerLightCoordinator(DataUpdateCoordinator):
             return
 
         # 1. Rensa sensorn lokalt
+        self._ev_schedules_seeded = True
         if hasattr(self, "ev_preliminary_cars"):
             self.ev_preliminary_cars.discard(car_id)
         if hasattr(self, "ev_schedules") and cname in self.ev_schedules:
-            self.ev_schedules.pop(cname, None)
+            self.ev_schedules = {k: v for k, v in self.ev_schedules.items() if k != cname}
             if hasattr(self, "async_set_updated_data"):
                 self.async_set_updated_data(self.data)
             elif hasattr(self, "async_update_listeners"):

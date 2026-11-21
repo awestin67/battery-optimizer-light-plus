@@ -638,9 +638,15 @@ class BatteryLightEVScheduleSensor(BatteryOptimizerSensorBase):
 
     @property
     def extra_state_attributes(self):
-        schedules = getattr(self.coordinator, "ev_schedules", {})
+        schedules = getattr(self.coordinator, "ev_schedules", None) or {}
+        schedules_copy = {
+            k: [dict(step) if isinstance(step, dict) else step for step in v]
+            if isinstance(v, list)
+            else v
+            for k, v in schedules.items()
+        }
         return {
-            "schedules": schedules,
+            "schedules": schedules_copy,
             "is_preliminary": bool(getattr(self.coordinator, "ev_preliminary_cars", None)),
         }
 
