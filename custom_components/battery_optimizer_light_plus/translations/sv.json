@@ -36,7 +36,7 @@
                     "battery_device_id": "Huawei-enhet"
                 },
                 "data_description": {
-                    "battery_device_id": "Välj ditt Huawei-batteri eller växelriktare i listan så integrationen vet var kommandona ska skickas."
+                    "battery_device_id": "Välj din Huawei-batterienhet (t.ex. Batteries / LUNA2000 – inte växelriktaren) i listan så att kommandon för tvingad laddning och urladdning skickas till rätt enhet."
                 }
             },
             "homevolt": {

@@ -36,7 +36,7 @@
                     "battery_device_id": "Huawei Device"
                 },
                 "data_description": {
-                    "battery_device_id": "Select your Huawei battery or inverter from the list so the integration knows where to send commands."
+                    "battery_device_id": "Select your Huawei battery device (e.g. Batteries / LUNA2000 – not the inverter) from the list so force charge and discharge commands are sent to the correct device."
                 }
             },
             "homevolt": {

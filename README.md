@@ -90,7 +90,9 @@ Integrationen identifierar firmwareversionen och styr batteriet via Sonnens inby
 ### 🌑 Huawei Luna2000
 Styr Huawei-batterier via den officiella Home Assistant-integrationen.
 
-* **Krav:** En fungerande, förkonfigurerad installation av den officiella `Huawei Solar`-integrationen.
+* **Krav:** En fungerande, förkonfigurerad installation av `Huawei Solar`-integrationen (`wlcrs/huawei_solar`) konfigurerad med **Elevate permissions** (installatörsbehörighet för Modbus-skrivning).
+* **Ladda från nätet (AC-laddning):** Funktionen *Ladda från växelström / Charge from AC* (`switch.*_charge_from_grid`) måste vara tillåten i växelriktaren/FusionSolar. Integrationen slår även automatiskt på `switch.*_charge_from_grid` i Home Assistant inför tvingad laddning (`CHARGE`) om switchen står i läge `off`.
+* **Enhetsval:** Välj **batterienheten** (*Batteries* / LUNA2000) – inte växelriktaren (SUN2000) – i konfigurationsflödet.
 * **Notera:** Batterisensorn inverteras automatiskt så att **Plus (+)** betyder att batteriet **laddar** och **Minus (−)** att det **laddar ur**, vilket matchar Huawei Solar-integrationen.
 
 <a id="homevolt"></a>

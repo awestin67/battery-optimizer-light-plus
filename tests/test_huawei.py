@@ -385,3 +385,93 @@ async def test_apply_action_service_not_found(huawei_battery):
 
         mock_logger.warning.assert_called_once()
         assert "Huawei service not found" in mock_logger.warning.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_apply_action_charge_enables_charge_from_grid_when_off(huawei_battery):
+    """Testar att CHARGE slår på charge_from_grid-switchen om den är avstängd."""
+    with patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get, \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
+        mock_er_get.return_value = MagicMock()
+
+        mock_entry = MagicMock()
+        mock_entry.domain = "switch"
+        mock_entry.translation_key = "storage_charge_from_grid_function"
+        mock_entry.entity_id = "switch.batteries_charge_from_grid"
+        mock_entries.return_value = [mock_entry]
+
+        mock_state = MagicMock()
+        mock_state.state = "off"
+        huawei_battery._hass.states.get.return_value = mock_state
+
+        await huawei_battery.apply_action("CHARGE", target_kw=3.0)
+
+        huawei_battery._hass.services.async_call.assert_any_call(
+            "switch",
+            "turn_on",
+            {"entity_id": "switch.batteries_charge_from_grid"},
+            blocking=True,
+        )
+        huawei_battery._hass.services.async_call.assert_any_call(
+            "huawei_solar",
+            "forcible_charge",
+            {"device_id": "test_device_id", "power": 3000, "duration": 60},
+            blocking=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_apply_action_charge_skips_charge_from_grid_when_already_on(huawei_battery):
+    """Testar att CHARGE inte skickar onödig switch.turn_on om charge_from_grid redan är på."""
+    with patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get, \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
+        mock_er_get.return_value = MagicMock()
+
+        mock_entry = MagicMock()
+        mock_entry.domain = "switch"
+        mock_entry.translation_key = "storage_charge_from_grid_function"
+        mock_entry.entity_id = "switch.batteries_charge_from_grid"
+        mock_entries.return_value = [mock_entry]
+
+        mock_state = MagicMock()
+        mock_state.state = "on"
+        huawei_battery._hass.states.get.return_value = mock_state
+
+        await huawei_battery.apply_action("CHARGE", target_kw=3.0)
+
+        huawei_battery._hass.services.async_call.assert_called_once_with(
+            "huawei_solar",
+            "forcible_charge",
+            {"device_id": "test_device_id", "power": 3000, "duration": 60},
+            blocking=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_apply_action_charge_enables_charge_from_grid_entity_id_fallback(huawei_battery):
+    """Testar att charge_from_grid hittas via entity_id-suffix om translation_key saknas."""
+    with patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get, \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
+        mock_er_get.return_value = MagicMock()
+
+        mock_entry = MagicMock()
+        mock_entry.domain = "switch"
+        mock_entry.translation_key = None
+        mock_entry.entity_id = "switch.luna2000_charge_from_grid"
+        mock_entries.return_value = [mock_entry]
+
+        mock_state = MagicMock()
+        mock_state.state = "off"
+        huawei_battery._hass.states.get.return_value = mock_state
+
+        await huawei_battery.apply_action("CHARGE", target_kw=2.5)
+
+        huawei_battery._hass.services.async_call.assert_any_call(
+            "switch",
+            "turn_on",
+            {"entity_id": "switch.luna2000_charge_from_grid"},
+            blocking=True,
+        )

@@ -196,6 +196,27 @@ class HuaweiBattery(BatteryApi):
                     return entry.entity_id
         return None
 
+    async def _get_charge_from_grid_entity(self) -> str | None:
+        """Hittar switch-entiteten för 'Charge from Grid' / 'Ladda från växelström'."""
+        from homeassistant.helpers import entity_registry as er
+        er_reg = er.async_get(self._hass)
+        related_devices = self._get_related_devices()
+
+        valid_keys = (
+            "storage_charge_from_grid_function",
+            "charge_from_grid",
+            "charge_from_ac",
+        )
+
+        for d_id in related_devices:
+            entries = er.async_entries_for_device(er_reg, d_id)
+            for entry in entries:
+                if entry.domain != "switch":
+                    continue
+                if entry.translation_key in valid_keys or entry.entity_id.endswith("_charge_from_grid"):
+                    return entry.entity_id
+        return None
+
     async def apply_action(self, action: str, target_kw: float = 0.0):
         """Verkställer ett beslut från molnet eller lokalt."""
         power_w = int(target_kw * 1000)
@@ -241,6 +262,21 @@ class HuaweiBattery(BatteryApi):
                     )
 
             if action_upper == "CHARGE":
+                charge_from_grid_entity = await self._get_charge_from_grid_entity()
+                if charge_from_grid_entity:
+                    cfg_state = self._hass.states.get(charge_from_grid_entity)
+                    if cfg_state and cfg_state.state == "off":
+                        _LOGGER.info(
+                            "Huawei 'Charge from Grid' (%s) är avstängd – slår på den inför tvingad nätladdning.",
+                            charge_from_grid_entity,
+                        )
+                        await self._hass.services.async_call(
+                            "switch",
+                            "turn_on",
+                            {"entity_id": charge_from_grid_entity},
+                            blocking=True,
+                        )
+
                 await self._hass.services.async_call(
                     "huawei_solar",
                     "forcible_charge",
