@@ -26,7 +26,7 @@ Systemet kombinerar **Molnintelligens** (prisoptimering och arbitrage) med **Lok
 | 🤖 **Zero-Config Automation** | Integrationen lyssnar på molnets beslut och styr batteriet själv. Inga YAML-skript eller automationer krävs. |
 | 📊 **Analys** | Följ besparingar och effekttoppar i [Web Dashboard](https://battery-prod.awestinconsulting.se). |
 | 🚫 **Zero Export** | Tar emot en dynamisk exportgräns (kW) från molnet så att du inte förlorar pengar på att sälja solel vid negativa priser. För AC-kopplade solceller (t.ex. SolarEdge) finns [Blueprint och guide](docs/SOLAREDGE_ZERO_EXPORT_GUIDE.md). |
-| 🚗 **Smart elbilsladdning** | Skyddar hembatteriet mot urladdning vid billaddning (`HOLD`/`IDLE`). Stödjer schemaläggning i webbapp med virtuell lastbalansering samt dynamisk laddoptimering i HA för 1–2 bilar. [Guide](docs/SMART_EV_CHARGING_GUIDE.md) |
+| 🚗 **Smart elbilsladdning** | Skyddar hembatteriet mot urladdning vid billaddning (`HOLD`/`IDLE`) och stöder **EV-säkert huslaststöd & effektvakt** när laddboxens effektsensor (W/kW) är inkopplad. Stödjer schemaläggning i webbapp och dynamisk laddoptimering i HA för 1–2 bilar. [Guide](docs/SMART_EV_CHARGING_GUIDE.md) |
 | 🚿 **Smart Varmvattenoptimering (VVB)** | Värmer varmvattenberedare eller aktiverar plusvärme/SG Ready vid solöverskott och billig el. [Guide](docs/WATER_HEATER_GUIDE.md) |
 | ⏸️ **Extern Paus (CheckWatt m.fl.)** | Peka ut en paus-sensor så släpper optimeraren kontrollen och batteriet sätts i `IDLE`. |
 | 🔌 **Off-grid & Strömavbrott** | Optimeraren pausas automatiskt när huset är off-grid. För Sonnen detekteras det automatiskt via batteriets API. |

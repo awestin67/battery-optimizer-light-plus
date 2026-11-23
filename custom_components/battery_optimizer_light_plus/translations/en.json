@@ -123,7 +123,7 @@
                     "battery_sensor_invert": "Check this if your battery sensor shows a POSITIVE value when charging and NEGATIVE when discharging (e.g., standard for Huawei).",
                     "virtual_load_sensor": "Select a sensor for the house load if you lack a Grid Sensor (W) - Grid Exchange. Leave empty to let the integration calculate the load automatically (Grid + Battery).",
                     "min_soc": "Specify the percentage of the battery to hide from the cloud (e.g., reserved for power outages).",
-                    "ev_charging_sensor": "Select a sensor (e.g., from your EV charger) that indicates if the EV is currently charging.",
+                    "ev_charging_sensor": "Select your charger's power sensor (W/kW) for house support while charging, or an on/off sensor to pause the battery. With 2 cars, leave empty and set Car 1 & Car 2 below.",
                     "solar_sensor": "Point out a sensor for your total solar production (W eller kW). Leave empty if the integration fetches it automatically.",
                     "external_control_sensor": "Select a sensor that, when 'on', fully pauses the Battery Optimizer (both cloud and PeakGuard) to allow external systems to control the battery.",
                     "water_heater_switch": "Select a switch or relay entity for your water heater, contactor, or heat pump (e.g. Shelly or IVT/NIBE Plus Heat). The integration will automatically turn it ON during solar surplus or cheap electricity hours (VVB Boost) and turn it OFF when completed.",
@@ -197,7 +197,7 @@
                     "battery_sensor_invert": "Check this if your battery sensor shows a POSITIVE value when charging and NEGATIVE when discharging (e.g., standard for Huawei).",
                     "virtual_load_sensor": "Select a sensor for the house load if you lack a Grid Sensor (W) - Grid Exchange. Leave empty to let the integration calculate the load automatically (Grid + Battery).",
                     "min_soc": "Specify the percentage of the battery to hide from the cloud (e.g., reserved for power outages).",
-                    "ev_charging_sensor": "Select a sensor (e.g., from your EV charger) that indicates if the EV is currently charging.",
+                    "ev_charging_sensor": "Select your charger's power sensor (W/kW) for house support while charging, or an on/off sensor to pause the battery. With 2 cars, leave empty and set Car 1 & Car 2 below.",
                     "solar_sensor": "Point out a sensor for your total solar production (W eller kW). Leave empty if the integration fetches it automatically.",
                     "external_control_sensor": "Select a sensor that, when 'on', fully pauses the Battery Optimizer (both cloud and PeakGuard) to allow external systems to control the battery.",
                     "water_heater_switch": "Select a switch or relay entity for your water heater, contactor, or heat pump (e.g. Shelly or IVT/NIBE Plus Heat). The integration will automatically turn it ON during solar surplus or cheap electricity hours (VVB Boost) and turn it OFF when completed.",
@@ -215,14 +215,14 @@
                     "ev_c1_max_kw": "Input Number for max charging power in kW.",
                     "ev_c1_switch": "The Switch entity to turn the charger on/off.",
                     "ev_c1_cable_connected": "Sensor from charger or car showing when the cable is connected (e.g. 'on' or 'connected', triggers schedule generation).",
-                    "ev_c1_is_charging": "Sensor, switch, or power meter (W) from charger or car showing when the car is drawing power (sent in heartbeat).",
+                    "ev_c1_is_charging": "Select your charger's power sensor (W/kW) for house support, or an on/off sensor showing when Car 1 is charging.",
                     "ev_c2_name": "Optional name for the car in the web interface.",
                     "ev_c2_target_kwh": "Input Number for how much energy to charge (kWh).",
                     "ev_c2_depart_time": "Input Datetime (time only) when the car should be ready.",
                     "ev_c2_max_kw": "Input Number for max charging power in kW.",
                     "ev_c2_switch": "The Switch entity to turn the charger on/off.",
                     "ev_c2_cable_connected": "Sensor from charger or car showing when the cable is connected (e.g. 'on' or 'connected', triggers schedule generation).",
-                    "ev_c2_is_charging": "Sensor, switch, or power meter (W) from charger or car showing when the car is drawing power (sent in heartbeat)."
+                    "ev_c2_is_charging": "Select your charger's power sensor (W/kW) for house support, or an on/off sensor showing when Car 2 is charging."
                 }
             }
         }

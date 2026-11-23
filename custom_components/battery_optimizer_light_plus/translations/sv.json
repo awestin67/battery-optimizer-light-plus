@@ -123,7 +123,7 @@
                     "battery_sensor_invert": "Kryssa i denna om din batterisensor visar PLUS när den laddar och MINUS när den laddar ur (t.ex. standard för Huawei).",
                     "virtual_load_sensor": "Välj en sensor för husets last om du saknar en Grid Sensor (W) - Husets Nätutbyte. Lämna tom för att låta integrationen räkna ut lasten automatiskt (Nät + Batteri).",
                     "min_soc": "Ange hur många procent av batteriet som ska döljas för molnet (t.ex. reserverat för strömavbrott).",
-                    "ev_charging_sensor": "Peka ut en sensor (t.ex. från din laddbox) som indikerar om elbilen laddas.",
+                    "ev_charging_sensor": "Välj laddboxens effektsensor (W/kW) för husstöd under laddning, eller en på/av-sensor för att pausa batteriet. Har du 2 bilar? Lämna tom och ange Bil 1 & Bil 2 nedan.",
                     "solar_sensor": "Peka ut en sensor för din totala solproduktion (W eller kW). Lämna tom om integrationen hämtar det automatiskt.",
                     "external_control_sensor": "Peka ut en sensor som, när den är 'on', helt pausar Battery Optimizer (både moln och PeakGuard) så att externa system kan styra.",
                     "water_heater_switch": "Peka ut switchen eller reläet för din varmvattenberedare eller värmepump (t.ex. Shelly-kontaktor eller IVT/NIBE Plusvärme). Integrationen slår automatiskt på switchen vid solöverskott och billiga elpriser (VVB Boost) och stänger av när perioden är slut.",
@@ -197,7 +197,7 @@
                     "battery_sensor_invert": "Kryssa i denna om din batterisensor visar PLUS när den laddar och MINUS när den laddar ur (t.ex. standard för Huawei).",
                     "virtual_load_sensor": "Välj en sensor för husets last om du saknar en Grid Sensor (W) - Husets Nätutbyte. Lämna tom för att låta integrationen räkna ut lasten automatiskt (Nät + Batteri).",
                     "min_soc": "Ange hur många procent av batteriet som ska döljas för molnet (t.ex. reserverat för strömavbrott).",
-                    "ev_charging_sensor": "Peka ut en sensor (t.ex. från din laddbox) som indikerar om elbilen laddas.",
+                    "ev_charging_sensor": "Välj laddboxens effektsensor (W/kW) för husstöd under laddning, eller en på/av-sensor för att pausa batteriet. Har du 2 bilar? Lämna tom och ange Bil 1 & Bil 2 nedan.",
                     "solar_sensor": "Peka ut en sensor för din totala solproduktion (W eller kW). Lämna tom om integrationen hämtar det automatiskt.",
                     "external_control_sensor": "Peka ut en sensor som, när den är 'on', helt pausar Battery Optimizer (både moln och PeakGuard) så att externa system kan styra.",
                     "water_heater_switch": "Peka ut switchen eller reläet för din varmvattenberedare eller värmepump (t.ex. Shelly-kontaktor eller IVT/NIBE Plusvärme). Integrationen slår automatiskt på switchen vid solöverskott och billiga elpriser (VVB Boost) och stänger av när perioden är slut.",
@@ -215,14 +215,14 @@
                     "ev_c1_max_kw": "Input Number för max laddeffekt i kW.",
                     "ev_c1_switch": "Switch-entiteten för att slå av/på laddboxen.",
                     "ev_c1_cable_connected": "Sensor från laddbox eller bil som visar när kabeln ansluts (t.ex. 'on' eller 'connected', triggar laddplanering).",
-                    "ev_c1_is_charging": "Sensor, switch eller effektmätare (W) från laddbox eller bil som visar när bilen drar ström (skickas i hjärtslag).",
+                    "ev_c1_is_charging": "Välj laddboxens effektsensor (W/kW) för husstöd, eller en på/av-sensor som visar när Bil 1 laddar.",
                     "ev_c2_name": "Valfritt namn för bilen i webbgränssnittet.",
                     "ev_c2_target_kwh": "Input Number för hur mycket energi som ska laddas (kWh).",
                     "ev_c2_depart_time": "Input Datetime (endast tid) när bilen ska vara klar.",
                     "ev_c2_max_kw": "Input Number för max laddeffekt i kW.",
                     "ev_c2_switch": "Switch-entiteten för att slå av/på laddboxen.",
                     "ev_c2_cable_connected": "Sensor från laddbox eller bil som visar när kabeln ansluts (t.ex. 'on' eller 'connected', triggar laddplanering).",
-                    "ev_c2_is_charging": "Sensor, switch eller effektmätare (W) från laddbox eller bil som visar när bilen drar ström (skickas i hjärtslag)."
+                    "ev_c2_is_charging": "Välj laddboxens effektsensor (W/kW) för husstöd, eller en på/av-sensor som visar när Bil 2 laddar."
                 }
             }
         }

@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 import homeassistant.util.dt as dt_util
 from homeassistant.core import HomeAssistant, ServiceCall, CoreState # type: ignore
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN # type: ignore
@@ -48,6 +48,8 @@ from .const import (
     CONF_EV_CHARGING_SENSOR,
     CONF_EV_C1_IS_CHARGING,
     CONF_EV_C2_IS_CHARGING,
+    CONF_SOLAR_SENSOR,
+    CONF_MIN_SOC,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -436,11 +438,16 @@ class PeakGuard:
         self._maintenance_cooldown_start = None # Tidsstämpel för när underhållssignalen försvann
         self._ev_charging_paused = False  # Flagga för Prio 2 (Tvinga Spara/Vila via Elbilsladdning)
         self._last_sent_command = None  # Håller koll på senaste kommandot för att undvika spam
+        self._ev_manual_last_target_w = 0.0  # Senast skickade urladdningseffekt för ADR-044 EV-husstöd
         self._is_updating = False  # Lås för att förhindra överlappande exekvering
 
     @property
     def is_active(self):
         return self._has_reported
+
+    @property
+    def is_ev_manual_support_active(self) -> bool:
+        return self._last_sent_command == "EV_MANUAL_SUPPORT"
 
     @property
     def in_maintenance(self):
@@ -467,6 +474,126 @@ class PeakGuard:
             if entity_id and _is_ev_charging_state(self.hass.states.get(entity_id)):
                 return True
         return False
+
+    def _get_ev_charging_power_w(self, max_age_seconds: int = 30) -> float | None:
+        """Läser färsk elbilsladdeffekt i Watt från konfigurerade EV-effektsensorer (ADR-044).
+
+        Returnerar None (fail-closed) om ingen effektsensor finns, om tillståndet är
+        unknown/unavailable eller om sensorn inte rapporterats inom max_age_seconds.
+        """
+        ev_sensors = list(
+            dict.fromkeys(
+                s
+                for s in (
+                    self.config.get(CONF_EV_CHARGING_SENSOR),
+                    self.config.get(CONF_EV_C1_IS_CHARGING),
+                    self.config.get(CONF_EV_C2_IS_CHARGING),
+                )
+                if s
+            )
+        )
+        if not ev_sensors:
+            return None
+
+        now = dt_util.utcnow()
+        max_age = timedelta(seconds=max_age_seconds)
+        total_w = 0.0
+        has_power_sensor = False
+
+        for entity_id in ev_sensors:
+            ev_state = self.hass.states.get(entity_id)
+            attrs = getattr(ev_state, "attributes", None) if ev_state else None
+            unit = attrs.get("unit_of_measurement") if isinstance(attrs, dict) else None
+            unit_norm = unit.strip().lower() if isinstance(unit, str) else ""
+            is_power_unit = unit_norm in ("w", "watt", "kw", "kilowatt")
+
+            if not ev_state or ev_state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                if is_power_unit:
+                    return None
+                continue
+
+            if not is_power_unit:
+                # Fail-closed: om en konfigurerad EV-sensor rapporterar aktiv laddning utan
+                # känd effektenhet (t.ex. Bil 2 med binary_sensor) vet vi inte dess effekt -> HOLD.
+                if _is_ev_charging_state(ev_state):
+                    return None
+                continue
+
+            # Använd last_reported (HA >= 2024.4) så att konstant laddeffekt inte feltolkas som gammal
+            last_reported = getattr(ev_state, "last_reported", None)
+            last_updated = getattr(ev_state, "last_updated", None)
+            fresh_ts = (
+                last_reported
+                if isinstance(last_reported, datetime)
+                else (last_updated if isinstance(last_updated, datetime) else None)
+            )
+            if fresh_ts is None:
+                return None
+            if fresh_ts.tzinfo is None:
+                fresh_ts = dt_util.as_utc(fresh_ts)
+            if now - fresh_ts > max_age:
+                return None
+
+            try:
+                p_val = max(0.0, float(ev_state.state))
+            except (ValueError, TypeError):
+                return None
+
+            if unit_norm in ("kw", "kilowatt"):
+                p_val *= 1000.0
+            total_w += p_val
+            has_power_sensor = True
+
+        return total_w if has_power_sensor else None
+
+    async def _get_solar_power_w(self) -> float:
+        """Hämtar aktuell solproduktion i Watt (0.0 om okänd eller negativ)."""
+        solar_w = None
+        if hasattr(self.battery, "get_solar_power"):
+            solar_w = await self.battery.get_solar_power()
+        if solar_w is None:
+            solar_id = self.config.get(CONF_SOLAR_SENSOR)
+            if solar_id:
+                solar_state = self.hass.states.get(solar_id)
+                if solar_state and solar_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                    try:
+                        val = float(solar_state.state)
+                        attrs = getattr(solar_state, "attributes", None)
+                        unit = attrs.get("unit_of_measurement") if isinstance(attrs, dict) else None
+                        if isinstance(unit, str) and unit.strip().lower() in ("kw", "kilowatt"):
+                            val *= 1000.0
+                        solar_w = val
+                    except (ValueError, TypeError):
+                        pass
+        if solar_w is None or solar_w < 0:
+            return 0.0
+        return float(solar_w)
+
+    async def _get_grid_power_w(self) -> float | None:
+        """Hämtar uppmätt nätimport i Watt (positivt = import, negativt = export)."""
+        grid_id = self.config.get(CONF_GRID_SENSOR)
+        if grid_id:
+            grid_state = self.hass.states.get(grid_id)
+            if grid_state and grid_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                try:
+                    g_val = float(grid_state.state)
+                    attrs = getattr(grid_state, "attributes", None)
+                    unit = attrs.get("unit_of_measurement") if isinstance(attrs, dict) else None
+                    if isinstance(unit, str) and unit.strip().lower() in ("kw", "kilowatt"):
+                        g_val *= 1000.0
+                    if self.config.get(CONF_GRID_SENSOR_INVERT, False):
+                        g_val = -g_val
+                    return g_val
+                except (ValueError, TypeError):
+                    pass
+        if hasattr(self.battery, "get_grid_power"):
+            grid_w = await self.battery.get_grid_power()
+            if grid_w is not None:
+                try:
+                    return float(grid_w)
+                except (ValueError, TypeError):
+                    pass
+        return None
 
     def _set_reported_state(self, state: bool):
         if self._has_reported != state:
@@ -534,6 +661,7 @@ class PeakGuard:
             if client_mode == "PASSIVE":
                 # Om vi är i passivt läge låter vi Edge-enheten sköta all lokal styrning.
                 # Återställ lokala flaggor så de inte stör dashboards.
+                self._ev_manual_last_target_w = 0.0
                 if self.is_active:
                     self._set_reported_state(False)
                 if self._in_maintenance or self._ev_charging_paused:
@@ -559,6 +687,7 @@ class PeakGuard:
 
             if external_pause:
                 self._maintenance_cooldown_start = None
+                self._ev_manual_last_target_w = 0.0
                 if self._ev_charging_paused:
                     self._ev_charging_paused = False
                 if not self._in_maintenance:
@@ -621,6 +750,7 @@ class PeakGuard:
 
                 if any(k in val_lower for k in keywords):
                     self._maintenance_cooldown_start = None # Återställ cooldown om vi ser signalen igen
+                    self._ev_manual_last_target_w = 0.0
                     if self._ev_charging_paused:
                         self._ev_charging_paused = False
                     if not self._in_maintenance:
@@ -686,6 +816,7 @@ class PeakGuard:
                     ev_state_changed = True
                     self.coordinator.async_update_listeners()
             else:
+                self._ev_manual_last_target_w = 0.0
                 if self._ev_charging_paused:
                     _LOGGER.info("🚗 EV charging ended (Prio 2 cleared). Resuming normal BOLP control (Prio 3).")
                     self._ev_charging_paused = False
@@ -814,6 +945,17 @@ class PeakGuard:
                 # Elbilsladdningen har nyss avslutats lokalt men coordinator.data har kvar gammal EV-HOLD
                 cloud_action = "IDLE"
 
+            ev_power_w = self._get_ev_charging_power_w() if ev_charging_local else None
+            is_vvb_boost = bool((self.coordinator.data or {}).get("water_heater_boost", False))
+            ev_manual_support_eligible = (
+                ev_charging_local
+                and ev_power_w is not None
+                and cloud_action == "HOLD"
+                and not is_solar_exceeds_ev
+                and not has_ev_export_limit_idle
+                and not is_vvb_boost
+            )
+
             # Kontrollera om batteriet rör på sig (för att kunna tvinga stopp vid HOLD)
             bat_is_moving = False
             bat_val = None
@@ -849,6 +991,7 @@ class PeakGuard:
                 not self._has_reported
                 and not resumed_from_maintenance
                 and not ev_state_changed
+                and not ev_manual_support_eligible
                 and not (ev_charging_local and self._last_sent_command != "HOLD")
                 and current_load < wake_up_threshold
                 and cloud_action != "CHARGE"
@@ -993,6 +1136,80 @@ class PeakGuard:
                         self._last_sent_command = "DISCHARGE"
 
                 elif cloud_action == "HOLD":
+                    # ADR-044: Explicit undantag från lokal EV-paus (endast när färsk ev_power_w finns)
+                    if ev_manual_support_eligible:
+                        try:
+                            min_soc_buffer = float((self.coordinator.data or {}).get("min_soc_buffer") or 0.0)
+                        except (ValueError, TypeError):
+                            min_soc_buffer = 0.0
+                        try:
+                            hardware_min_soc = float(self.config.get(CONF_MIN_SOC, 0.0) or 0.0)
+                        except (ValueError, TypeError):
+                            hardware_min_soc = 0.0
+                        if hasattr(self.battery, "get_min_soc"):
+                            min_val = await self.battery.get_min_soc()
+                            if min_val is not None:
+                                try:
+                                    hardware_min_soc = float(min_val)
+                                except (ValueError, TypeError):
+                                    pass
+                        effective_min_soc = max(min_soc_buffer, hardware_min_soc)
+
+                        grid_w = await self._get_grid_power_w()
+                        if grid_w is not None and grid_w < -100.0:
+                            _LOGGER.warning(
+                                f"⚡ Export protection triggered during EV manual support "
+                                f"(grid={grid_w:.0f} W < -100 W). Sending immediate HOLD."
+                            )
+                            self._ev_manual_last_target_w = 0.0
+                            self._hold_command_sent = False
+                        elif soc > effective_min_soc:
+                            max_discharge_w = 3300.0
+                            if self.coordinator.data and "max_discharge_kw" in self.coordinator.data:
+                                val = self.coordinator.data.get("max_discharge_kw")
+                                if val is not None:
+                                    try:
+                                        max_discharge_w = float(val) * 1000.0
+                                    except (ValueError, TypeError):
+                                        pass
+
+                            solar_w = await self._get_solar_power_w()
+                            p_hus = max(0.0, current_load - ev_power_w - solar_w)
+                            p_cap = min(0.90 * p_hus, max_discharge_w)
+
+                            target_w = 0.0
+                            if limit_enforced and ev_power_w < limit_w and current_load > limit_w:
+                                target_w = min(current_load - limit_w, p_cap)
+                            if self.coordinator.data.get("ev_house_support_allowed") is True:
+                                target_w = max(target_w, p_cap)
+
+                            rounded_target_w = round(target_w / 100.0) * 100.0
+                            if rounded_target_w >= 200.0:
+                                if (
+                                    self._last_sent_command != "EV_MANUAL_SUPPORT"
+                                    or abs(rounded_target_w - self._ev_manual_last_target_w) >= 150.0
+                                ):
+                                    _LOGGER.info(
+                                        f"🔋 ADR-044 EV-safe manual support: DISCHARGE "
+                                        f"{rounded_target_w / 1000.0:.1f} kW "
+                                        f"(P_total={current_load:.0f} W, P_ev={ev_power_w:.0f} W, "
+                                        f"P_sol={solar_w:.0f} W, P_hus={p_hus:.0f} W, P_cap={p_cap:.0f} W)"
+                                    )
+                                    self._set_local_action("DISCHARGE", rounded_target_w / 1000.0)
+                                    await self.battery.apply_action("DISCHARGE", rounded_target_w / 1000.0)
+                                    self._last_sent_command = "EV_MANUAL_SUPPORT"
+                                    self._ev_manual_last_target_w = rounded_target_w
+                                    self._hold_command_sent = False
+                                else:
+                                    self._set_local_action("DISCHARGE", self._ev_manual_last_target_w / 1000.0)
+                                return
+                            else:
+                                self._ev_manual_last_target_w = 0.0
+                        else:
+                            self._ev_manual_last_target_w = 0.0
+                    else:
+                        self._ev_manual_last_target_w = 0.0
+
                     self._set_local_action("HOLD", 0.0)
                     bat_power = None
 

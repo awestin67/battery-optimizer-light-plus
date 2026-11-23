@@ -48,8 +48,17 @@ Oavsett om du använder **Alternativ 1** (Webbapp-schema) eller **Alternativ 3**
 
 ### Hur det fungerar:
 * När laddboxen drar ström (`> 0 W` eller status `charging`/`on`) känner integrationen av det i realtid och signalerar `is_ev_charging: True` till molnet.
-* Detta sätter hembatteriet i `HOLD` så att batteriet aldrig laddas ur i elbilen.
+* I grundläget sätts hembatteriet i `HOLD` så att batteriet aldrig laddas ur i elbilen.
 * Om solcellerna producerar mer el än huset och bilen förbrukar tillsammans (`sol > hus + bil`) övergår systemet automatiskt till `IDLE` så att överskottet laddar hembatteriet istället för att gå ut på elnätet!
+
+### 🏠 Husstöd vid elbilsladdning
+
+Om du väljer din laddbox **effektsensor (W eller kW)** istället för en enkel på/av-sensor kan hembatteriet fortsätta hjälpa huset (och kapa effekttoppar från t.ex. ugn eller värmepump) **utan att ladda ur i elbilen**.
+
+* **1 laddbox:** Välj laddboxens effektsensor (W/kW) under **Elbilsladdning Sensor** *(eller under Bil 1 om du använder dynamisk laddning – välj den inte på båda ställena)*.
+* **2 laddboxar:** Lämna **Elbilsladdning Sensor** tom och välj respektive laddbox effektsensor under **Laddar Sensor (Bil 1)** och **Laddar Sensor (Bil 2)**. *(Alternativt: skapa en summa-sensor i Home Assistant för båda boxarna och välj den under Elbilsladdning Sensor.)*
+* **Saknas effektsensor?** Då fungerar en vanlig på/av-sensor utmärkt – hembatteriet pausas då helt medan bilen laddar. Samma sak gäller automatiskt om du har två bilar och bara en av dem mäter effekt.
+* **Viktigt:** Använd helst en **lokal** effektsensor som uppdateras snabbt (inom 30 sek), och ange inte två olika effektsensorer för samma bil.
 
 ---
 

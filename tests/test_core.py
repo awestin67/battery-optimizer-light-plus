@@ -3017,6 +3017,304 @@ async def test_peak_guard_stale_huslaststod_pause_releases_hold(mock_hass_instan
     assert coordinator.data["action"] == "IDLE"
 
 
+def _make_ev_power_state(value_str: str, unit: str = "W", last_reported=None, last_updated=None):
+    st = MagicMock()
+    st.state = value_str
+    st.attributes = {"unit_of_measurement": unit}
+    st.last_reported = last_reported
+    st.last_updated = last_updated
+    return st
+
+
+@pytest.mark.asyncio
+async def test_adr044_kalles_scenario_ev_safe_peak_guard(mock_hass_instance, mock_battery):
+    """ADR-044: Kalles scenario (6,4 kW totalt, 3,7 kW EV < 3,8 kW gräns) -> kapar 2,4 kW (0 W till bilen).
+    Verifierar även att last_reported (HA >= 2024.4) håller sensorn färsk vid jämn effekt samt dödband/anti-fladder."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    config = MOCK_CONFIG.copy()
+    config["ev_charging_sensor"] = "sensor.ev_charger_power"
+
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "HOLD",
+        "cloud_action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Pausad (Elbilsladdning)",
+        "peak_power_kw": 3.8,
+        "max_discharge_kw": 3.3,
+        "min_soc_buffer": 10.0,
+        "ev_house_support_allowed": False,
+    }
+
+    guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+
+    # Konstant 3700 W: last_updated är 120 s gammal men last_reported är färsk (5 s)
+    ev_state = _make_ev_power_state(
+        "3700",
+        unit="W",
+        last_reported=now - datetime.timedelta(seconds=5),
+        last_updated=now - datetime.timedelta(seconds=120),
+    )
+    load_state = MagicMock(state="6400")
+    grid_state = MagicMock(state="6400", attributes={"unit_of_measurement": "W"})
+    bat_state = MagicMock(state="0")
+    soc_state = MagicMock(state="60")
+
+    states = {
+        "sensor.ev_charger_power": ev_state,
+        "sensor.husets_netto_last_virtuell": load_state,
+        "sensor.grid": grid_state,
+        "sensor.bat_power": bat_state,
+        "sensor.soc": soc_state,
+    }
+    mock_hass_instance.states.get.side_effect = lambda e: states.get(e)
+
+    # P_hus = 6400 - 3700 = 2700 W, P_cap = 0.9 * 2700 = 2430 W
+    # need = 6400 - 3800 = 2600 W -> target_w = min(2600, 2430) = 2430 -> avrundat 2400 W (2.4 kW)
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_called_once_with("DISCHARGE", 2.4)
+    assert coordinator.data["action"] == "DISCHARGE"
+    assert coordinator.data["target_power_kw"] == 2.4
+    assert guard.is_ev_manual_support_active is True
+
+    # Anti-fladder: +100 W (6500 W -> P_hus=2800, P_cap=2520 -> 2500 W; |2500 - 2400| = 100 < 150) -> inget nytt anrop
+    mock_battery.apply_action.reset_mock()
+    load_state.state = "6500"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_not_called()
+
+    # Större ändring: +200 W (6700 W -> P_hus=3000, P_cap=2700 -> 2700 W; |2700 - 2400| = 300 >= 150) -> nytt anrop
+    load_state.state = "6700"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_called_once_with("DISCHARGE", 2.7)
+
+
+@pytest.mark.asyncio
+async def test_adr044_high_ev_power_stays_in_hold_on_cheap_night(mock_hass_instance, mock_battery):
+    """ADR-044: 11 kW EV (> 3,8 kW gräns) på billig natt (ev_house_support_allowed=False) -> stannar i HOLD."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    config = MOCK_CONFIG.copy()
+    config["ev_charging_sensor"] = "sensor.ev_charger_power"
+
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "HOLD",
+        "cloud_action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Pausad (Elbilsladdning)",
+        "peak_power_kw": 3.8,
+        "max_discharge_kw": 3.3,
+        "min_soc_buffer": 10.0,
+        "ev_house_support_allowed": False,
+    }
+
+    guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+
+    ev_state = _make_ev_power_state("11.0", unit="kW", last_reported=now - datetime.timedelta(seconds=3))
+    states = {
+        "sensor.ev_charger_power": ev_state,
+        "sensor.husets_netto_last_virtuell": MagicMock(state="12500"),
+        "sensor.grid": MagicMock(state="12500", attributes={"unit_of_measurement": "W"}),
+        "sensor.bat_power": MagicMock(state="0"),
+        "sensor.soc": MagicMock(state="80"),
+    }
+    mock_hass_instance.states.get.side_effect = lambda e: states.get(e)
+
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+
+    mock_battery.apply_action.assert_called_once_with("HOLD")
+    assert coordinator.data["action"] == "HOLD"
+    assert guard.is_ev_manual_support_active is False
+
+
+@pytest.mark.asyncio
+async def test_adr044_stale_ev_power_and_low_soc_fall_back_to_hold(mock_hass_instance, mock_battery):
+    """ADR-044 fail-closed: Gammal ev_power_w (> 30 s) eller soc <= min_soc_buffer faller tillbaka till HOLD."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    config = MOCK_CONFIG.copy()
+    config["ev_charging_sensor"] = "sensor.ev_charger_power"
+
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "HOLD",
+        "cloud_action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Pausad (Elbilsladdning)",
+        "peak_power_kw": 3.8,
+        "max_discharge_kw": 3.3,
+        "min_soc_buffer": 15.0,
+        "ev_house_support_allowed": True,
+    }
+
+    guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+
+    ev_state = _make_ev_power_state(
+        "3700",
+        unit="W",
+        last_reported=None,
+        last_updated=now - datetime.timedelta(seconds=45),
+    )
+    soc_state = MagicMock(state="60")
+    states = {
+        "sensor.ev_charger_power": ev_state,
+        "sensor.husets_netto_last_virtuell": MagicMock(state="6400"),
+        "sensor.grid": MagicMock(state="6400", attributes={"unit_of_measurement": "W"}),
+        "sensor.bat_power": MagicMock(state="0"),
+        "sensor.soc": soc_state,
+    }
+    mock_hass_instance.states.get.side_effect = lambda e: states.get(e)
+
+    # 1. Gammal ev_power_w (45 s > 30 s) -> HOLD
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_called_once_with("HOLD")
+    assert coordinator.data["action"] == "HOLD"
+
+    # 2. Färsk sensor men soc <= min_soc_buffer (15% <= 15%) -> stannar i HOLD
+    mock_battery.apply_action.reset_mock()
+    ev_state.last_reported = now - datetime.timedelta(seconds=5)
+    soc_state.state = "15"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    discharge_calls = [c for c in mock_battery.apply_action.call_args_list if c.args and c.args[0] == "DISCHARGE"]
+    assert not discharge_calls
+    assert coordinator.data["action"] == "HOLD"
+
+
+@pytest.mark.asyncio
+async def test_adr044_price_driven_house_support_and_export_protection(mock_hass_instance, mock_battery):
+    """ADR-044: Prisstyrt huslaststöd (ev_house_support_allowed=True) täcker 90% av huslasten även under
+    effektgränsen, och skickar omedelbart HOLD vid uppmätt export (grid_w < -100 W)."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    config = MOCK_CONFIG.copy()
+    config["ev_charging_sensor"] = "sensor.ev_charger_power"
+    config["solar_sensor"] = "sensor.solar_power"
+
+    coordinator = MagicMock()
+    coordinator.data = {
+        "action": "HOLD",
+        "cloud_action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Pausad (Elbilsladdning)",
+        "peak_power_kw": 6.0,
+        "max_discharge_kw": 3.3,
+        "min_soc_buffer": 10.0,
+        "ev_house_support_allowed": True,
+    }
+
+    guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+
+    ev_state = _make_ev_power_state("3700", unit="W", last_reported=now - datetime.timedelta(seconds=2))
+    solar_state = MagicMock(state="0", attributes={"unit_of_measurement": "W"})
+    load_state = MagicMock(state="5500")
+    grid_state = MagicMock(state="5500", attributes={"unit_of_measurement": "W"})
+    bat_state = MagicMock(state="0")
+    soc_state = MagicMock(state="70")
+
+    states = {
+        "sensor.ev_charger_power": ev_state,
+        "sensor.solar_power": solar_state,
+        "sensor.husets_netto_last_virtuell": load_state,
+        "sensor.grid": grid_state,
+        "sensor.bat_power": bat_state,
+        "sensor.soc": soc_state,
+    }
+    mock_hass_instance.states.get.side_effect = lambda e: states.get(e)
+
+    # 1. Under gränsen (5500 < 6000 W), ev_house_support_allowed=True:
+    # P_hus = 5500 - 3700 - 0 = 1800 W -> P_cap = 1620 W -> avrundat 1600 W (1.6 kW)
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_called_once_with("DISCHARGE", 1.6)
+    assert coordinator.data["action"] == "DISCHARGE"
+    assert guard.is_ev_manual_support_active is True
+
+    # 2. Solproduktion 500 W minskar P_hus till 1300 W -> P_cap = 1170 W -> avrundat 1200 W (1.2 kW)
+    mock_battery.apply_action.reset_mock()
+    solar_state.state = "500"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_called_once_with("DISCHARGE", 1.2)
+
+    # 3. Exportskydd: uppmätt nätimport grid_w = -150 W (< -100 W) -> omedelbart HOLD!
+    mock_battery.apply_action.reset_mock()
+    grid_state.state = "-150"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_called_once_with("HOLD")
+    assert coordinator.data["action"] == "HOLD"
+    assert guard.is_ev_manual_support_active is False
+
+
+@pytest.mark.asyncio
+async def test_adr044_two_cars_fail_closed_when_second_car_has_no_power_sensor(mock_hass_instance, mock_battery):
+    """Fail-closed: Om Bil 1 rapporterar effekt (3,7 kW) men Bil 2 samtidigt laddar via en binär sensor
+    utan effektenhet (kan dra 11 kW) ska både PeakGuard (HOLD) och coordinator (utelämna ev_power_kw)
+    falla tillbaka till fail-closed. När Bil 2 slutar ladda fungerar Bil 1 normalt."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    config = MOCK_CONFIG.copy()
+    config["ev_c1_is_charging"] = "sensor.car1_power"
+    config["ev_c2_is_charging"] = "binary_sensor.car2_charging"
+
+    coordinator = BatteryOptimizerLightCoordinator(mock_hass_instance, config, version="0.18.1")
+    coordinator.battery_api = mock_battery
+    mock_battery.get_current_soc.return_value = 70.0
+
+    guard = PeakGuard(mock_hass_instance, config, coordinator, mock_battery)
+    coordinator.peak_guard = guard
+    coordinator.data = {
+        "action": "HOLD",
+        "cloud_action": "HOLD",
+        "is_active": True,
+        "is_peak_shaving_active": True,
+        "peakguard_status": "Pausad (Elbilsladdning)",
+        "peak_power_kw": 3.8,
+        "max_discharge_kw": 3.3,
+        "min_soc_buffer": 10.0,
+        "ev_house_support_allowed": True,
+    }
+
+    car1_state = _make_ev_power_state("3700", unit="W", last_reported=now - datetime.timedelta(seconds=2))
+    car2_state = MagicMock(state="on", attributes={})
+    states = {
+        "sensor.car1_power": car1_state,
+        "binary_sensor.car2_charging": car2_state,
+        "sensor.husets_netto_last_virtuell": MagicMock(state="6400"),
+        "sensor.grid": MagicMock(state="6400", attributes={"unit_of_measurement": "W"}),
+        "sensor.bat_power": MagicMock(state="0"),
+        "sensor.soc": MagicMock(state="70"),
+    }
+    mock_hass_instance.states.get.side_effect = lambda e: states.get(e)
+
+    # 1. Bil 2 laddar ('on') utan effektenhet -> fail-closed (HOLD) i PeakGuard
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_called_once_with("HOLD")
+    assert guard.is_ev_manual_support_active is False
+
+    # 2. Coordinator utelämnar ofullständig ev_power_kw i /signal
+    patch_target = "custom_components.battery_optimizer_light_plus.coordinator.async_get_clientsession"
+    with patch(patch_target) as mock_get_session:
+        mock_session = MagicMock()
+        mock_get_session.return_value = mock_session
+        mock_post = mock_session.post.return_value.__aenter__.return_value
+        mock_post.status = 200
+        mock_post.json = AsyncMock(return_value={"action": "HOLD"})
+        mock_get = mock_session.get.return_value.__aenter__.return_value
+        mock_get.status = 200
+        mock_get.json = AsyncMock(return_value={"history": []})
+
+        await coordinator._async_update_data()
+        payload = mock_session.post.call_args[1]["json"]
+        assert payload["is_ev_charging"] is True
+        assert "ev_power_kw" not in payload
+
+    # 3. När Bil 2 slutar ladda ('off') har vi full effektmätning via Bil 1 -> husstöd fungerar igen!
+    mock_battery.apply_action.reset_mock()
+    car2_state.state = "off"
+    await guard.update("sensor.husets_netto_last_virtuell", "sensor.optimizer_light_peak_limit")
+    mock_battery.apply_action.assert_called_once_with("DISCHARGE", 2.4)
+    assert guard.is_ev_manual_support_active is True
+
+
 
 
 
