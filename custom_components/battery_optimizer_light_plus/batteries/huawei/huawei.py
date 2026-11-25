@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import asyncio
 import logging
 from homeassistant.core import HomeAssistant
 from homeassistant.const import STATE_UNKNOWN, STATE_UNAVAILABLE
@@ -21,6 +22,17 @@ from homeassistant.exceptions import ServiceNotFound
 from ..base import BatteryApi
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _safe_lower(val) -> str:
+    """Returnerar lowercase-sträng om val är en str, annars tom sträng."""
+    return val.lower() if isinstance(val, str) else ""
+
+
+def _safe_attrs(state) -> dict:
+    """Returnerar state.attributes som dict (säkert även för mocks i tester)."""
+    attrs = getattr(state, "attributes", None)
+    return attrs if isinstance(attrs, dict) else {}
 
 class HuaweiBattery(BatteryApi):
     """A class to interact with the Huawei battery."""
@@ -197,7 +209,7 @@ class HuaweiBattery(BatteryApi):
         return None
 
     async def _get_charge_from_grid_entity(self) -> str | None:
-        """Hittar switch-entiteten för 'Charge from Grid' / 'Ladda från växelström'."""
+        """Hittar switch-entiteten för 'Charge from Grid' / 'Ladda från växelström' (reg 47087)."""
         from homeassistant.helpers import entity_registry as er
         er_reg = er.async_get(self._hass)
         related_devices = self._get_related_devices()
@@ -213,9 +225,130 @@ class HuaweiBattery(BatteryApi):
             for entry in entries:
                 if entry.domain != "switch":
                     continue
-                if entry.translation_key in valid_keys or entry.entity_id.endswith("_charge_from_grid"):
+                uid = _safe_lower(getattr(entry, "unique_id", None))
+                ent_id = _safe_lower(getattr(entry, "entity_id", None))
+                if (
+                    entry.translation_key in valid_keys
+                    or "storage_charge_from_grid_function" in uid
+                    or ent_id.endswith(("_charge_from_grid", "_charge_from_ac"))
+                ):
                     return entry.entity_id
         return None
+
+    async def _get_grid_charge_cutoff_soc_entity(self) -> str | None:
+        """Hittar number-entiteten för 'Grid charge cutoff SoC' (reg 47088)."""
+        from homeassistant.helpers import entity_registry as er
+        er_reg = er.async_get(self._hass)
+        related_devices = self._get_related_devices()
+
+        valid_keys = (
+            "storage_grid_charge_cutoff_state_of_charge",
+            "grid_charge_cutoff_soc",
+            "grid_charge_cutoff_state_of_charge",
+        )
+
+        for d_id in related_devices:
+            entries = er.async_entries_for_device(er_reg, d_id)
+            for entry in entries:
+                if entry.domain != "number":
+                    continue
+                uid = _safe_lower(getattr(entry, "unique_id", None))
+                ent_id = _safe_lower(getattr(entry, "entity_id", None))
+                if (
+                    entry.translation_key in valid_keys
+                    or "grid_charge_cutoff" in uid
+                    or "grid_charge_cutoff" in ent_id
+                ):
+                    return entry.entity_id
+        return None
+
+    async def _get_grid_charge_max_power_entity(self) -> str | None:
+        """Hittar number-entiteten för 'Grid charge maximum power' (reg 47084 / 47242)."""
+        from homeassistant.helpers import entity_registry as er
+        er_reg = er.async_get(self._hass)
+        related_devices = self._get_related_devices()
+
+        valid_keys = (
+            "storage_power_of_charge_from_grid",
+            "storage_maximum_power_of_charge_from_grid",
+            "storage_maximum_charge_from_grid_power",
+            "grid_charge_maximum_power",
+            "maximum_power_of_charge_from_grid",
+            "power_of_charge_from_grid",
+        )
+        patterns = (
+            "power_of_charge_from_grid",
+            "charge_from_grid_power",
+            "grid_charge_maximum_power",
+        )
+
+        for d_id in related_devices:
+            entries = er.async_entries_for_device(er_reg, d_id)
+            for entry in entries:
+                if entry.domain != "number":
+                    continue
+                uid = _safe_lower(getattr(entry, "unique_id", None))
+                ent_id = _safe_lower(getattr(entry, "entity_id", None))
+                if (
+                    entry.translation_key in valid_keys
+                    or any(p in uid for p in patterns)
+                    or any(p in ent_id for p in patterns)
+                ):
+                    return entry.entity_id
+        return None
+
+    async def _get_max_charge_entity(self) -> str | None:
+        """Hittar number-entiteten för max laddningseffekt (STORAGE_MAXIMUM_CHARGE_POWER)."""
+        from homeassistant.helpers import entity_registry as er
+        er_reg = er.async_get(self._hass)
+        related_devices = self._get_related_devices()
+
+        valid_keys = (
+            "storage_maximum_charging_power",
+            "storage_maximum_charge_power",
+            "battery_maximum_charging_power",
+            "battery_maximum_charge_power",
+            "maximum_charging_power",
+        )
+
+        for d_id in related_devices:
+            entries = er.async_entries_for_device(er_reg, d_id)
+            for entry in entries:
+                if entry.domain != "number":
+                    continue
+                uid = _safe_lower(getattr(entry, "unique_id", None))
+                if entry.translation_key in valid_keys or "maximum_charging_power" in uid:
+                    return entry.entity_id
+        return None
+
+    async def _async_call_with_retry(
+        self, domain: str, service: str, service_data: dict, retries: int = 1
+    ) -> None:
+        """Anropar en HA-tjänst med 1 återförsök vid tillfälligt Modbus-anslutningsfel."""
+        for attempt in range(retries + 1):
+            try:
+                await self._hass.services.async_call(
+                    domain, service, service_data, blocking=True
+                )
+                return
+            except ServiceNotFound:
+                raise
+            except Exception as err:
+                err_text = str(err).lower()
+                is_transient = any(
+                    kw in err_text
+                    for kw in ("connection", "modbus", "timeout", "disconnect")
+                )
+                if is_transient and attempt < retries:
+                    _LOGGER.warning(
+                        "Tillfälligt Huawei Modbus-fel vid %s.%s (%s) – väntar 2 s och försöker igen.",
+                        domain,
+                        service,
+                        err,
+                    )
+                    await asyncio.sleep(2.0)
+                    continue
+                raise
 
     async def apply_action(self, action: str, target_kw: float = 0.0):
         """Verkställer ett beslut från molnet eller lokalt."""
@@ -224,6 +357,7 @@ class HuaweiBattery(BatteryApi):
 
         try:
             discharge_entity = await self._get_max_discharge_entity()
+            wrote_register = False
 
             # --- ÅTERSTÄLL URLADDNINGSSPRÄRR ---
             # Om vi ska ladda, ladda ur, eller gå till IDLE, måste vi se till att
@@ -240,9 +374,10 @@ class HuaweiBattery(BatteryApi):
                 if current_discharge == 0:
                     # 1. Fallback: Sensorns max-attribut
                     restore_val = 2500.0
-                    if "max" in state.attributes:
+                    attrs = _safe_attrs(state)
+                    if "max" in attrs:
                         try:
-                            restore_val = float(state.attributes["max"])
+                            restore_val = float(attrs["max"])
                         except ValueError:
                             pass
 
@@ -255,40 +390,141 @@ class HuaweiBattery(BatteryApi):
                                 restore_val = float(cloud_max) * 1000.0
                                 break
 
-                    await self._hass.services.async_call(
-                        "number", "set_value",
+                    await self._async_call_with_retry(
+                        "number",
+                        "set_value",
                         {"entity_id": discharge_entity, "value": restore_val},
-                        blocking=True
                     )
+                    wrote_register = True
 
             if action_upper == "CHARGE":
+                # 1. Säkerställ att 'Charge from Grid' (reg 47087) är påslagen
                 charge_from_grid_entity = await self._get_charge_from_grid_entity()
                 if charge_from_grid_entity:
                     cfg_state = self._hass.states.get(charge_from_grid_entity)
                     if cfg_state and cfg_state.state == "off":
+                        if wrote_register:
+                            await asyncio.sleep(1.0)
                         _LOGGER.info(
                             "Huawei 'Charge from Grid' (%s) är avstängd – slår på den inför tvingad nätladdning.",
                             charge_from_grid_entity,
                         )
-                        await self._hass.services.async_call(
+                        await self._async_call_with_retry(
                             "switch",
                             "turn_on",
                             {"entity_id": charge_from_grid_entity},
-                            blocking=True,
                         )
+                        wrote_register = True
+                    elif cfg_state is None or cfg_state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                        _LOGGER.debug(
+                            "Huawei 'Charge from Grid' (%s) har status '%s' – kan inte verifiera AC-laddning.",
+                            charge_from_grid_entity,
+                            cfg_state.state if cfg_state else None,
+                        )
+                else:
+                    _LOGGER.debug(
+                        "Hittade ingen 'Charge from Grid'-switch för Huawei-enhet %s "
+                        "(kontrollera Elevate permissions / att entiteten är aktiverad).",
+                        self._device_id,
+                    )
 
-                await self._hass.services.async_call(
+                # 2. Säkerställ att 'Grid charge cutoff SoC' (reg 47088) inte blockerar AC-laddning
+                cutoff_entity = await self._get_grid_charge_cutoff_soc_entity()
+                if cutoff_entity:
+                    cutoff_state = self._hass.states.get(cutoff_entity)
+                    if cutoff_state and cutoff_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                        try:
+                            current_cutoff = float(cutoff_state.state)
+                            attrs = _safe_attrs(cutoff_state)
+                            target_cutoff = float(attrs.get("max", 100.0))
+                            if current_cutoff < target_cutoff:
+                                if wrote_register:
+                                    await asyncio.sleep(1.0)
+                                _LOGGER.info(
+                                    "Huawei 'Grid charge cutoff SoC' (%s) är %.0f%% – "
+                                    "höjer till %.0f%% inför nätladdning.",
+                                    cutoff_entity,
+                                    current_cutoff,
+                                    target_cutoff,
+                                )
+                                await self._async_call_with_retry(
+                                    "number",
+                                    "set_value",
+                                    {"entity_id": cutoff_entity, "value": target_cutoff},
+                                )
+                                wrote_register = True
+                        except (ValueError, TypeError):
+                            pass
+
+                # 3. Säkerställ att 'Grid charge maximum power' (reg 47084/47242) inte stryper AC-laddning
+                grid_max_entity = await self._get_grid_charge_max_power_entity()
+                if grid_max_entity and power_w > 0:
+                    gmax_state = self._hass.states.get(grid_max_entity)
+                    if gmax_state and gmax_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                        try:
+                            current_gmax = float(gmax_state.state)
+                            attrs = _safe_attrs(gmax_state)
+                            is_kw = attrs.get("unit_of_measurement") == "kW"
+                            desired_gmax = (power_w / 1000.0) if is_kw else float(power_w)
+                            if "max" in attrs:
+                                desired_gmax = min(desired_gmax, float(attrs["max"]))
+                            if "min" in attrs:
+                                desired_gmax = max(desired_gmax, float(attrs["min"]))
+                            if current_gmax < desired_gmax:
+                                if wrote_register:
+                                    await asyncio.sleep(1.0)
+                                _LOGGER.info(
+                                    "Huawei 'Grid charge maximum power' (%s) är %s – höjer till %s inför nätladdning.",
+                                    grid_max_entity,
+                                    current_gmax,
+                                    desired_gmax,
+                                )
+                                await self._async_call_with_retry(
+                                    "number",
+                                    "set_value",
+                                    {"entity_id": grid_max_entity, "value": desired_gmax},
+                                )
+                                wrote_register = True
+                        except (ValueError, TypeError):
+                            pass
+
+                # 4. Begränsa power_w mot batteriets max laddningseffekt så forcible_charge inte kastar ValueError
+                max_charge_entity = await self._get_max_charge_entity()
+                if max_charge_entity and power_w > 0:
+                    mc_state = self._hass.states.get(max_charge_entity)
+                    if mc_state and mc_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                        try:
+                            max_charge_w = float(mc_state.state)
+                            attrs = _safe_attrs(mc_state)
+                            if attrs.get("unit_of_measurement") == "kW":
+                                max_charge_w *= 1000.0
+                            if max_charge_w > 0 and power_w > max_charge_w:
+                                _LOGGER.info(
+                                    "Huawei max laddningseffekt (%s) är %.0f W – begränsar forcible_charge från %d W.",
+                                    max_charge_entity,
+                                    max_charge_w,
+                                    power_w,
+                                )
+                                power_w = int(max_charge_w)
+                        except (ValueError, TypeError):
+                            pass
+
+                # Ge växelriktaren/SDongle en kort paus innan forcible_charge om vi skrivit register nyss
+                if wrote_register:
+                    await asyncio.sleep(1.0)
+
+                await self._async_call_with_retry(
                     "huawei_solar",
                     "forcible_charge",
                     {"device_id": self._device_id, "power": power_w, "duration": 60},
-                    blocking=True,
                 )
             elif action_upper == "DISCHARGE":
-                await self._hass.services.async_call(
+                if wrote_register:
+                    await asyncio.sleep(1.0)
+                await self._async_call_with_retry(
                     "huawei_solar",
                     "forcible_discharge",
                     {"device_id": self._device_id, "power": power_w, "duration": 60},
-                    blocking=True,
                 )
             elif action_upper == "HOLD":
                 if discharge_entity:
@@ -303,19 +539,29 @@ class HuaweiBattery(BatteryApi):
                     # Slitageskydd för EEPROM: Skriv bara om vi vet att värdet är > 0,
                     # eller om sensorn är otillgänglig och vi vill garantera spärren.
                     if current_discharge > 0:
-                        await self._hass.services.async_call(
-                            "number", "set_value",
+                        await self._async_call_with_retry(
+                            "number",
+                            "set_value",
                             {"entity_id": discharge_entity, "value": 0},
-                            blocking=True
                         )
+                        wrote_register = True
+
+                if wrote_register:
+                    await asyncio.sleep(1.0)
 
                 # Stoppa eventuella pågående forcible_charge / discharge
-                await self._hass.services.async_call(
-                    "huawei_solar", "stop_forcible_charge", {"device_id": self._device_id}, blocking=True
+                await self._async_call_with_retry(
+                    "huawei_solar",
+                    "stop_forcible_charge",
+                    {"device_id": self._device_id},
                 )
             elif action_upper == "IDLE":
-                await self._hass.services.async_call(
-                    "huawei_solar", "stop_forcible_charge", {"device_id": self._device_id}, blocking=True
+                if wrote_register:
+                    await asyncio.sleep(1.0)
+                await self._async_call_with_retry(
+                    "huawei_solar",
+                    "stop_forcible_charge",
+                    {"device_id": self._device_id},
                 )
             else:
                 _LOGGER.warning(f"Unknown action for Huawei: {action}")

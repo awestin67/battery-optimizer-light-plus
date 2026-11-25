@@ -475,3 +475,143 @@ async def test_apply_action_charge_enables_charge_from_grid_entity_id_fallback(h
             {"entity_id": "switch.luna2000_charge_from_grid"},
             blocking=True,
         )
+
+
+@pytest.mark.asyncio
+async def test_apply_action_charge_enables_charge_from_grid_unique_id_fallback(huawei_battery):
+    """Testar att charge_from_grid hittas via unique_id även med svensk entity_id och utan translation_key."""
+    sleep_target = "custom_components.battery_optimizer_light_plus.batteries.huawei.huawei.asyncio.sleep"
+    with patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get, \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}), \
+         patch(sleep_target, new_callable=AsyncMock) as mock_sleep:
+        mock_er_get.return_value = MagicMock()
+
+        mock_entry = MagicMock()
+        mock_entry.domain = "switch"
+        mock_entry.translation_key = None
+        mock_entry.unique_id = "HV123456_storage_charge_from_grid_function"
+        mock_entry.entity_id = "switch.batterier_ladda_fran_elnatet"
+        mock_entries.return_value = [mock_entry]
+
+        mock_state = MagicMock()
+        mock_state.state = "off"
+        huawei_battery._hass.states.get.return_value = mock_state
+
+        await huawei_battery.apply_action("CHARGE", target_kw=2.5)
+
+        huawei_battery._hass.services.async_call.assert_any_call(
+            "switch",
+            "turn_on",
+            {"entity_id": "switch.batterier_ladda_fran_elnatet"},
+            blocking=True,
+        )
+        mock_sleep.assert_awaited_once_with(1.0)
+
+
+@pytest.mark.asyncio
+async def test_apply_action_charge_raises_grid_cutoff_and_grid_max_power(huawei_battery):
+    """Testar att CHARGE höjer grid_charge_cutoff_soc och grid_charge_maximum_power om de blockerar AC-laddning."""
+    sleep_target = "custom_components.battery_optimizer_light_plus.batteries.huawei.huawei.asyncio.sleep"
+    with patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get, \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}), \
+         patch(sleep_target, new_callable=AsyncMock) as mock_sleep:
+        mock_er_get.return_value = MagicMock()
+
+        cutoff_entry = MagicMock()
+        cutoff_entry.domain = "number"
+        cutoff_entry.translation_key = "storage_grid_charge_cutoff_state_of_charge"
+        cutoff_entry.unique_id = "HV123_storage_grid_charge_cutoff_state_of_charge"
+        cutoff_entry.entity_id = "number.batteries_grid_charge_cutoff_soc"
+
+        gmax_entry = MagicMock()
+        gmax_entry.domain = "number"
+        gmax_entry.translation_key = "storage_power_of_charge_from_grid"
+        gmax_entry.unique_id = "HV123_storage_power_of_charge_from_grid"
+        gmax_entry.entity_id = "number.batteries_grid_charge_maximum_power"
+
+        mock_entries.return_value = [cutoff_entry, gmax_entry]
+
+        def get_state(entity_id):
+            st = MagicMock()
+            if entity_id == "number.batteries_grid_charge_cutoff_soc":
+                st.state = "50"
+                st.attributes = {"min": 20.0, "max": 100.0}
+            elif entity_id == "number.batteries_grid_charge_maximum_power":
+                st.state = "0"
+                st.attributes = {"min": 0.0, "max": 5000.0, "unit_of_measurement": "W"}
+            else:
+                return None
+            return st
+
+        huawei_battery._hass.states.get.side_effect = get_state
+
+        await huawei_battery.apply_action("CHARGE", target_kw=3.0)
+
+        huawei_battery._hass.services.async_call.assert_any_call(
+            "number",
+            "set_value",
+            {"entity_id": "number.batteries_grid_charge_cutoff_soc", "value": 100.0},
+            blocking=True,
+        )
+        huawei_battery._hass.services.async_call.assert_any_call(
+            "number",
+            "set_value",
+            {"entity_id": "number.batteries_grid_charge_maximum_power", "value": 3000.0},
+            blocking=True,
+        )
+        huawei_battery._hass.services.async_call.assert_any_call(
+            "huawei_solar",
+            "forcible_charge",
+            {"device_id": "test_device_id", "power": 3000, "duration": 60},
+            blocking=True,
+        )
+        mock_sleep.assert_awaited_with(1.0)
+        assert mock_sleep.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_apply_action_charge_clamps_power_to_max_charging_power(huawei_battery):
+    """Testar att forcible_charge-effekten begränsas mot batteriets max laddningseffekt."""
+    with patch("homeassistant.helpers.entity_registry.async_get") as mock_er_get, \
+         patch("homeassistant.helpers.entity_registry.async_entries_for_device") as mock_entries, \
+         patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}):
+        mock_er_get.return_value = MagicMock()
+
+        mc_entry = MagicMock()
+        mc_entry.domain = "number"
+        mc_entry.translation_key = "storage_maximum_charging_power"
+        mc_entry.unique_id = "HV123_storage_maximum_charging_power"
+        mc_entry.entity_id = "number.batteries_maximum_charging_power"
+        mock_entries.return_value = [mc_entry]
+
+        mock_state = MagicMock()
+        mock_state.state = "2500"
+        mock_state.attributes = {"unit_of_measurement": "W"}
+        huawei_battery._hass.states.get.return_value = mock_state
+
+        await huawei_battery.apply_action("CHARGE", target_kw=5.0)
+
+        huawei_battery._hass.services.async_call.assert_called_once_with(
+            "huawei_solar",
+            "forcible_charge",
+            {"device_id": "test_device_id", "power": 2500, "duration": 60},
+            blocking=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_apply_action_retries_on_transient_modbus_connection_error(huawei_battery):
+    """Testar att tillfälligt Modbus-anslutningsfel återförsöks en gång efter 2 s paus."""
+    huawei_battery._hass.services.async_call.side_effect = [
+        RuntimeError("Connection lost before response was received."),
+        None,
+    ]
+    sleep_target = "custom_components.battery_optimizer_light_plus.batteries.huawei.huawei.asyncio.sleep"
+    with patch.object(huawei_battery, "_get_related_devices", return_value={"test_device_id"}), \
+         patch(sleep_target, new_callable=AsyncMock) as mock_sleep:
+        await huawei_battery.apply_action("IDLE")
+
+    assert huawei_battery._hass.services.async_call.await_count == 2
+    mock_sleep.assert_awaited_once_with(2.0)
